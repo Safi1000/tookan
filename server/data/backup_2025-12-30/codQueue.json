@@ -1,0 +1,73 @@
+{
+  "drivers": {
+    "fleet_id_1001": [
+      {
+        "codId": "COD-TEST-001",
+        "orderId": "ORD-1234",
+        "date": "2025-11-01",
+        "amount": 330,
+        "merchantVendorId": 2001,
+        "status": "PENDING",
+        "createdAt": "2025-12-08T10:00:00.000Z",
+        "settledAt": null,
+        "notes": "Test COD entry for driver DR001"
+      },
+      {
+        "codId": "COD-TEST-002",
+        "orderId": "ORD-1235",
+        "date": "2025-11-02",
+        "amount": 300,
+        "merchantVendorId": 2002,
+        "status": "PENDING",
+        "createdAt": "2025-12-08T10:01:00.000Z",
+        "settledAt": null,
+        "notes": "Test COD entry for driver DR001"
+      },
+      {
+        "codId": "COD-1766566998741-nyg4c84bn",
+        "orderId": "ORD-TEST-001",
+        "date": "2025-12-01",
+        "amount": 125.5,
+        "merchantVendorId": 2001,
+        "status": "PENDING",
+        "createdAt": "2025-12-24T09:03:18.741Z",
+        "settledAt": null,
+        "notes": "Test COD entry for reconciliation"
+      },
+      {
+        "codId": "COD-1766567132937-844rwbnr8",
+        "orderId": "ORD-TEST-001",
+        "date": "2025-12-01",
+        "amount": 125.5,
+        "merchantVendorId": 2001,
+        "status": "PENDING",
+        "createdAt": "2025-12-24T09:05:32.937Z",
+        "settledAt": null,
+        "notes": "Test COD entry for reconciliation"
+      },
+      {
+        "codId": "COD-1766567302098-mw4mw2hxy",
+        "orderId": "ORD-TEST-001",
+        "date": "2025-12-01",
+        "amount": 125.5,
+        "merchantVendorId": 2001,
+        "status": "PENDING",
+        "createdAt": "2025-12-24T09:08:22.098Z",
+        "settledAt": null,
+        "notes": "Test COD entry for reconciliation"
+      },
+      {
+        "codId": "COD-1766567427021-r3y0y99g1",
+        "orderId": "ORD-TEST-001",
+        "date": "2025-12-01",
+        "amount": 125.5,
+        "merchantVendorId": 2001,
+        "status": "PENDING",
+        "createdAt": "2025-12-24T09:10:27.021Z",
+        "settledAt": null,
+        "notes": "Test COD entry for reconciliation"
+      }
+    ]
+  },
+  "lastUpdated": "2025-12-24T09:10:27.021Z"
+}

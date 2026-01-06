@@ -1,0 +1,129 @@
+{
+  "tasks": {
+    "111222": {
+      "job_id": "111222",
+      "template_fields": {
+        "cod_amount": 500,
+        "cod_collected": false
+      },
+      "cod_amount": 500,
+      "cod_collected": true,
+      "webhook_received_at": "2025-12-29T20:12:14.569Z",
+      "event_type": "task_created",
+      "last_updated": "2025-12-29T20:12:14.581Z"
+    },
+    "123456": {
+      "job_id": "123456",
+      "status": "assigned",
+      "template_fields": {
+        "cod_amount": 150,
+        "cod_collected": false
+      },
+      "cod_amount": 150,
+      "cod_collected": true,
+      "webhook_received_at": "2025-12-29T19:26:05.337Z",
+      "event_type": "task_updated",
+      "last_updated": "2025-12-29T19:26:05.349Z"
+    },
+    "333444": {
+      "job_id": "333444",
+      "template_fields": {
+        "cod_amount": 600,
+        "cod_collected": false
+      },
+      "cod_amount": 600,
+      "cod_collected": true,
+      "webhook_received_at": "2025-12-29T20:13:09.075Z",
+      "event_type": "task_created",
+      "last_updated": "2025-12-29T20:13:09.087Z"
+    },
+    "444555": {
+      "job_id": "444555",
+      "template_fields": {
+        "cod_amount": 850,
+        "cod_collected": false
+      },
+      "cod_amount": 850,
+      "cod_collected": true,
+      "webhook_received_at": "2025-12-29T20:14:10.767Z",
+      "event_type": "task_created",
+      "last_updated": "2025-12-29T20:14:10.778Z"
+    },
+    "555666": {
+      "job_id": "555666",
+      "template_fields": {
+        "cod_amount": 300,
+        "cod_collected": false
+      },
+      "cod_amount": 300,
+      "cod_collected": true,
+      "webhook_received_at": "2025-12-29T20:11:55.419Z",
+      "event_type": "task_created",
+      "last_updated": "2025-12-29T20:11:55.431Z"
+    },
+    "777888": {
+      "job_id": "777888",
+      "template_fields": {
+        "cod_amount": 250,
+        "cod_collected": false
+      },
+      "cod_amount": 250,
+      "cod_collected": true,
+      "webhook_received_at": "2025-12-29T20:11:24.837Z",
+      "event_type": "task_created",
+      "last_updated": "2025-12-29T20:11:24.855Z"
+    },
+    "888999": {
+      "job_id": "888999",
+      "template_fields": {
+        "cod_amount": 750,
+        "cod_collected": false
+      },
+      "cod_amount": 750,
+      "cod_collected": true,
+      "webhook_received_at": "2025-12-29T20:13:48.350Z",
+      "event_type": "task_created",
+      "last_updated": "2025-12-29T20:13:48.362Z"
+    },
+    "999888": {
+      "job_id": "999888",
+      "template_fields": {
+        "cod_amount": 200,
+        "cod_collected": false
+      },
+      "cod_amount": 200,
+      "cod_collected": true,
+      "webhook_received_at": "2025-12-29T19:26:35.383Z",
+      "event_type": "task_created",
+      "last_updated": "2025-12-29T19:26:35.392Z"
+    },
+    "TEST-12345": {
+      "job_id": "TEST-12345",
+      "status": "assigned",
+      "template_fields": {
+        "cod_amount": 125.5,
+        "cod_collected": false
+      },
+      "cod_amount": 125.5,
+      "cod_collected": false,
+      "webhook_received_at": "2026-01-05T15:34:19.806Z",
+      "event_type": "task_updated",
+      "last_updated": "2026-01-05T15:34:20.104Z",
+      "internal_metadata": {
+        "customField1": "value1",
+        "customField2": 123,
+        "notes": "Test metadata",
+        "last_updated": "2025-12-29T19:19:17.020Z"
+      },
+      "order_id": "TEST-12345",
+      "job_status": "assigned",
+      "cod": 125.5
+    },
+    "TEST-NON-NUMERIC": {
+      "job_id": "TEST-NON-NUMERIC",
+      "cod_collected": true,
+      "last_updated": "2025-12-29T19:26:36.611Z"
+    }
+  },
+  "lastUpdated": "2026-01-05T15:34:20.104Z"
+}

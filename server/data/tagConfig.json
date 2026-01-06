@@ -1,0 +1,25 @@
+{
+  "rules": [
+    {
+      "condition": "plan === 'premium'",
+      "tags": [
+        "DELIVERY_TIER_A",
+        "PREMIUM_CUSTOMER"
+      ],
+      "description": "Premium plan customers"
+    },
+    {
+      "condition": "zone === 'A'",
+      "tags": [
+        "ZONE_A"
+      ],
+      "description": "Zone A deliveries"
+    }
+  ],
+  "tags": [
+    "DELIVERY_TIER_A",
+    "PREMIUM_CUSTOMER",
+    "ZONE_A"
+  ],
+  "lastUpdated": "2025-12-29T19:19:15.733Z"
+}

@@ -1,0 +1,470 @@
+{
+  "history": [
+    {
+      "id": "HIST-1767035955746-j6kx40rob",
+      "job_id": "TEST-12345",
+      "field": "cod",
+      "old_value": {},
+      "new_value": {
+        "cod_amount": 125.5,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T19:19:15.746Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T19:19:15.746Z"
+    },
+    {
+      "id": "HIST-1767035955757-hsg65pvmz",
+      "job_id": "TEST-12345",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 125.5,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 125.5,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T19:19:15.757Z",
+      "source": "api",
+      "created_at": "2025-12-29T19:19:15.757Z"
+    },
+    {
+      "id": "HIST-1767036313339-1weeku6de",
+      "job_id": "123456",
+      "field": "cod",
+      "old_value": {},
+      "new_value": {
+        "cod_amount": 99.99,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T19:25:13.339Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T19:25:13.339Z"
+    },
+    {
+      "id": "HIST-1767036313349-v430e6vfm",
+      "job_id": "123456",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 99.99,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 99.99,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T19:25:13.349Z",
+      "source": "api",
+      "created_at": "2025-12-29T19:25:13.349Z"
+    },
+    {
+      "id": "HIST-1767036341073-ud2bd9x4p",
+      "job_id": "123456",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 99.99,
+        "cod_collected": true
+      },
+      "new_value": {
+        "cod_amount": 99.99,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T19:25:41.073Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T19:25:41.073Z"
+    },
+    {
+      "id": "HIST-1767036341083-zao8yts9j",
+      "job_id": "123456",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 99.99,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 99.99,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T19:25:41.083Z",
+      "source": "api",
+      "created_at": "2025-12-29T19:25:41.083Z"
+    },
+    {
+      "id": "HIST-1767036365338-sts3xhi05",
+      "job_id": "123456",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 99.99,
+        "cod_collected": true
+      },
+      "new_value": {
+        "cod_amount": 150,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T19:26:05.338Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T19:26:05.338Z"
+    },
+    {
+      "id": "HIST-1767036365349-d1ato8tty",
+      "job_id": "123456",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 150,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 150,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T19:26:05.349Z",
+      "source": "api",
+      "created_at": "2025-12-29T19:26:05.349Z"
+    },
+    {
+      "id": "HIST-1767036395384-j9xby8hrs",
+      "job_id": "999888",
+      "field": "cod",
+      "old_value": {},
+      "new_value": {
+        "cod_amount": 200,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T19:26:35.384Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T19:26:35.384Z"
+    },
+    {
+      "id": "HIST-1767036395393-4gd2d4x5j",
+      "job_id": "999888",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 200,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 200,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T19:26:35.393Z",
+      "source": "api",
+      "created_at": "2025-12-29T19:26:35.393Z"
+    },
+    {
+      "id": "HIST-1767036396611-0duudc4he",
+      "job_id": "TEST-NON-NUMERIC",
+      "field": "cod",
+      "old_value": {},
+      "new_value": {
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T19:26:36.611Z",
+      "source": "api",
+      "created_at": "2025-12-29T19:26:36.611Z"
+    },
+    {
+      "id": "HIST-1767039084838-oa57kvcek",
+      "job_id": "777888",
+      "field": "cod",
+      "old_value": {},
+      "new_value": {
+        "cod_amount": 250,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T20:11:24.838Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T20:11:24.838Z"
+    },
+    {
+      "id": "HIST-1767039084856-faxr99lcr",
+      "job_id": "777888",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 250,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 250,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T20:11:24.856Z",
+      "source": "api",
+      "created_at": "2025-12-29T20:11:24.856Z"
+    },
+    {
+      "id": "HIST-1767039110183-s2szxg9di",
+      "job_id": "555666",
+      "field": "cod",
+      "old_value": {},
+      "new_value": {
+        "cod_amount": 300,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T20:11:50.183Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T20:11:50.183Z"
+    },
+    {
+      "id": "HIST-1767039110196-p82ydz5su",
+      "job_id": "555666",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 300,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 300,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T20:11:50.196Z",
+      "source": "api",
+      "created_at": "2025-12-29T20:11:50.196Z"
+    },
+    {
+      "id": "HIST-1767039115420-9twtym8gb",
+      "job_id": "555666",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 300,
+        "cod_collected": true
+      },
+      "new_value": {
+        "cod_amount": 300,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T20:11:55.419Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T20:11:55.420Z"
+    },
+    {
+      "id": "HIST-1767039115432-horhon182",
+      "job_id": "555666",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 300,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 300,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T20:11:55.431Z",
+      "source": "api",
+      "created_at": "2025-12-29T20:11:55.432Z"
+    },
+    {
+      "id": "HIST-1767039134570-twpefox5l",
+      "job_id": "111222",
+      "field": "cod",
+      "old_value": {},
+      "new_value": {
+        "cod_amount": 500,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T20:12:14.570Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T20:12:14.570Z"
+    },
+    {
+      "id": "HIST-1767039134582-sud5him2a",
+      "job_id": "111222",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 500,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 500,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T20:12:14.582Z",
+      "source": "api",
+      "created_at": "2025-12-29T20:12:14.582Z"
+    },
+    {
+      "id": "HIST-1767039162542-pyvigjt6p",
+      "job_id": "333444",
+      "field": "cod",
+      "old_value": {},
+      "new_value": {
+        "cod_amount": 600,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T20:12:42.542Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T20:12:42.542Z"
+    },
+    {
+      "id": "HIST-1767039162554-nwm0jvyei",
+      "job_id": "333444",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 600,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 600,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T20:12:42.554Z",
+      "source": "api",
+      "created_at": "2025-12-29T20:12:42.554Z"
+    },
+    {
+      "id": "HIST-1767039180435-aqfeiwqdb",
+      "job_id": "333444",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 600,
+        "cod_collected": true
+      },
+      "new_value": {
+        "cod_amount": 600,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T20:13:00.435Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T20:13:00.435Z"
+    },
+    {
+      "id": "HIST-1767039180446-02v9rsva6",
+      "job_id": "333444",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 600,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 600,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T20:13:00.445Z",
+      "source": "api",
+      "created_at": "2025-12-29T20:13:00.446Z"
+    },
+    {
+      "id": "HIST-1767039189076-1l6puhyqn",
+      "job_id": "333444",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 600,
+        "cod_collected": true
+      },
+      "new_value": {
+        "cod_amount": 600,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T20:13:09.075Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T20:13:09.076Z"
+    },
+    {
+      "id": "HIST-1767039189088-55yk9d556",
+      "job_id": "333444",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 600,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 600,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T20:13:09.088Z",
+      "source": "api",
+      "created_at": "2025-12-29T20:13:09.088Z"
+    },
+    {
+      "id": "HIST-1767039209715-ty2ygjd9j",
+      "job_id": "888999",
+      "field": "cod",
+      "old_value": {},
+      "new_value": {
+        "cod_amount": 750,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T20:13:29.714Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T20:13:29.715Z"
+    },
+    {
+      "id": "HIST-1767039209727-wenmjve3r",
+      "job_id": "888999",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 750,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 750,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T20:13:29.726Z",
+      "source": "api",
+      "created_at": "2025-12-29T20:13:29.727Z"
+    },
+    {
+      "id": "HIST-1767039228351-1qk8hxbb6",
+      "job_id": "888999",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 750,
+        "cod_collected": true
+      },
+      "new_value": {
+        "cod_amount": 750,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T20:13:48.351Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T20:13:48.351Z"
+    },
+    {
+      "id": "HIST-1767039228363-3il3mhd7y",
+      "job_id": "888999",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 750,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 750,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T20:13:48.363Z",
+      "source": "api",
+      "created_at": "2025-12-29T20:13:48.363Z"
+    },
+    {
+      "id": "HIST-1767039250768-owkwvwf5f",
+      "job_id": "444555",
+      "field": "cod",
+      "old_value": {},
+      "new_value": {
+        "cod_amount": 850,
+        "cod_collected": false
+      },
+      "changed_at": "2025-12-29T20:14:10.768Z",
+      "source": "webhook",
+      "created_at": "2025-12-29T20:14:10.768Z"
+    },
+    {
+      "id": "HIST-1767039250779-2dh636rh2",
+      "job_id": "444555",
+      "field": "cod",
+      "old_value": {
+        "cod_amount": 850,
+        "cod_collected": false
+      },
+      "new_value": {
+        "cod_amount": 850,
+        "cod_collected": true
+      },
+      "changed_at": "2025-12-29T20:14:10.778Z",
+      "source": "api",
+      "created_at": "2025-12-29T20:14:10.779Z"
+    }
+  ],
+  "lastUpdated": "2025-12-29T20:14:10.779Z"
+}

@@ -1,0 +1,1358 @@
+/**
+ * Tookan API Service
+ * Handles all Tookan API interactions
+ */
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+
+/**
+ * Get authentication headers
+ */
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem('auth_token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  return headers;
+}
+
+/**
+ * Generic API Response type
+ */
+export interface TookanApiResponse<T = any> {
+  status: 'success' | 'error';
+  action?: string;
+  entity?: string;
+  message: string;
+  data: T;
+}
+
+/**
+ * Customer Wallet Response
+ */
+export interface CustomerWalletResponse {
+  id: string;
+  name: string;
+  wallet_balance: number;
+  credit_used: number;
+}
+
+/**
+ * Analytics Data Type
+ */
+export interface AnalyticsData {
+  kpis: {
+    totalOrders: number;
+    totalDrivers: number;
+    totalMerchants: number;
+    pendingCOD: number;
+    driversWithPending: number;
+    completedDeliveries: number;
+  };
+  trends: {
+    orders: string;
+    drivers: string;
+    merchants: string;
+    pendingCOD: string;
+    driversPending: string;
+    completed: string;
+  };
+  codStatus: Array<{
+    name: string;
+    value: number;
+    color: string;
+  }>;
+  orderVolume: Array<{
+    day: string;
+    orders: number;
+  }>;
+  driverPerformance: Array<{
+    name: string;
+    deliveries: number;
+  }>;
+  filters?: {
+    dateFrom: string;
+    dateTo: string;
+  };
+}
+
+/**
+ * COD Entry
+ */
+export interface CODEntry {
+  id: string;
+  driverId: string;
+  driverName: string;
+  orderId: string;
+  amount: number;
+  status: string;
+  date: string;
+}
+
+/**
+ * COD Confirmation
+ */
+export interface CODConfirmation {
+  id: string;
+  orderId: string;
+  driverId: string;
+  amount: number;
+  confirmed: boolean;
+  date: string;
+}
+
+/**
+ * COD Calendar Entry
+ */
+export interface CODCalendarEntry {
+  date: string;
+  total: number;
+  settled: number;
+  pending: number;
+}
+
+/**
+ * Customer Wallet
+ */
+export interface CustomerWallet {
+  id: string;
+  name: string;
+  wallet_balance: number;
+  credit_used: number;
+}
+
+/**
+ * Order Filters
+ */
+export interface OrderFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
+  limit?: number;
+  page?: number;
+  driverId?: string;
+  customerId?: string;
+  status?: string;
+}
+
+/**
+ * Driver Summary
+ */
+export interface DriverSummary {
+  driverId: string;
+  driverName: string;
+  orderCount: number;
+  codTotal: number;
+  orderFees: number;
+  totalValue: number;
+  avgDeliveryTime: number;
+}
+
+/**
+ * Merchant Summary
+ */
+export interface MerchantSummary {
+  merchantId: string;
+  merchantName: string;
+  orderCount: number;
+  codReceived: number;
+  orderFees: number;
+  revenue: number;
+}
+
+/**
+ * Order Data
+ */
+export interface OrderData {
+  id?: string;
+  job_id?: string;
+  orderId?: string;
+  date?: string;
+  merchant?: string;
+  merchantId?: string;
+  merchantNumber?: string;
+  driver?: string;
+  driverId?: string;
+  customer?: string;
+  customerId?: string;
+  customerNumber?: string;
+  cod?: string | number;
+  codAmount?: number;
+  codCollected?: boolean;
+  cod_collected?: boolean;
+  cod_amount?: number;
+  tookanFees?: number;
+  fee?: string | number;
+  orderFees?: number;
+  order_payment?: number;
+  status?: string | number;
+  job_status?: string | number;
+  addresses?: string;
+  [key: string]: any;
+}
+
+/**
+ * Order Updates
+ */
+export interface OrderUpdates {
+  codAmount?: number;
+  orderFees?: number;
+  assignedDriver?: string;
+  notes?: string;
+  cod_amount?: number;
+  cod_collected?: boolean;
+  [key: string]: any;
+}
+
+/**
+ * Tag Configuration
+ */
+export interface TagConfig {
+  [key: string]: any;
+}
+
+/**
+ * Withdrawal Request
+ */
+export interface WithdrawalRequest {
+  id: string;
+  type: 'merchant' | 'driver';
+  merchantId?: number;
+  driverId?: number;
+  amount: number;
+  iban: string;
+  phone?: string;
+  name?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt?: string;
+  updatedAt?: string;
+  rejectedReason?: string;
+}
+
+/**
+ * Fetch analytics data
+ */
+export async function fetchAnalytics(
+  dateFrom?: string,
+  dateTo?: string
+): Promise<TookanApiResponse<AnalyticsData>> {
+  try {
+    let url = `${API_BASE_URL}/api/reports/analytics`;
+    const params = new URLSearchParams();
+    
+    if (dateFrom) params.append('dateFrom', dateFrom);
+    if (dateTo) params.append('dateTo', dateTo);
+    
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_analytics',
+        entity: 'analytics',
+        message: data.message || 'Failed to fetch analytics',
+        data: {
+          kpis: {
+            totalOrders: 0,
+            totalDrivers: 0,
+            totalMerchants: 0,
+            pendingCOD: 0,
+            driversWithPending: 0,
+            completedDeliveries: 0,
+          },
+          trends: {
+            orders: '+0%',
+            drivers: '+0%',
+            merchants: '+0%',
+            pendingCOD: '+0%',
+            driversPending: '+0%',
+            completed: '+0%',
+          },
+          codStatus: [],
+          orderVolume: [],
+          driverPerformance: [],
+        },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_analytics',
+      entity: 'analytics',
+      message: data.message || 'Analytics fetched successfully',
+      data: data.data || {
+        kpis: {
+          totalOrders: 0,
+          totalDrivers: 0,
+          totalMerchants: 0,
+          pendingCOD: 0,
+          driversWithPending: 0,
+          completedDeliveries: 0,
+        },
+        trends: {
+          orders: '+0%',
+          drivers: '+0%',
+          merchants: '+0%',
+          pendingCOD: '+0%',
+          driversPending: '+0%',
+          completed: '+0%',
+        },
+        codStatus: [],
+        orderVolume: [],
+        driverPerformance: [],
+      },
+    };
+  } catch (error) {
+    console.error('Fetch analytics error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_analytics',
+      entity: 'analytics',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {
+        kpis: {
+          totalOrders: 0,
+          totalDrivers: 0,
+          totalMerchants: 0,
+          pendingCOD: 0,
+          driversWithPending: 0,
+          completedDeliveries: 0,
+        },
+        trends: {
+          orders: '+0%',
+          drivers: '+0%',
+          merchants: '+0%',
+          pendingCOD: '+0%',
+          driversPending: '+0%',
+          completed: '+0%',
+        },
+        codStatus: [],
+        orderVolume: [],
+        driverPerformance: [],
+      },
+    };
+  }
+}
+
+/**
+ * Fetch customer wallet
+ */
+export async function fetchCustomerWallet(
+  customerId: number | string
+): Promise<TookanApiResponse<CustomerWalletResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/customer-wallet/details`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ customer_id: customerId }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_wallet',
+        entity: 'customer',
+        message: data.message || 'Failed to fetch customer wallet',
+        data: {
+          id: '',
+          name: '',
+          wallet_balance: 0,
+          credit_used: 0,
+        },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_wallet',
+      entity: 'customer',
+      message: 'Customer wallet fetched successfully',
+      data: data.data || {
+        id: '',
+        name: '',
+        wallet_balance: 0,
+        credit_used: 0,
+      },
+    };
+  } catch (error) {
+    console.error('Fetch customer wallet error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_wallet',
+      entity: 'customer',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {
+        id: '',
+        name: '',
+        wallet_balance: 0,
+        credit_used: 0,
+      },
+    };
+  }
+}
+
+/**
+ * Fetch all customer wallets
+ */
+export async function fetchCustomerWallets(): Promise<TookanApiResponse<Array<{ id: string; name: string; wallet_balance: number; credit_used: number }>>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/customers/wallets`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_wallet',
+        entity: 'customer',
+        message: data.message || 'Failed to fetch customer wallets',
+        data: []
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_wallet',
+      entity: 'customer',
+      message: 'Customer wallets fetched successfully',
+      data: data.data?.wallets || []
+    };
+  } catch (error) {
+    console.error('Fetch customer wallets error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_wallet',
+      entity: 'customer',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: []
+    };
+  }
+}
+
+// Additional functions that may be imported by other components
+export async function createFleetWalletTransaction(
+  fleetId: string | number,
+  amount: number,
+  description: string,
+  transactionType: 'credit' | 'debit' = 'credit'
+): Promise<TookanApiResponse<any>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/driver-wallet/transaction`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        fleet_id: fleetId,
+        amount,
+        description,
+        transaction_type: transactionType,
+      }),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {},
+    };
+  }
+}
+
+export async function fetchFleetWalletBalance(fleetId: string | number): Promise<TookanApiResponse<any>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/driver-wallet/balance`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ fleet_id: fleetId }),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {},
+    };
+  }
+}
+
+export async function addCustomerWalletPayment(
+  customerId: string | number,
+  amount: number,
+  description: string
+): Promise<TookanApiResponse<any>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/customer-wallet/payment`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        customer_id: customerId,
+        amount,
+        description,
+      }),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {},
+    };
+  }
+}
+
+export async function fetchDriverCODQueue(driverId?: string): Promise<TookanApiResponse<CODEntry[]>> {
+  try {
+    let url = `${API_BASE_URL}/api/tookan/cod-queue`;
+    if (driverId) {
+      url += `?driverId=${driverId}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: [],
+    };
+  }
+}
+
+export async function getOldestPendingCOD(): Promise<TookanApiResponse<CODEntry | null>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/cod-queue/oldest`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: null,
+    };
+  }
+}
+
+export async function settleCODTransaction(
+  entryId: string,
+  amount: number
+): Promise<TookanApiResponse<any>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/cod-queue/settle`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        entry_id: entryId,
+        amount,
+      }),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {},
+    };
+  }
+}
+
+export async function fetchCODConfirmations(): Promise<TookanApiResponse<CODConfirmation[]>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/cod-queue/confirmations`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: [],
+    };
+  }
+}
+
+export async function fetchCODCalendar(
+  startDate?: string,
+  endDate?: string
+): Promise<TookanApiResponse<CODCalendarEntry[]>> {
+  try {
+    let url = `${API_BASE_URL}/api/tookan/cod-queue/calendar`;
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: [],
+    };
+  }
+}
+
+export async function fetchCODQueue(): Promise<TookanApiResponse<CODEntry[]>> {
+  return fetchDriverCODQueue();
+}
+
+export async function settleCOD(
+  entryId: string,
+  amount: number
+): Promise<TookanApiResponse<any>> {
+  return settleCODTransaction(entryId, amount);
+}
+
+/**
+ * Fetch all orders
+ */
+export async function fetchAllOrders(
+  filters?: OrderFilters
+): Promise<TookanApiResponse<{ orders: OrderData[]; total?: number }>> {
+  try {
+    let url = `${API_BASE_URL}/api/tookan/orders`;
+    const params = new URLSearchParams();
+    
+    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+    if (filters?.driverId) params.append('driverId', filters.driverId);
+    if (filters?.customerId) params.append('customerId', filters.customerId);
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.page) params.append('page', filters.page.toString());
+    if (filters?.search) params.append('search', filters.search);
+    
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_orders',
+        entity: 'order',
+        message: data.message || 'Failed to fetch orders',
+        data: { orders: [], total: 0 },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_orders',
+      entity: 'order',
+      message: data.message || 'Orders fetched successfully',
+      data: data.data || { orders: [], total: 0 },
+    };
+  } catch (error) {
+    console.error('Fetch orders error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_orders',
+      entity: 'order',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { orders: [], total: 0 },
+    };
+  }
+}
+
+/**
+ * Fetch order details
+ */
+export async function fetchOrderDetails(
+  orderId: string
+): Promise<TookanApiResponse<OrderData>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/order/${orderId}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_order',
+        entity: 'order',
+        message: data.message || 'Failed to fetch order details',
+        data: {} as OrderData,
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_order',
+      entity: 'order',
+      message: data.message || 'Order details fetched successfully',
+      data: data.data || ({} as OrderData),
+    };
+  } catch (error) {
+    console.error('Fetch order details error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_order',
+      entity: 'order',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {} as OrderData,
+    };
+  }
+}
+
+/**
+ * Update order
+ */
+export async function updateOrder(
+  orderId: string,
+  updates: OrderUpdates
+): Promise<TookanApiResponse<OrderData>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/order/${orderId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'update_order',
+        entity: 'order',
+        message: data.message || 'Failed to update order',
+        data: {} as OrderData,
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'update_order',
+      entity: 'order',
+      message: data.message || 'Order updated successfully',
+      data: data.data || ({} as OrderData),
+    };
+  } catch (error) {
+    console.error('Update order error:', error);
+    return {
+      status: 'error',
+      action: 'update_order',
+      entity: 'order',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {} as OrderData,
+    };
+  }
+}
+
+/**
+ * Reorder an order
+ */
+export async function reorderOrder(
+  orderId: string,
+  data: any
+): Promise<TookanApiResponse<any>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/order/reorder`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ orderId, ...data }),
+    });
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {},
+    };
+  }
+}
+
+/**
+ * Return an order
+ */
+export async function returnOrder(
+  orderId: string,
+  data: any
+): Promise<TookanApiResponse<any>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/order/return`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ orderId, ...data }),
+    });
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {},
+    };
+  }
+}
+
+/**
+ * Delete an order
+ */
+export async function deleteOrder(
+  orderId: string
+): Promise<TookanApiResponse<any>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/order/${orderId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {},
+    };
+  }
+}
+
+/**
+ * Check order conflicts
+ */
+export async function checkOrderConflicts(
+  orderId: string
+): Promise<TookanApiResponse<any>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/order/${orderId}/conflicts`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {},
+    };
+  }
+}
+
+/**
+ * Update task COD
+ */
+export async function updateTaskCOD(
+  orderId: string,
+  codData: { cod_amount?: number; cod_collected?: boolean }
+): Promise<TookanApiResponse<any>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/task/${orderId}/cod`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(codData),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {},
+    };
+  }
+}
+
+/**
+ * Fetch all drivers (fleets)
+ */
+export async function fetchAllDrivers(): Promise<TookanApiResponse<{ fleets: any[] }>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/fleets`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_drivers',
+        entity: 'driver',
+        message: data.message || 'Failed to fetch drivers',
+        data: { fleets: [] },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_drivers',
+      entity: 'driver',
+      message: data.message || 'Drivers fetched successfully',
+      data: data.data || { fleets: [] },
+    };
+  } catch (error) {
+    console.error('Fetch drivers error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_drivers',
+      entity: 'driver',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { fleets: [] },
+    };
+  }
+}
+
+/**
+ * Fetch all customers
+ */
+export async function fetchAllCustomers(): Promise<TookanApiResponse<{ customers: any[] }>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/customers`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_customers',
+        entity: 'customer',
+        message: data.message || 'Failed to fetch customers',
+        data: { customers: [] },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_customers',
+      entity: 'customer',
+      message: data.message || 'Customers fetched successfully',
+      data: data.data || { customers: [] },
+    };
+  } catch (error) {
+    console.error('Fetch customers error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_customers',
+      entity: 'customer',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { customers: [] },
+    };
+  }
+}
+
+/**
+ * Fetch reports summary
+ */
+export async function fetchReportsSummary(
+  params?: { dateFrom?: string; dateTo?: string }
+): Promise<TookanApiResponse<{
+  orders: any[];
+  drivers: any[];
+  customers: any[];
+  driverSummaries: DriverSummary[];
+  merchantSummaries: MerchantSummary[];
+  totals: {
+    orders: number;
+    drivers: number;
+    merchants: number;
+    deliveries: number;
+  };
+}>> {
+  try {
+    let url = `${API_BASE_URL}/api/reports/summary`;
+    const queryParams = new URLSearchParams();
+    
+    if (params?.dateFrom) queryParams.append('dateFrom', params.dateFrom);
+    if (params?.dateTo) queryParams.append('dateTo', params.dateTo);
+    
+    if (queryParams.toString()) {
+      url += `?${queryParams.toString()}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_reports_summary',
+        entity: 'report',
+        message: data.message || 'Failed to fetch reports summary',
+        data: {
+          orders: [],
+          drivers: [],
+          customers: [],
+          driverSummaries: [],
+          merchantSummaries: [],
+          totals: {
+            orders: 0,
+            drivers: 0,
+            merchants: 0,
+            deliveries: 0,
+          },
+        },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_reports_summary',
+      entity: 'report',
+      message: data.message || 'Reports summary fetched successfully',
+      data: data.data || {
+        orders: [],
+        drivers: [],
+        customers: [],
+        driverSummaries: [],
+        merchantSummaries: [],
+        totals: {
+          orders: 0,
+          drivers: 0,
+          merchants: 0,
+          deliveries: 0,
+        },
+      },
+    };
+  } catch (error) {
+    console.error('Fetch reports summary error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_reports_summary',
+      entity: 'report',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {
+        orders: [],
+        drivers: [],
+        customers: [],
+        driverSummaries: [],
+        merchantSummaries: [],
+        totals: {
+          orders: 0,
+          drivers: 0,
+          merchants: 0,
+          deliveries: 0,
+        },
+      },
+    };
+  }
+}
+
+/**
+ * Get tag configuration
+ */
+export async function getTagConfig(): Promise<TookanApiResponse<TagConfig>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/tags/config`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'get_tag_config',
+        entity: 'tag',
+        message: data.message || 'Failed to get tag configuration',
+        data: {},
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'get_tag_config',
+      entity: 'tag',
+      message: data.message || 'Tag configuration retrieved successfully',
+      data: data.data || {},
+    };
+  } catch (error) {
+    console.error('Get tag config error:', error);
+    return {
+      status: 'error',
+      action: 'get_tag_config',
+      entity: 'tag',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {},
+    };
+  }
+}
+
+/**
+ * Update tag configuration
+ */
+export async function updateTagConfig(
+  config: TagConfig
+): Promise<TookanApiResponse<TagConfig>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/tags/config`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(config),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'update_tag_config',
+        entity: 'tag',
+        message: data.message || 'Failed to update tag configuration',
+        data: {},
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'update_tag_config',
+      entity: 'tag',
+      message: data.message || 'Tag configuration updated successfully',
+      data: data.data || {},
+    };
+  } catch (error) {
+    console.error('Update tag config error:', error);
+    return {
+      status: 'error',
+      action: 'update_tag_config',
+      entity: 'tag',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {},
+    };
+  }
+}
+
+/**
+ * Suggest tags
+ */
+export async function suggestTags(
+  data: any
+): Promise<TookanApiResponse<{ tags: string[] }>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/tags/suggest`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || result.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'suggest_tags',
+        entity: 'tag',
+        message: result.message || 'Failed to suggest tags',
+        data: { tags: [] },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'suggest_tags',
+      entity: 'tag',
+      message: result.message || 'Tags suggested successfully',
+      data: result.data || { tags: [] },
+    };
+  } catch (error) {
+    console.error('Suggest tags error:', error);
+    return {
+      status: 'error',
+      action: 'suggest_tags',
+      entity: 'tag',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { tags: [] },
+    };
+  }
+}
+
+/**
+ * Fetch withdrawal requests
+ */
+export async function fetchWithdrawalRequests(): Promise<TookanApiResponse<WithdrawalRequest[]>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/withdrawal/requests`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_withdrawal_requests',
+        entity: 'withdrawal',
+        message: data.message || 'Failed to fetch withdrawal requests',
+        data: [],
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_withdrawal_requests',
+      entity: 'withdrawal',
+      message: data.message || 'Withdrawal requests fetched successfully',
+      data: data.data?.requests || data.data || [],
+    };
+  } catch (error) {
+    console.error('Fetch withdrawal requests error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_withdrawal_requests',
+      entity: 'withdrawal',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: [],
+    };
+  }
+}
+
+/**
+ * Approve withdrawal request
+ */
+export async function approveWithdrawalRequest(
+  id: string
+): Promise<TookanApiResponse<WithdrawalRequest>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/withdrawal/request/${id}/approve`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'approve_withdrawal',
+        entity: 'withdrawal',
+        message: data.message || 'Failed to approve withdrawal request',
+        data: {} as WithdrawalRequest,
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'approve_withdrawal',
+      entity: 'withdrawal',
+      message: data.message || 'Withdrawal request approved successfully',
+      data: data.data || ({} as WithdrawalRequest),
+    };
+  } catch (error) {
+    console.error('Approve withdrawal request error:', error);
+    return {
+      status: 'error',
+      action: 'approve_withdrawal',
+      entity: 'withdrawal',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {} as WithdrawalRequest,
+    };
+  }
+}
+
+/**
+ * Reject withdrawal request
+ */
+export async function rejectWithdrawalRequest(
+  id: string,
+  reason?: string
+): Promise<TookanApiResponse<WithdrawalRequest>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/withdrawal/request/${id}/reject`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reason }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'reject_withdrawal',
+        entity: 'withdrawal',
+        message: data.message || 'Failed to reject withdrawal request',
+        data: {} as WithdrawalRequest,
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'reject_withdrawal',
+      entity: 'withdrawal',
+      message: data.message || 'Withdrawal request rejected successfully',
+      data: data.data || ({} as WithdrawalRequest),
+    };
+  } catch (error) {
+    console.error('Reject withdrawal request error:', error);
+    return {
+      status: 'error',
+      action: 'reject_withdrawal',
+      entity: 'withdrawal',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {} as WithdrawalRequest,
+    };
+  }
+}
