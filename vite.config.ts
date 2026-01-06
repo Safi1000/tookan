@@ -70,6 +70,8 @@
     build: {
       target: 'esnext',
       outDir: 'build',
+      // Raise warning threshold to avoid noise from known large bundle
+      chunkSizeWarningLimit: 1500,
     },
     server: {
       port: 3000,
