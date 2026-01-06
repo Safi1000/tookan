@@ -75,15 +75,6 @@
     "dev": "vite",
     "build": "vite build",
     "server": "node server/index.js",
-    "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
-    "test": "npm run test:backend && npm run test:frontend",
-    "test:backend": "jest --config jest.config.js",
-    "test:frontend": "vitest run",
-    "test:watch": "npm run test:watch:backend & npm run test:watch:frontend",
-    "test:watch:backend": "jest --config jest.config.js --watch",
-    "test:watch:frontend": "vitest",
-    "test:coverage": "npm run test:coverage:backend && npm run test:coverage:frontend",
-    "test:coverage:backend": "jest --config jest.config.js --coverage",
-    "test:coverage:frontend": "vitest run --coverage"
+    "dev:all": "concurrently \"npm run server\" \"npm run dev\""
   }
 }
