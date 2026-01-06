@@ -127,11 +127,16 @@ function getApp() {
         });
         const data = await response.json();
         
-        if (data.status === 200) {
+        // Ensure fleets is always an array
+        const fleets = Array.isArray(data.data) ? data.data : 
+                       Array.isArray(data.fleets) ? data.fleets : 
+                       Array.isArray(data) ? data : [];
+        
+        if (data.status === 200 || fleets.length > 0) {
           res.json({
             status: 'success',
             message: 'Fleets fetched successfully',
-            data: { fleets: data.data || [] }
+            data: { fleets: fleets }
           });
         } else {
           res.json({
@@ -160,11 +165,16 @@ function getApp() {
         });
         const data = await response.json();
         
-        if (data.status === 200) {
+        // Ensure customers is always an array
+        const customers = Array.isArray(data.data) ? data.data : 
+                          Array.isArray(data.customers) ? data.customers : 
+                          Array.isArray(data) ? data : [];
+        
+        if (data.status === 200 || customers.length > 0) {
           res.json({
             status: 'success',
             message: 'Customers fetched successfully',
-            data: { customers: data.data || [] }
+            data: { customers: customers }
           });
         } else {
           res.json({
@@ -201,11 +211,16 @@ function getApp() {
         });
         const data = await response.json();
         
-        if (data.status === 200) {
+        // Ensure orders is always an array
+        const orders = Array.isArray(data.data) ? data.data : 
+                       Array.isArray(data.tasks) ? data.tasks : 
+                       Array.isArray(data) ? data : [];
+        
+        if (data.status === 200 || orders.length > 0) {
           res.json({
             status: 'success',
             message: 'Orders fetched successfully',
-            data: { orders: data.data || [], total: data.data?.length || 0 }
+            data: { orders: orders, total: orders.length }
           });
         } else {
           res.json({
@@ -257,9 +272,16 @@ function getApp() {
           tasksRes.json()
         ]);
         
-        const fleets = fleetsData.data || [];
-        const customers = customersData.data || [];
-        const tasks = tasksData.data || [];
+        // Ensure data is always an array
+        const fleets = Array.isArray(fleetsData.data) ? fleetsData.data : 
+                       Array.isArray(fleetsData.fleets) ? fleetsData.fleets : 
+                       Array.isArray(fleetsData) ? fleetsData : [];
+        const customers = Array.isArray(customersData.data) ? customersData.data : 
+                          Array.isArray(customersData.customers) ? customersData.customers : 
+                          Array.isArray(customersData) ? customersData : [];
+        const tasks = Array.isArray(tasksData.data) ? tasksData.data : 
+                      Array.isArray(tasksData.tasks) ? tasksData.tasks : 
+                      Array.isArray(tasksData) ? tasksData : [];
         
         // Calculate analytics
         const completedTasks = tasks.filter(t => t.job_status === 2);
