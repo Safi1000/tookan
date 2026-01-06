@@ -330,7 +330,7 @@ export function Dashboard() {
             <button 
               onClick={async () => {
                 try {
-                  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/reports/daily?format=excel`);
+                  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/reports/daily?format=excel`);
                   if (!response.ok) throw new Error('Export failed');
                   const blob = await response.blob();
                   const url = window.URL.createObjectURL(blob);
@@ -359,7 +359,7 @@ export function Dashboard() {
               onClick={async () => {
                 try {
                   const month = new Date().toISOString().slice(0, 7);
-                  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/reports/monthly?format=excel&month=${month}`);
+                  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/reports/monthly?format=excel&month=${month}`);
                   if (!response.ok) throw new Error('Export failed');
                   const blob = await response.blob();
                   const url = window.URL.createObjectURL(blob);

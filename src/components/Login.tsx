@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Lock, Mail, AlertCircle, Loader2 } from 'lucide-react';
-import tdLogo from 'figma:asset/69bff70c5b17d559501ad9bfcdc1a4c7d2dce43e.png';
+import tdLogo from '../assets/69bff70c5b17d559501ad9bfcdc1a4c7d2dce43e.png';
 
 interface LoginProps {
   onLogin: (session: any, user: any) => void;
@@ -24,7 +24,7 @@ export function Login({ onLogin }: LoginProps) {
     setError('');
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/auth/login`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

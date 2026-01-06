@@ -4,7 +4,8 @@
  * Handles user authentication and management API calls
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+// Default to same-origin API when no base URL is provided (production on Vercel)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 /**
  * Get authorization headers for API requests

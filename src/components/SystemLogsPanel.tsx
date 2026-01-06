@@ -53,7 +53,7 @@ export function SystemLogsPanel() {
     const loadLogs = async () => {
       setIsLoading(true);
       try {
-        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
         const token = localStorage.getItem('auth_token');
         const response = await fetch(`${API_BASE_URL}/api/audit-logs`, {
           method: 'GET',
@@ -163,7 +163,7 @@ export function SystemLogsPanel() {
   // Export logs
   const handleExport = async (format: 'csv' | 'excel') => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/logs/export`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/logs/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

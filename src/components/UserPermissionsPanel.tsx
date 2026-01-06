@@ -309,7 +309,7 @@ export function UserPermissionsPanel() {
         headers['Authorization'] = `Bearer ${token}`;
       }
       
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/tookan/customer/add`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/tookan/customer/add`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
