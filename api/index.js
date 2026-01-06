@@ -709,6 +709,194 @@ function getApp() {
       }
     });
 
+    // ============================================
+    // USER MANAGEMENT ENDPOINTS
+    // ============================================
+
+    // GET all users (for admin panel)
+    app.get('/api/users', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({
+            status: 'error',
+            message: 'Database not configured',
+            data: { users: [], total: 0 }
+          });
+        }
+
+        const { role, search } = req.query;
+
+        let query = supabase.from('users').select('*');
+
+        if (role) {
+          query = query.eq('role', role);
+        }
+
+        if (search) {
+          query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
+        }
+
+        const { data: users, error } = await query.order('created_at', { ascending: false });
+
+        if (error) {
+          throw error;
+        }
+
+        // Also get tookan_users for a complete list
+        const { data: tookanUsers } = await supabase
+          .from('tookan_users')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        // Combine and transform
+        const allUsers = [
+          ...(users || []).map(u => ({
+            id: u.id,
+            email: u.email,
+            name: u.name || u.email,
+            role: u.role || 'admin',
+            permissions: u.permissions || {},
+            status: 'Active',
+            source: 'supabase',
+            createdAt: u.created_at
+          })),
+          ...(tookanUsers || []).map(u => ({
+            id: u.id,
+            email: u.email,
+            name: u.name || u.email,
+            role: u.role || u.user_type,
+            permissions: {},
+            status: 'Active',
+            source: 'tookan',
+            tookanId: u.tookan_id,
+            userType: u.user_type,
+            createdAt: u.created_at
+          }))
+        ];
+
+        res.json({
+          status: 'success',
+          message: 'Users fetched successfully',
+          data: {
+            users: allUsers,
+            total: allUsers.length
+          }
+        });
+      } catch (error) {
+        console.error('Get users error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to fetch users',
+          data: { users: [], total: 0 }
+        });
+      }
+    });
+
+    // GET current user info
+    app.get('/api/auth/me', async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) {
+          return res.status(401).json({
+            status: 'error',
+            message: 'No authorization token provided',
+            data: {}
+          });
+        }
+
+        const token = authHeader.replace('Bearer ', '');
+        
+        // Try to decode the token (base64 for Tookan users)
+        try {
+          const decoded = Buffer.from(token, 'base64').toString('utf8');
+          const [userId, timestamp, email] = decoded.split(':');
+          
+          if (userId && email) {
+            // Look up user in tookan_users
+            if (isSupabaseConfigured && supabase) {
+              const { data: user } = await supabase
+                .from('tookan_users')
+                .select('*')
+                .eq('tookan_id', userId)
+                .single();
+
+              if (user) {
+                return res.json({
+                  status: 'success',
+                  data: {
+                    user: {
+                      id: user.tookan_id,
+                      email: user.email,
+                      name: user.name,
+                      role: user.role || user.user_type,
+                      permissions: {},
+                      source: 'tookan'
+                    }
+                  }
+                });
+              }
+            }
+
+            // Return basic info from token
+            return res.json({
+              status: 'success',
+              data: {
+                user: {
+                  id: userId,
+                  email: email,
+                  name: email,
+                  role: 'user',
+                  permissions: {},
+                  source: 'token'
+                }
+              }
+            });
+          }
+        } catch (decodeError) {
+          // Not a base64 token, might be a Supabase JWT
+        }
+
+        // Try Supabase auth
+        if (isSupabaseConfigured && supabaseAnon) {
+          const { data: { user }, error } = await supabaseAnon.auth.getUser(token);
+          if (!error && user) {
+            const { data: profile } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', user.id)
+              .single();
+
+            return res.json({
+              status: 'success',
+              data: {
+                user: {
+                  id: user.id,
+                  email: user.email,
+                  name: profile?.name || user.email,
+                  role: profile?.role || 'admin',
+                  permissions: profile?.permissions || {},
+                  source: 'supabase'
+                }
+              }
+            });
+          }
+        }
+
+        res.status(401).json({
+          status: 'error',
+          message: 'Invalid or expired token',
+          data: {}
+        });
+      } catch (error) {
+        console.error('Auth me error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message,
+          data: {}
+        });
+      }
+    });
+
     // Catch-all for other API routes
     app.all('/api/*', (req, res) => {
       res.status(404).json({
