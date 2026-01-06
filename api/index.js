@@ -7,9 +7,33 @@
 
 // Import the Express app from server
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const { createClient } = require('@supabase/supabase-js');
 
 // Load environment variables
 require('dotenv').config();
+
+// Initialize Supabase clients
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+
+const isSupabaseConfigured = !!(
+  supabaseUrl && 
+  supabaseServiceKey && 
+  supabaseUrl.startsWith('https://') &&
+  !supabaseUrl.includes('YOUR_')
+);
+
+let supabase = null;
+let supabaseAnon = null;
+
+if (isSupabaseConfigured) {
+  supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+  supabaseAnon = createClient(supabaseUrl, supabaseAnonKey || supabaseServiceKey);
+}
 
 // Create a simple serverless handler that proxies to Express
 let app;
@@ -379,6 +403,307 @@ function getApp() {
         res.status(500).json({
           status: 'error',
           message: error.message,
+          data: {}
+        });
+      }
+    });
+
+    // ============================================
+    // USER AUTHENTICATION
+    // ============================================
+
+    // POST Login (Tookan User Authentication)
+    app.post('/api/auth/login', async (req, res) => {
+      try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Email and password are required',
+            data: {}
+          });
+        }
+
+        const apiKey = getApiKey();
+        let tookanUser = null;
+        let userType = null;
+
+        // Check if input is a numeric ID (Tookan fleet_id or vendor_id)
+        const isNumericId = /^\d+$/.test(email);
+        const searchId = isNumericId ? parseInt(email, 10) : null;
+
+        // First, try to find user in Tookan Agents/Fleets (Drivers)
+        try {
+          const fleetPayload = { api_key: apiKey };
+
+          let fleetResponse = await fetch('https://api.tookanapp.com/v2/get_all_agents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(fleetPayload),
+          });
+
+          if (!fleetResponse.ok) {
+            fleetResponse = await fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(fleetPayload),
+            });
+          }
+
+          const fleetTextResponse = await fleetResponse.text();
+          let fleetData;
+          try {
+            fleetData = JSON.parse(fleetTextResponse);
+          } catch (parseError) {
+            console.log('Could not parse fleet response');
+          }
+
+          if (fleetResponse.ok && fleetData) {
+            let fleets = [];
+            if (fleetData.status === 200 && Array.isArray(fleetData.data)) {
+              fleets = fleetData.data;
+            } else if (Array.isArray(fleetData.data)) {
+              fleets = fleetData.data;
+            } else if (Array.isArray(fleetData)) {
+              fleets = fleetData;
+            } else if (fleetData.agents && Array.isArray(fleetData.agents)) {
+              fleets = fleetData.agents;
+            } else if (fleetData.fleets && Array.isArray(fleetData.fleets)) {
+              fleets = fleetData.fleets;
+            }
+
+            tookanUser = fleets.find(fleet => {
+              const fleetId = fleet.fleet_id || fleet.agent_id || fleet.id || fleet.fleetId || fleet.agentId;
+              const fleetEmail = (fleet.fleet_email || fleet.agent_email || fleet.email || fleet.fleetEmail || fleet.agentEmail || '').toLowerCase();
+              const fleetPhone = fleet.fleet_phone || fleet.agent_phone || fleet.phone || fleet.fleetPhone || fleet.agentPhone || '';
+              const searchEmail = email.toLowerCase();
+
+              if (searchId && fleetId) {
+                const idMatch = parseInt(fleetId) === searchId || fleetId.toString() === email;
+                if (idMatch) return true;
+              }
+              if (fleetEmail && fleetEmail === searchEmail) return true;
+              if (fleetPhone) {
+                const phoneNormalized = fleetPhone.replace(/\D/g, '');
+                const searchNormalized = email.replace(/\D/g, '');
+                if (fleetPhone === email || (phoneNormalized && searchNormalized && phoneNormalized === searchNormalized)) return true;
+              }
+              return false;
+            });
+
+            if (tookanUser) {
+              userType = 'driver';
+            }
+          }
+        } catch (fleetError) {
+          console.error('Error fetching fleets:', fleetError.message);
+        }
+
+        // If not found in fleets, try Customers (Merchants)
+        if (!tookanUser) {
+          try {
+            const customerPayload = {
+              api_key: apiKey,
+              is_pagination: 1,
+              off_set: 0,
+              limit: 1000
+            };
+
+            const customerResponse = await fetch('https://api.tookanapp.com/v2/fetch_customers_wallet', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(customerPayload),
+            });
+
+            const customerTextResponse = await customerResponse.text();
+            let customerData;
+            try {
+              customerData = JSON.parse(customerTextResponse);
+            } catch (parseError) {
+              console.log('Could not parse customer response');
+            }
+
+            if (customerResponse.ok && customerData) {
+              let customers = [];
+              if (customerData.status === 200 && Array.isArray(customerData.data)) {
+                customers = customerData.data;
+              } else if (Array.isArray(customerData.data)) {
+                customers = customerData.data;
+              } else if (Array.isArray(customerData)) {
+                customers = customerData;
+              } else if (customerData.customers && Array.isArray(customerData.customers)) {
+                customers = customerData.customers;
+              }
+
+              tookanUser = customers.find(customer => {
+                const vendorId = customer.vendor_id || customer.customer_id || customer.vendorId || customer.customerId || customer.id;
+                const customerEmail = (customer.customer_email || customer.vendor_email || customer.email || customer.customerEmail || customer.vendorEmail || '').toLowerCase();
+                const customerPhone = customer.customer_phone || customer.vendor_phone || customer.phone || customer.customerPhone || customer.vendorPhone || '';
+                const searchEmail = email.toLowerCase();
+
+                if (searchId && vendorId) {
+                  const idMatch = parseInt(vendorId) === searchId || vendorId.toString() === email;
+                  if (idMatch) return true;
+                }
+                if (customerEmail && customerEmail === searchEmail) return true;
+                if (customerPhone) {
+                  const phoneNormalized = customerPhone.replace(/\D/g, '');
+                  const searchNormalized = email.replace(/\D/g, '');
+                  if (customerPhone === email || (phoneNormalized && searchNormalized && phoneNormalized === searchNormalized)) return true;
+                }
+                return false;
+              });
+
+              if (tookanUser) {
+                userType = 'merchant';
+              }
+            }
+          } catch (customerError) {
+            console.error('Error fetching customers:', customerError.message);
+          }
+        }
+
+        // If user not found in Tookan, fall back to Supabase Auth (for admin users)
+        if (!tookanUser && isSupabaseConfigured && supabaseAnon) {
+          try {
+            const { data, error } = await supabaseAnon.auth.signInWithPassword({
+              email,
+              password
+            });
+
+            if (!error && data && data.user) {
+              // Get user profile from database
+              let userProfile = null;
+              if (supabase) {
+                const { data: profileData } = await supabase
+                  .from('users')
+                  .select('*')
+                  .eq('id', data.user.id)
+                  .single();
+                userProfile = profileData;
+              }
+
+              return res.json({
+                status: 'success',
+                message: 'Login successful',
+                data: {
+                  user: {
+                    id: data.user.id,
+                    email: data.user.email,
+                    name: userProfile?.name || data.user.email,
+                    role: userProfile?.role || 'admin',
+                    permissions: userProfile?.permissions || {},
+                    source: 'supabase'
+                  },
+                  session: {
+                    access_token: data.session.access_token,
+                    expires_at: data.session.expires_at
+                  }
+                }
+              });
+            }
+          } catch (supabaseError) {
+            console.log('Supabase auth failed:', supabaseError.message);
+          }
+        }
+
+        // If user found in Tookan, verify password and create session
+        if (tookanUser) {
+          const userId = userType === 'driver'
+            ? (tookanUser.fleet_id || tookanUser.agent_id || tookanUser.fleetId || tookanUser.agentId || tookanUser.id || '').toString()
+            : (tookanUser.vendor_id || tookanUser.customer_id || tookanUser.vendorId || tookanUser.customerId || tookanUser.id || '').toString();
+
+          const userName = userType === 'driver'
+            ? (tookanUser.fleet_name || tookanUser.agent_name || tookanUser.fleetName || tookanUser.agentName || tookanUser.name || '')
+            : (tookanUser.customer_name || tookanUser.vendor_name || tookanUser.customerName || tookanUser.vendorName || tookanUser.name || '');
+
+          const userEmail = userType === 'driver'
+            ? (tookanUser.fleet_email || tookanUser.agent_email || tookanUser.fleetEmail || tookanUser.agentEmail || tookanUser.email || email)
+            : (tookanUser.customer_email || tookanUser.vendor_email || tookanUser.customerEmail || tookanUser.vendorEmail || tookanUser.email || email);
+
+          // Verify password if stored in Supabase, otherwise allow first login
+          let passwordValid = true;
+
+          if (isSupabaseConfigured && supabase) {
+            try {
+              const { data: localUser } = await supabase
+                .from('tookan_users')
+                .select('*')
+                .eq('tookan_id', userId)
+                .eq('user_type', userType)
+                .single();
+
+              if (localUser && localUser.password_hash) {
+                passwordValid = await bcrypt.compare(password, localUser.password_hash);
+                if (!passwordValid) {
+                  return res.status(401).json({
+                    status: 'error',
+                    message: 'Invalid password',
+                    data: {}
+                  });
+                }
+              } else {
+                // First time login - store password hash
+                try {
+                  const passwordHash = await bcrypt.hash(password, 10);
+                  await supabase.from('tookan_users').upsert({
+                    tookan_id: userId,
+                    email: userEmail,
+                    name: userName,
+                    user_type: userType,
+                    password_hash: passwordHash,
+                    role: userType === 'driver' ? 'driver' : 'merchant',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                  }, { onConflict: 'tookan_id,user_type' });
+                } catch (createError) {
+                  console.log('Could not store password:', createError.message);
+                }
+              }
+            } catch (dbError) {
+              console.log('Database error:', dbError.message);
+            }
+          }
+
+          // Generate session token
+          const sessionToken = Buffer.from(`${userId}:${Date.now()}:${userEmail}`).toString('base64');
+          const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
+
+          return res.json({
+            status: 'success',
+            message: 'Login successful',
+            data: {
+              user: {
+                id: userId,
+                email: userEmail,
+                name: userName,
+                role: userType === 'driver' ? 'driver' : 'merchant',
+                permissions: {},
+                tookanUserId: userId,
+                userType: userType,
+                source: 'tookan'
+              },
+              session: {
+                access_token: sessionToken,
+                expires_at: expiresAt
+              }
+            }
+          });
+        }
+
+        // User not found
+        return res.status(401).json({
+          status: 'error',
+          message: 'Invalid email or password. User not found in Tookan system.',
+          data: {}
+        });
+
+      } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Login failed',
           data: {}
         });
       }
