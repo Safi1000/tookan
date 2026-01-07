@@ -334,12 +334,38 @@ export function FinancialPanel() {
       return;
     }
 
-    // Try to find in customer wallets
-    const found = customerWallets.find(
-      c => c.name.toLowerCase().includes(customerWalletSearch.toLowerCase()) || 
-           c.id.toLowerCase().includes(customerWalletSearch.toLowerCase()) ||
+    const searchTerm = customerWalletSearch.toLowerCase().trim();
+
+    // Try to find in customer wallets first, then in customers list
+    // Search by: name, id, vendor_id (customer_id), phone
+    let found = customerWallets.find(
+      c => c.name.toLowerCase().includes(searchTerm) || 
+           c.id.toLowerCase().includes(searchTerm) ||
+           c.vendor_id?.toString().includes(searchTerm) ||
            c.phone.includes(customerWalletSearch)
     );
+
+    // If not found in customerWallets, search in customers list
+    if (!found) {
+      const customerMatch = customers.find(
+        c => c.name.toLowerCase().includes(searchTerm) || 
+             c.id.toLowerCase().includes(searchTerm) ||
+             c.vendor_id?.toString().includes(searchTerm) ||
+             (c.phone && c.phone.includes(customerWalletSearch))
+      );
+      
+      if (customerMatch) {
+        // Convert customer to CustomerWallet format for display
+        found = {
+          id: customerMatch.id,
+          name: customerMatch.name,
+          phone: customerMatch.phone || '',
+          balance: customerMatch.balance || 0,
+          pending: customerMatch.pending || 0,
+          vendor_id: customerMatch.vendor_id
+        } as CustomerWallet;
+      }
+    }
 
     if (found) {
       setCustomerWalletValidation('valid');
@@ -355,7 +381,6 @@ export function FinancialPanel() {
             
             if (walletData?.wallet_balance !== undefined) {
               // Update the customer's balance with real data
-              // In a real app, you'd update the state/store here
               console.log('Customer wallet balance:', walletData.wallet_balance);
             }
           }
@@ -1429,12 +1454,12 @@ export function FinancialPanel() {
             {/* Customer Search */}
             <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-2">
-                <label className="block text-heading text-sm mb-2">Search by ID, Name, or Phone Number</label>
+                <label className="block text-heading text-sm mb-2">Search by Customer ID, Vendor ID, Name, or Phone Number</label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
                   <input
                     type="text"
-                    placeholder="Enter customer ID, name, or phone number..."
+                    placeholder="Enter customer ID (e.g., 89932635), name, or phone..."
                     value={customerWalletSearch}
                     onChange={(e) => {
                       setCustomerWalletSearch(e.target.value);
@@ -1471,6 +1496,7 @@ export function FinancialPanel() {
                 <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
                   <tr>
                     <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer ID</th>
+                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Vendor ID</th>
                     <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Name</th>
                     <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Wallet Balance</th>
                     <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pending COD</th>
@@ -1479,39 +1505,61 @@ export function FinancialPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {customerWallets.map((customer, index) => (
-                    <tr 
-                      key={customer.id} 
-                      className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${
-                        customerWalletValidation === 'valid' && 
-                        (customer.name.toLowerCase().includes(customerWalletSearch.toLowerCase()) ||
-                         customer.id.toLowerCase().includes(customerWalletSearch.toLowerCase()) ||
-                         customer.phone.includes(customerWalletSearch))
-                          ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)]'
-                          : ''
-                      }`}
-                    >
-                      <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{customer.id}</td>
-                      <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{customer.name}</td>
-                      <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(customer.balance || 0).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${(customer.pending || 0).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{customer.phone}</td>
-                      <td className="px-4 py-3">
-                        <button 
-                          onClick={() => {
-                            setEditingBalance({ type: 'customer', id: customer.id });
-                            setNewBalance(customer.balance.toFixed(2));
-                            setBalanceNote('');
-                          }}
-                          className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
-                        >
-                          Edit Balance
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {/* Show customerWallets if available, otherwise show customers */}
+                  {(customerWallets.length > 0 ? customerWallets : customers.map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    phone: c.phone || '',
+                    balance: c.balance || 0,
+                    pending: c.pending || 0,
+                    vendor_id: c.vendor_id
+                  }))).map((customer, index) => {
+                    const searchTerm = customerWalletSearch.toLowerCase().trim();
+                    const isHighlighted = customerWalletValidation === 'valid' && (
+                      customer.name.toLowerCase().includes(searchTerm) ||
+                      customer.id.toLowerCase().includes(searchTerm) ||
+                      customer.vendor_id?.toString().includes(searchTerm) ||
+                      customer.phone.includes(customerWalletSearch)
+                    );
+                    
+                    return (
+                      <tr 
+                        key={customer.id} 
+                        className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${
+                          isHighlighted ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)] bg-[#C1EEFA]/10' : ''
+                        }`}
+                      >
+                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{customer.id}</td>
+                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] font-mono text-sm">{customer.vendor_id || '-'}</td>
+                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{customer.name}</td>
+                        <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(customer.balance || 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${(customer.pending || 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{customer.phone}</td>
+                        <td className="px-4 py-3">
+                          <button 
+                            onClick={() => {
+                              setEditingBalance({ type: 'customer', id: customer.id });
+                              setNewBalance((customer.balance || 0).toFixed(2));
+                              setBalanceNote('');
+                            }}
+                            className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
+                          >
+                            Edit Balance
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+              
+              {/* Note about API limitation */}
+              <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                <p className="text-yellow-600 dark:text-yellow-400 text-sm">
+                  <strong>Note:</strong> Due to Tookan API limitations, only the first 100 customers are displayed. 
+                  Use the search box above to find specific customers by their Customer ID.
+                </p>
+              </div>
             </div>
           </div>
         </div>
