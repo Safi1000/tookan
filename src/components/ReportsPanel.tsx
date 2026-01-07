@@ -471,11 +471,11 @@ export function ReportsPanel() {
                 {driverSummaries.map((driver, index) => (
                   <tr key={driver.driverId} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
                     <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{driver.driverName}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{driver.orderCount}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${driver.codTotal.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${driver.orderFees.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${driver.totalValue.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{driver.avgDeliveryTime > 0 ? `${driver.avgDeliveryTime.toFixed(1)} min` : '-'}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{driver.orderCount || 0}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${(driver.codTotal || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${(driver.orderFees || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${(driver.totalValue || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{(driver.avgDeliveryTime || 0) > 0 ? `${(driver.avgDeliveryTime || 0).toFixed(1)} min` : '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -503,10 +503,10 @@ export function ReportsPanel() {
                 {merchantSummaries.map((merchant, index) => (
                   <tr key={merchant.merchantId} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
                     <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{merchant.merchantName}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{merchant.orderCount}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${merchant.codReceived.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${merchant.orderFees.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${merchant.revenue.toFixed(2)}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{merchant.orderCount || 0}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${(merchant.codReceived || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${(merchant.orderFees || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${(merchant.revenue || 0).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>

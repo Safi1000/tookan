@@ -874,7 +874,7 @@ export function FinancialPanel() {
                       {/* COD Received */}
                       <div>
                         <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">COD Received</p>
-                        <p className="text-heading dark:text-[#C1EEFA] font-medium">${item.codReceived.toFixed(2)}</p>
+                        <p className="text-heading dark:text-[#C1EEFA] font-medium">${(item.codReceived || 0).toFixed(2)}</p>
                       </div>
 
                       {/* Balance Paid (Editable) */}
@@ -920,7 +920,7 @@ export function FinancialPanel() {
                           </div>
                         ) : (
                           <div>
-                          <p className="text-green-600 dark:text-green-400 font-semibold">${item.balancePaid.toFixed(2)}</p>
+                          <p className="text-green-600 dark:text-green-400 font-semibold">${(item.balancePaid || 0).toFixed(2)}</p>
                             {item.codStatus && (
                               <span className={`text-xs px-1.5 py-0.5 rounded ${
                                 item.codStatus === 'COMPLETED' 
@@ -940,7 +940,7 @@ export function FinancialPanel() {
                       {/* COD Pending */}
                       <div>
                         <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">COD Pending</p>
-                        <p className="text-[#DE3544] dark:text-[#DE3544] font-medium">${item.codPending.toFixed(2)}</p>
+                        <p className="text-[#DE3544] dark:text-[#DE3544] font-medium">${(item.codPending || 0).toFixed(2)}</p>
                       </div>
 
                       {/* Edit/Save Button */}
@@ -1093,7 +1093,7 @@ export function FinancialPanel() {
                       </td>
                       <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{cod.merchant}</td>
                       <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{cod.customer}</td>
-                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${cod.amount.toFixed(2)}</td>
+                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${(cod.amount || 0).toFixed(2)}</td>
                       <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{cod.date}</td>
                       <td className="px-6 py-4">
                         <span className={`px-3 py-1 rounded-lg text-xs font-medium ${
@@ -1184,7 +1184,7 @@ export function FinancialPanel() {
             <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
               <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Amount</p>
               <p className="text-heading dark:text-[#C1EEFA] text-2xl font-semibold">
-                ${filteredCODConfirmations.reduce((sum, c) => sum + c.amount, 0).toFixed(2)}
+                ${filteredCODConfirmations.reduce((sum, c) => sum + (c.amount || 0), 0).toFixed(2)}
               </p>
             </div>
           </div>
@@ -1233,7 +1233,7 @@ export function FinancialPanel() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-light dark:text-[#99BFD1]">Amount:</span>
-                      <span className="text-heading dark:text-[#C1EEFA] font-semibold">${cod.amount.toFixed(2)}</span>
+                      <span className="text-heading dark:text-[#C1EEFA] font-semibold">${(cod.amount || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-light dark:text-[#99BFD1]">Status:</span>
@@ -1388,14 +1388,14 @@ export function FinancialPanel() {
                     >
                       <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.id}</td>
                       <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
-                      <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${driver.balance.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${driver.pending.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(driver.balance || 0).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${(driver.pending || 0).toFixed(2)}</td>
                       <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{driver.phone}</td>
                       <td className="px-4 py-3">
                         <button 
                           onClick={() => {
                             setEditingBalance({ type: 'driver', id: driver.id });
-                            setNewBalance(driver.balance.toFixed(2));
+                            setNewBalance((driver.balance || 0).toFixed(2));
                             setBalanceNote('');
                           }}
                           className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
@@ -1493,8 +1493,8 @@ export function FinancialPanel() {
                     >
                       <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{customer.id}</td>
                       <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{customer.name}</td>
-                      <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${customer.balance.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${customer.pending.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(customer.balance || 0).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${(customer.pending || 0).toFixed(2)}</td>
                       <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{customer.phone}</td>
                       <td className="px-4 py-3">
                         <button 

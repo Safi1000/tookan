@@ -128,7 +128,7 @@ export function MerchantPlansPanel() {
   const getFeeRuleSummary = (plan: Plan) => {
     switch (plan.feeType) {
       case 'fixed':
-        return `$${plan.feeAmount.toFixed(2)} per order`;
+        return `$${(plan.feeAmount || 0).toFixed(2)} per order`;
       case 'percentage':
         return `${plan.feePercentage}% of order value`;
       case 'tiered':
