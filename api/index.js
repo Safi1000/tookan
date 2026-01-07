@@ -79,32 +79,165 @@ function getApp() {
       try {
         console.log('Webhook received:', JSON.stringify(req.body, null, 2));
         
-        const { job_id, event_type, job_status, template_fields } = req.body;
+        const { 
+          job_id, 
+          event_type, 
+          job_status,
+          fleet_id,
+          fleet_name,
+          customer_id,
+          customer_username,
+          order_id,
+          job_pickup_name,
+          job_pickup_phone,
+          job_pickup_address,
+          customer_address,
+          customer_phone,
+          customer_name,
+          total_amount,
+          job_type,
+          completed_datetime,
+          acknowledged_datetime,
+          started_datetime
+        } = req.body;
         
-        // For Vercel, we'll store webhook data in Supabase
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        
-        if (supabaseUrl && supabaseKey) {
-          await fetch(`${supabaseUrl}/rest/v1/webhook_events`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`
-            },
-            body: JSON.stringify({
-              event_type: event_type || 'unknown',
-              job_id: job_id,
-              payload: req.body,
-              status: 'pending'
-            })
+        // Store webhook event in Supabase
+        if (isSupabaseConfigured && supabase) {
+          // 1. Log the webhook event
+          await supabase.from('webhook_events').insert({
+            event_type: event_type || 'unknown',
+            job_id: job_id?.toString(),
+            payload: req.body,
+            status: 'processing'
           });
+
+          // 2. Process based on event type
+          let processedSuccessfully = true;
+          let processingNotes = '';
+
+          try {
+            switch (event_type) {
+              case 'task_completed':
+              case 'successful':
+                // Task completed - update COD tracking
+                if (job_id && total_amount) {
+                  processingNotes = `Task ${job_id} completed. COD: ${total_amount}`;
+                  
+                  // Log to audit
+                  await supabase.from('audit_logs').insert({
+                    action: 'TASK_COMPLETED',
+                    entity_type: 'order',
+                    entity_id: job_id?.toString(),
+                    new_value: {
+                      job_status: 'completed',
+                      total_amount,
+                      fleet_id,
+                      completed_at: completed_datetime || new Date().toISOString()
+                    },
+                    notes: `Order ${job_id} marked as completed via webhook`
+                  });
+                }
+                break;
+
+              case 'task_started':
+              case 'started':
+                processingNotes = `Task ${job_id} started by driver ${fleet_id}`;
+                await supabase.from('audit_logs').insert({
+                  action: 'TASK_STARTED',
+                  entity_type: 'order',
+                  entity_id: job_id?.toString(),
+                  new_value: {
+                    job_status: 'started',
+                    fleet_id,
+                    started_at: started_datetime || new Date().toISOString()
+                  },
+                  notes: `Order ${job_id} started by driver ${fleet_name || fleet_id}`
+                });
+                break;
+
+              case 'task_cancelled':
+              case 'cancelled':
+              case 'failed':
+                processingNotes = `Task ${job_id} cancelled/failed`;
+                await supabase.from('audit_logs').insert({
+                  action: 'TASK_CANCELLED',
+                  entity_type: 'order',
+                  entity_id: job_id?.toString(),
+                  new_value: {
+                    job_status: event_type,
+                    cancelled_at: new Date().toISOString()
+                  },
+                  notes: `Order ${job_id} was ${event_type}`
+                });
+                break;
+
+              case 'task_assigned':
+              case 'assigned':
+                processingNotes = `Task ${job_id} assigned to driver ${fleet_id}`;
+                await supabase.from('audit_logs').insert({
+                  action: 'DRIVER_ASSIGNED',
+                  entity_type: 'order',
+                  entity_id: job_id?.toString(),
+                  new_value: {
+                    fleet_id,
+                    fleet_name,
+                    assigned_at: new Date().toISOString()
+                  },
+                  notes: `Order ${job_id} assigned to ${fleet_name || fleet_id}`
+                });
+                break;
+
+              case 'task_updated':
+              case 'updated':
+                processingNotes = `Task ${job_id} updated`;
+                await supabase.from('audit_logs').insert({
+                  action: 'TASK_UPDATED',
+                  entity_type: 'order',
+                  entity_id: job_id?.toString(),
+                  new_value: req.body,
+                  notes: `Order ${job_id} updated via Tookan`
+                });
+                break;
+
+              case 'acknowledged':
+                processingNotes = `Task ${job_id} acknowledged by driver ${fleet_id}`;
+                await supabase.from('audit_logs').insert({
+                  action: 'TASK_ACKNOWLEDGED',
+                  entity_type: 'order',
+                  entity_id: job_id?.toString(),
+                  new_value: {
+                    fleet_id,
+                    acknowledged_at: acknowledged_datetime || new Date().toISOString()
+                  },
+                  notes: `Order ${job_id} acknowledged by ${fleet_name || fleet_id}`
+                });
+                break;
+
+              default:
+                processingNotes = `Unknown event type: ${event_type}`;
+            }
+          } catch (processError) {
+            processedSuccessfully = false;
+            processingNotes = `Processing error: ${processError.message}`;
+            console.error('Webhook processing error:', processError);
+          }
+
+          // 3. Update webhook event status
+          await supabase
+            .from('webhook_events')
+            .update({
+              status: processedSuccessfully ? 'processed' : 'failed',
+              processed_at: new Date().toISOString(),
+              error_message: processedSuccessfully ? null : processingNotes
+            })
+            .eq('job_id', job_id?.toString())
+            .order('created_at', { ascending: false })
+            .limit(1);
         }
 
         res.json({
           status: 'success',
-          message: 'Webhook received',
+          message: 'Webhook received and processed',
           data: { job_id, event_type }
         });
       } catch (error) {
@@ -916,6 +1049,940 @@ function getApp() {
           message: error.message,
           data: {}
         });
+      }
+    });
+
+    // ============================================
+    // REPORTS PANEL ENDPOINTS
+    // ============================================
+
+    // GET Reports Summary
+    app.get('/api/reports/summary', async (req, res) => {
+      try {
+        const apiKey = getApiKey();
+        const { dateFrom, dateTo } = req.query;
+
+        // Fetch all data from Tookan
+        const [fleetsRes, customersRes, tasksRes] = await Promise.all([
+          fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKey })
+          }),
+          fetch('https://api.tookanapp.com/v2/get_all_customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKey })
+          }),
+          fetch('https://api.tookanapp.com/v2/get_all_tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              api_key: apiKey,
+              job_status: '0,1,2,3,4,5,6,7,8,9',
+              start_date: dateFrom || undefined,
+              end_date: dateTo || undefined,
+              limit: 1000
+            })
+          })
+        ]);
+
+        const [fleetsData, customersData, tasksData] = await Promise.all([
+          fleetsRes.json(),
+          customersRes.json(),
+          tasksRes.json()
+        ]);
+
+        const fleets = Array.isArray(fleetsData.data) ? fleetsData.data : [];
+        const customers = Array.isArray(customersData.data) ? customersData.data : [];
+        const tasks = Array.isArray(tasksData.data) ? tasksData.data : [];
+
+        // Calculate summaries
+        const completedTasks = tasks.filter(t => t.job_status === 2);
+        const totalCOD = tasks.reduce((sum, t) => sum + (parseFloat(t.total_amount || t.order_payment || 0)), 0);
+
+        // Driver summaries
+        const driverSummaries = fleets.map(fleet => {
+          const driverTasks = tasks.filter(t => t.fleet_id === fleet.fleet_id);
+          const driverCompleted = driverTasks.filter(t => t.job_status === 2);
+          const driverCOD = driverTasks.reduce((sum, t) => sum + (parseFloat(t.total_amount || t.order_payment || 0)), 0);
+          return {
+            id: fleet.fleet_id,
+            name: fleet.name || fleet.username,
+            phone: fleet.phone,
+            totalOrders: driverTasks.length,
+            completedOrders: driverCompleted.length,
+            totalCOD: driverCOD,
+            pendingCOD: driverCOD // Simplified - would need settlement data
+          };
+        });
+
+        // Merchant summaries
+        const merchantSummaries = customers.slice(0, 50).map(customer => {
+          const merchantTasks = tasks.filter(t => 
+            t.customer_id === customer.customer_id || 
+            t.merchant_id === customer.vendor_id
+          );
+          const merchantCOD = merchantTasks.reduce((sum, t) => sum + (parseFloat(t.total_amount || t.order_payment || 0)), 0);
+          return {
+            id: customer.vendor_id || customer.customer_id,
+            name: customer.customer_username || customer.Name,
+            phone: customer.customer_phone,
+            totalOrders: merchantTasks.length,
+            totalCOD: merchantCOD
+          };
+        });
+
+        res.json({
+          status: 'success',
+          message: 'Summary fetched successfully',
+          data: {
+            totals: {
+              orders: tasks.length,
+              drivers: fleets.length,
+              merchants: customers.length,
+              deliveries: completedTasks.length,
+              totalCOD: totalCOD
+            },
+            driverSummaries,
+            merchantSummaries
+          }
+        });
+      } catch (error) {
+        console.error('Reports summary error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message,
+          data: { totals: {}, driverSummaries: [], merchantSummaries: [] }
+        });
+      }
+    });
+
+    // GET Daily Report
+    app.get('/api/reports/daily', async (req, res) => {
+      try {
+        const apiKey = getApiKey();
+        const today = new Date().toISOString().split('T')[0];
+
+        const response = await fetch('https://api.tookanapp.com/v2/get_all_tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            job_status: '0,1,2,3,4,5,6,7,8,9',
+            start_date: today,
+            end_date: today,
+            limit: 500
+          })
+        });
+
+        const data = await response.json();
+        const tasks = Array.isArray(data.data) ? data.data : [];
+
+        res.json({
+          status: 'success',
+          message: 'Daily report fetched',
+          data: {
+            date: today,
+            totalOrders: tasks.length,
+            completed: tasks.filter(t => t.job_status === 2).length,
+            pending: tasks.filter(t => t.job_status === 0 || t.job_status === 1).length,
+            totalCOD: tasks.reduce((sum, t) => sum + (parseFloat(t.total_amount || 0)), 0),
+            orders: tasks
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Monthly Report
+    app.get('/api/reports/monthly', async (req, res) => {
+      try {
+        const apiKey = getApiKey();
+        const { month } = req.query;
+        const targetMonth = month || new Date().toISOString().slice(0, 7);
+        const startDate = `${targetMonth}-01`;
+        const endDate = `${targetMonth}-31`;
+
+        const response = await fetch('https://api.tookanapp.com/v2/get_all_tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            job_status: '0,1,2,3,4,5,6,7,8,9',
+            start_date: startDate,
+            end_date: endDate,
+            limit: 2000
+          })
+        });
+
+        const data = await response.json();
+        const tasks = Array.isArray(data.data) ? data.data : [];
+
+        res.json({
+          status: 'success',
+          message: 'Monthly report fetched',
+          data: {
+            month: targetMonth,
+            totalOrders: tasks.length,
+            completed: tasks.filter(t => t.job_status === 2).length,
+            totalCOD: tasks.reduce((sum, t) => sum + (parseFloat(t.total_amount || 0)), 0),
+            orders: tasks
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // POST Export Orders Report
+    app.post('/api/reports/orders/export', async (req, res) => {
+      try {
+        const { dateFrom, dateTo, format } = req.body;
+        const apiKey = getApiKey();
+
+        const response = await fetch('https://api.tookanapp.com/v2/get_all_tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            job_status: '0,1,2,3,4,5,6,7,8,9',
+            start_date: dateFrom,
+            end_date: dateTo,
+            limit: 5000
+          })
+        });
+
+        const data = await response.json();
+        const orders = Array.isArray(data.data) ? data.data : [];
+
+        // Return data for client-side export
+        res.json({
+          status: 'success',
+          message: 'Export data ready',
+          data: { orders, format: format || 'csv' }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // COD / FINANCIAL PANEL ENDPOINTS
+    // ============================================
+
+    // GET COD Queue
+    app.get('/api/cod/queue', async (req, res) => {
+      try {
+        const apiKey = getApiKey();
+
+        // Get all fleets and their pending COD
+        const fleetsRes = await fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey })
+        });
+        const fleetsData = await fleetsRes.json();
+        const fleets = Array.isArray(fleetsData.data) ? fleetsData.data : [];
+
+        // Get recent completed tasks with COD
+        const tasksRes = await fetch('https://api.tookanapp.com/v2/get_all_tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            job_status: '2', // Completed only
+            limit: 500
+          })
+        });
+        const tasksData = await tasksRes.json();
+        const tasks = Array.isArray(tasksData.data) ? tasksData.data : [];
+
+        // Calculate COD per driver
+        const codByDriver = {};
+        tasks.forEach(task => {
+          const fleetId = task.fleet_id;
+          const cod = parseFloat(task.total_amount || task.order_payment || 0);
+          if (fleetId && cod > 0) {
+            if (!codByDriver[fleetId]) {
+              codByDriver[fleetId] = { total: 0, orders: [] };
+            }
+            codByDriver[fleetId].total += cod;
+            codByDriver[fleetId].orders.push({
+              job_id: task.job_id,
+              order_id: task.order_id,
+              amount: cod,
+              date: task.completed_datetime || task.creation_datetime
+            });
+          }
+        });
+
+        // Build queue with driver info
+        const queue = fleets.map(fleet => ({
+          driverId: fleet.fleet_id,
+          driverName: fleet.name || fleet.username,
+          phone: fleet.phone,
+          totalCOD: codByDriver[fleet.fleet_id]?.total || 0,
+          orderCount: codByDriver[fleet.fleet_id]?.orders?.length || 0,
+          orders: codByDriver[fleet.fleet_id]?.orders || [],
+          status: 'pending'
+        })).filter(d => d.totalCOD > 0);
+
+        res.json({
+          status: 'success',
+          data: {
+            queue,
+            totalPending: queue.reduce((sum, d) => sum + d.totalCOD, 0),
+            driversWithPending: queue.length
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET COD Confirmations
+    app.get('/api/cod/confirmations', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.json({ status: 'success', data: { confirmations: [] } });
+        }
+
+        const { data: confirmations, error } = await supabase
+          .from('audit_logs')
+          .select('*')
+          .eq('action', 'COD_SETTLED')
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        res.json({
+          status: 'success',
+          data: { confirmations: confirmations || [] }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET COD Calendar
+    app.get('/api/cod/calendar', async (req, res) => {
+      try {
+        const { dateFrom, dateTo } = req.query;
+        
+        if (!isSupabaseConfigured || !supabase) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        const { data: entries, error } = await supabase
+          .from('audit_logs')
+          .select('*')
+          .in('action', ['COD_SETTLED', 'COD_ADDED', 'COD_CONFIRMED'])
+          .order('created_at', { ascending: false })
+          .limit(200);
+
+        res.json({
+          status: 'success',
+          data: entries || []
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // POST Add COD to queue
+    app.post('/api/cod/queue/add', async (req, res) => {
+      try {
+        const { driverId, amount, notes, orderId } = req.body;
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        await supabase.from('audit_logs').insert({
+          action: 'COD_ADDED',
+          entity_type: 'cod',
+          entity_id: driverId?.toString(),
+          new_value: { driverId, amount, orderId },
+          notes: notes || `COD ${amount} added for driver ${driverId}`
+        });
+
+        res.json({ status: 'success', message: 'COD added to queue' });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // POST Settle COD
+    app.post('/api/cod/queue/settle', async (req, res) => {
+      try {
+        const { driverId, amount, paymentMethod, notes } = req.body;
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        await supabase.from('audit_logs').insert({
+          action: 'COD_SETTLED',
+          entity_type: 'cod',
+          entity_id: driverId?.toString(),
+          new_value: { driverId, amount, paymentMethod },
+          notes: notes || `COD ${amount} settled via ${paymentMethod}`
+        });
+
+        res.json({ status: 'success', message: 'COD marked as settled' });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // PUT Settle specific COD entry
+    app.put('/api/cod/settle/:codId', async (req, res) => {
+      try {
+        const { codId } = req.params;
+        const { paymentMethod, notes } = req.body;
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        await supabase.from('audit_logs').insert({
+          action: 'COD_CONFIRMED',
+          entity_type: 'cod',
+          entity_id: codId,
+          new_value: { codId, paymentMethod, settledAt: new Date().toISOString() },
+          notes: notes || `COD confirmed via ${paymentMethod}`
+        });
+
+        res.json({ status: 'success', message: 'COD confirmed' });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // ORDER EDITOR PANEL ENDPOINTS
+    // ============================================
+
+    // GET Single Order
+    app.get('/api/tookan/order/:orderId', async (req, res) => {
+      try {
+        const { orderId } = req.params;
+        const apiKey = getApiKey();
+
+        const response = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            job_id: orderId
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.status === 200 && data.data) {
+          res.json({
+            status: 'success',
+            data: { order: Array.isArray(data.data) ? data.data[0] : data.data }
+          });
+        } else {
+          res.status(404).json({
+            status: 'error',
+            message: data.message || 'Order not found'
+          });
+        }
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // PUT Update Order
+    app.put('/api/tookan/order/:orderId', async (req, res) => {
+      try {
+        const { orderId } = req.params;
+        const { total_amount, order_payment, fleet_id, custom_field, notes } = req.body;
+        const apiKey = getApiKey();
+
+        const updatePayload = {
+          api_key: apiKey,
+          job_id: orderId
+        };
+
+        if (total_amount !== undefined) updatePayload.total_amount = total_amount;
+        if (order_payment !== undefined) updatePayload.order_payment = order_payment;
+        if (fleet_id !== undefined) updatePayload.fleet_id = fleet_id;
+        if (custom_field) updatePayload.custom_field = custom_field;
+
+        const response = await fetch('https://api.tookanapp.com/v2/edit_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatePayload)
+        });
+
+        const data = await response.json();
+
+        // Log the update
+        if (isSupabaseConfigured && supabase) {
+          await supabase.from('audit_logs').insert({
+            action: 'ORDER_UPDATED',
+            entity_type: 'order',
+            entity_id: orderId,
+            new_value: req.body,
+            notes: notes || `Order ${orderId} updated`
+          });
+        }
+
+        res.json({
+          status: data.status === 200 ? 'success' : 'error',
+          message: data.message || 'Order updated',
+          data: data
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // DELETE Order
+    app.delete('/api/tookan/order/:orderId', async (req, res) => {
+      try {
+        const { orderId } = req.params;
+        const apiKey = getApiKey();
+
+        const response = await fetch('https://api.tookanapp.com/v2/delete_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            job_id: orderId
+          })
+        });
+
+        const data = await response.json();
+
+        // Log the deletion
+        if (isSupabaseConfigured && supabase) {
+          await supabase.from('audit_logs').insert({
+            action: 'ORDER_DELETED',
+            entity_type: 'order',
+            entity_id: orderId,
+            notes: `Order ${orderId} deleted`
+          });
+        }
+
+        res.json({
+          status: data.status === 200 ? 'success' : 'error',
+          message: data.message || 'Order deleted'
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // POST Reorder
+    app.post('/api/tookan/order/reorder', async (req, res) => {
+      try {
+        const { originalOrderId, ...orderDetails } = req.body;
+        const apiKey = getApiKey();
+
+        // First get original order details
+        const getResponse = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, job_id: originalOrderId })
+        });
+        const originalData = await getResponse.json();
+
+        if (originalData.status !== 200) {
+          return res.status(404).json({ status: 'error', message: 'Original order not found' });
+        }
+
+        const original = Array.isArray(originalData.data) ? originalData.data[0] : originalData.data;
+
+        // Create new task with same details
+        const createPayload = {
+          api_key: apiKey,
+          order_id: `REORDER-${Date.now()}`,
+          job_pickup_name: original.job_pickup_name,
+          job_pickup_phone: original.job_pickup_phone,
+          job_pickup_address: original.job_pickup_address,
+          customer_username: original.customer_username,
+          customer_phone: original.customer_phone,
+          customer_address: original.customer_address,
+          total_amount: orderDetails.total_amount || original.total_amount,
+          ...orderDetails
+        };
+
+        const response = await fetch('https://api.tookanapp.com/v2/create_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(createPayload)
+        });
+
+        const data = await response.json();
+
+        // Log the reorder
+        if (isSupabaseConfigured && supabase) {
+          await supabase.from('audit_logs').insert({
+            action: 'ORDER_REORDERED',
+            entity_type: 'order',
+            entity_id: originalOrderId,
+            new_value: { newOrderId: data.data?.job_id },
+            notes: `Reorder created from ${originalOrderId}`
+          });
+        }
+
+        res.json({
+          status: data.status === 200 ? 'success' : 'error',
+          message: data.message || 'Reorder created',
+          data: data
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // POST Return Order
+    app.post('/api/tookan/order/return', async (req, res) => {
+      try {
+        const { originalOrderId } = req.body;
+        const apiKey = getApiKey();
+
+        // Get original order
+        const getResponse = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, job_id: originalOrderId })
+        });
+        const originalData = await getResponse.json();
+
+        if (originalData.status !== 200) {
+          return res.status(404).json({ status: 'error', message: 'Original order not found' });
+        }
+
+        const original = Array.isArray(originalData.data) ? originalData.data[0] : originalData.data;
+
+        // Create return task (pickup/delivery reversed, no COD)
+        const returnPayload = {
+          api_key: apiKey,
+          order_id: `RETURN-${Date.now()}`,
+          job_pickup_name: original.customer_username,
+          job_pickup_phone: original.customer_phone,
+          job_pickup_address: original.customer_address,
+          customer_username: original.job_pickup_name,
+          customer_phone: original.job_pickup_phone,
+          customer_address: original.job_pickup_address,
+          total_amount: 0 // No COD for returns
+        };
+
+        const response = await fetch('https://api.tookanapp.com/v2/create_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(returnPayload)
+        });
+
+        const data = await response.json();
+
+        // Log the return
+        if (isSupabaseConfigured && supabase) {
+          await supabase.from('audit_logs').insert({
+            action: 'ORDER_RETURNED',
+            entity_type: 'order',
+            entity_id: originalOrderId,
+            new_value: { returnOrderId: data.data?.job_id },
+            notes: `Return created from ${originalOrderId}`
+          });
+        }
+
+        res.json({
+          status: data.status === 200 ? 'success' : 'error',
+          message: data.message || 'Return order created',
+          data: data
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // WITHDRAWAL REQUESTS ENDPOINTS
+    // ============================================
+
+    // GET All Withdrawal Requests
+    app.get('/api/withdrawal/requests', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.json({ status: 'success', data: { requests: [] } });
+        }
+
+        const { status: filterStatus } = req.query;
+
+        let query = supabase.from('withdrawal_requests').select('*');
+        if (filterStatus) {
+          query = query.eq('status', filterStatus);
+        }
+        query = query.order('requested_at', { ascending: false });
+
+        const { data: requests, error } = await query;
+
+        res.json({
+          status: 'success',
+          data: { requests: requests || [] }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // POST Create Withdrawal Request
+    app.post('/api/withdrawal/request', async (req, res) => {
+      try {
+        const { type, merchantId, driverId, amount, iban, phone, name } = req.body;
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { data, error } = await supabase.from('withdrawal_requests').insert({
+          request_type: type,
+          merchant_id: merchantId,
+          driver_id: driverId,
+          amount: amount,
+          status: 'pending'
+        }).select().single();
+
+        if (error) throw error;
+
+        res.json({
+          status: 'success',
+          message: 'Withdrawal request created',
+          data: { request: data }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // PUT Approve Withdrawal
+    app.put('/api/withdrawal/request/:id/approve', async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { data, error } = await supabase
+          .from('withdrawal_requests')
+          .update({
+            status: 'approved',
+            approved_at: new Date().toISOString()
+          })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Log approval
+        await supabase.from('audit_logs').insert({
+          action: 'WITHDRAWAL_APPROVED',
+          entity_type: 'withdrawal',
+          entity_id: id,
+          notes: `Withdrawal request ${id} approved`
+        });
+
+        res.json({ status: 'success', data: { request: data } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // PUT Reject Withdrawal
+    app.put('/api/withdrawal/request/:id/reject', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { reason } = req.body;
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { data, error } = await supabase
+          .from('withdrawal_requests')
+          .update({
+            status: 'rejected',
+            rejected_at: new Date().toISOString(),
+            rejection_reason: reason || 'No reason provided'
+          })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Log rejection
+        await supabase.from('audit_logs').insert({
+          action: 'WITHDRAWAL_REJECTED',
+          entity_type: 'withdrawal',
+          entity_id: id,
+          notes: `Withdrawal request ${id} rejected: ${reason}`
+        });
+
+        res.json({ status: 'success', data: { request: data } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // MERCHANT PLANS ENDPOINTS
+    // ============================================
+
+    // GET All Merchant Plans
+    app.get('/api/merchant-plans', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.json({
+            status: 'success',
+            data: {
+              plans: [
+                { id: 'default', name: 'Standard Plan', price_per_order: 0.5, is_active: true },
+                { id: 'premium', name: 'Premium Plan', price_per_order: 0.3, is_active: true }
+              ]
+            }
+          });
+        }
+
+        const { data: plans, error } = await supabase
+          .from('merchant_plans')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        res.json({
+          status: 'success',
+          data: { plans: plans || [] }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // POST Create Merchant Plan
+    app.post('/api/merchant-plans', async (req, res) => {
+      try {
+        const { name, description, price_per_order, monthly_fee, features } = req.body;
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { data, error } = await supabase.from('merchant_plans').insert({
+          name,
+          description,
+          price_per_order: price_per_order || 0,
+          monthly_fee: monthly_fee || 0,
+          features: features || [],
+          is_active: true
+        }).select().single();
+
+        if (error) throw error;
+
+        res.json({ status: 'success', data: { plan: data } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // POST Assign Merchant to Plan
+    app.post('/api/merchant-plans/assign', async (req, res) => {
+      try {
+        const { merchantId, planId } = req.body;
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { data, error } = await supabase
+          .from('merchant_plan_assignments')
+          .upsert({
+            merchant_id: merchantId,
+            plan_id: planId,
+            assigned_at: new Date().toISOString()
+          }, { onConflict: 'merchant_id' })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Log assignment
+        await supabase.from('audit_logs').insert({
+          action: 'MERCHANT_PLAN_ASSIGNED',
+          entity_type: 'merchant',
+          entity_id: merchantId,
+          new_value: { planId },
+          notes: `Merchant ${merchantId} assigned to plan ${planId}`
+        });
+
+        res.json({ status: 'success', data: { assignment: data } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // SYSTEM LOGS / AUDIT ENDPOINTS
+    // ============================================
+
+    // GET Audit Logs
+    app.get('/api/audit-logs', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.json({ status: 'success', data: { logs: [] } });
+        }
+
+        const { action, entityType, limit = 100 } = req.query;
+
+        let query = supabase.from('audit_logs').select('*');
+        
+        if (action) query = query.eq('action', action);
+        if (entityType) query = query.eq('entity_type', entityType);
+        
+        query = query.order('created_at', { ascending: false }).limit(parseInt(limit));
+
+        const { data: logs, error } = await query;
+
+        res.json({
+          status: 'success',
+          data: { logs: logs || [] }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Audit Logs for specific entity
+    app.get('/api/audit-logs/:entityType/:entityId', async (req, res) => {
+      try {
+        const { entityType, entityId } = req.params;
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.json({ status: 'success', data: { logs: [] } });
+        }
+
+        const { data: logs, error } = await supabase
+          .from('audit_logs')
+          .select('*')
+          .eq('entity_type', entityType)
+          .eq('entity_id', entityId)
+          .order('created_at', { ascending: false });
+
+        res.json({
+          status: 'success',
+          data: { logs: logs || [] }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
       }
     });
 
