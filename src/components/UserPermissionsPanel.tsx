@@ -115,7 +115,7 @@ export function UserPermissionsPanel() {
   };
 
   // Filter users
-  const filteredUsers = users.filter(user => {
+  const filteredUsers = (users || []).filter(user => {
     if (!searchQuery) return true;
     const lower = searchQuery.toLowerCase();
     return (

@@ -100,7 +100,7 @@ export function SystemLogsPanel() {
   };
 
   // Filter logs
-  const filteredLogs = logs.filter(log => {
+  const filteredLogs = (logs || []).filter(log => {
     // Search filter
     if (searchQuery) {
       const lower = searchQuery.toLowerCase();
@@ -260,7 +260,7 @@ export function SystemLogsPanel() {
             <div>
               <p className="text-muted-light dark:text-[#99BFD1] text-sm">Creates/Approvals</p>
               <p className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">
-                {logs.filter(l => l.actionType === 'CREATE' || l.actionType === 'APPROVE').length}
+                {(logs || []).filter(l => l.actionType === 'CREATE' || l.actionType === 'APPROVE').length}
               </p>
             </div>
           </div>
@@ -273,7 +273,7 @@ export function SystemLogsPanel() {
             <div>
               <p className="text-muted-light dark:text-[#99BFD1] text-sm">Updates</p>
               <p className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">
-                {logs.filter(l => l.actionType === 'UPDATE').length}
+                {(logs || []).filter(l => l.actionType === 'UPDATE').length}
               </p>
             </div>
           </div>
@@ -286,7 +286,7 @@ export function SystemLogsPanel() {
             <div>
               <p className="text-muted-light dark:text-[#99BFD1] text-sm">Deletes/Rejects</p>
               <p className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">
-                {logs.filter(l => l.actionType === 'DELETE' || l.actionType === 'REJECT').length}
+                {(logs || []).filter(l => l.actionType === 'DELETE' || l.actionType === 'REJECT').length}
               </p>
             </div>
           </div>

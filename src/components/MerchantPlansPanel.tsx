@@ -190,7 +190,7 @@ export function MerchantPlansPanel() {
   // Handle delete plan
   const handleDeletePlan = (planId: string) => {
     if (confirm('Are you sure you want to delete this plan? All assigned merchants will be unassigned.')) {
-      setPlans(plans.filter(p => p.id !== planId));
+      setPlans((plans || []).filter(p => p.id !== planId));
       setMerchants(merchants.map(m => m.planId === planId ? { ...m, planId: null } : m));
     }
   };
@@ -504,7 +504,7 @@ export function MerchantPlansPanel() {
             <div>
               <p className="text-muted-light dark:text-[#99BFD1] text-sm">Assigned Merchants</p>
               <p className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">
-                {merchants.filter(m => m.planId).length}
+                {(merchants || []).filter(m => m.planId).length}
               </p>
             </div>
           </div>
@@ -517,7 +517,7 @@ export function MerchantPlansPanel() {
             <div>
               <p className="text-muted-light dark:text-[#99BFD1] text-sm">Unassigned Merchants</p>
               <p className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">
-                {merchants.filter(m => !m.planId).length}
+                {(merchants || []).filter(m => !m.planId).length}
               </p>
             </div>
           </div>
@@ -553,7 +553,7 @@ export function MerchantPlansPanel() {
                   <td className="px-6 py-4">
                     <span className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] rounded-lg text-sm font-medium">
                       <Users className="w-4 h-4" />
-                      {merchants.filter(m => m.planId === plan.id).length}
+                      {(merchants || []).filter(m => m.planId === plan.id).length}
                     </span>
                   </td>
                   <td className="px-6 py-4">

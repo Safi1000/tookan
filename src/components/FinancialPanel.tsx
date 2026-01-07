@@ -386,7 +386,7 @@ export function FinancialPanel() {
     }
   };
 
-  const filteredCODConfirmations = codConfirmations.filter(cod => {
+  const filteredCODConfirmations = (codConfirmations || []).filter(cod => {
     const matchesSearch = !codSearch || 
       cod.id.toLowerCase().includes(codSearch.toLowerCase()) ||
       cod.orderId.toLowerCase().includes(codSearch.toLowerCase()) ||
@@ -502,7 +502,7 @@ export function FinancialPanel() {
     if (!dateFrom && !dateTo) {
       return calendarData;
     }
-    return calendarData.filter(item => {
+    return (calendarData || []).filter(item => {
       const itemDate = item.date;
       const matchesFrom = !dateFrom || itemDate >= dateFrom;
       const matchesTo = !dateTo || itemDate <= dateTo;

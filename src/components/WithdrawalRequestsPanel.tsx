@@ -99,7 +99,7 @@ export function WithdrawalRequestsPanel() {
         dateTo: dateTo || undefined
       });
       if (result.status === 'success' && result.data) {
-        setWithdrawals(result.data.requests);
+        setWithdrawals(result.data.requests || []);
       } else {
         // Fallback to mock data if API fails
         setWithdrawals(mockWithdrawals as WithdrawalRequest[]);
@@ -158,7 +158,7 @@ export function WithdrawalRequestsPanel() {
   };
 
   // Filter withdrawals based on search and date range
-  const filteredWithdrawals = withdrawals.filter(withdrawal => {
+  const filteredWithdrawals = (withdrawals || []).filter(withdrawal => {
     // Search filter
     if (unifiedMerchantSearch) {
       const searchLower = unifiedMerchantSearch.toLowerCase();
@@ -198,7 +198,7 @@ export function WithdrawalRequestsPanel() {
   // Calculate total withdrawal amount for non-confirmed (Pending) requests for each merchant/driver
   const getTotalPendingWithdrawal = (withdrawal: WithdrawalRequest) => {
     const identifier = withdrawal.type === 'merchant' ? withdrawal.merchantId : withdrawal.driverId;
-    return withdrawals
+    return (withdrawals || [])
       .filter(w => {
         const wIdentifier = w.type === 'merchant' ? w.merchantId : w.driverId;
         return wIdentifier === identifier && w.status === 'Pending';
