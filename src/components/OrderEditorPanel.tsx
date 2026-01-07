@@ -14,8 +14,10 @@ import {
   type OrderData,
   type OrderUpdates 
 } from '../services/tookanApi';
+import { usePermissions, PERMISSIONS, PermissionGate } from '../contexts/PermissionContext';
 
 export function OrderEditorPanel() {
+  const { hasPermission, isAdmin } = usePermissions();
   // Search and Order State
   const [orderSearch, setOrderSearch] = useState('');
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
@@ -427,9 +429,10 @@ export function OrderEditorPanel() {
     }
   };
 
-  // Check if order can be edited
-  const canEditOrder = orderData && orderData.status !== 'delivered' && orderData.status !== 'completed' && 
+  // Check if order can be edited (status check + permission check)
+  const canEditOrderStatus = orderData && orderData.status !== 'delivered' && orderData.status !== 'completed' && 
                        orderData.status !== 6 && orderData.status !== 7 && orderData.status !== 8;
+  const canEditOrder = canEditOrderStatus && hasPermission(PERMISSIONS.EDIT_ORDER_FINANCIALS);
 
   return (
     <div className="p-8 space-y-6">
@@ -736,46 +739,54 @@ export function OrderEditorPanel() {
           </button>
           {!canEditOrder && (
             <p className="text-center text-sm text-muted-light dark:text-[#99BFD1] mt-2">
-              This order cannot be edited (status: {orderData.status})
+              {!hasPermission(PERMISSIONS.EDIT_ORDER_FINANCIALS) 
+                ? 'You do not have permission to edit order financials'
+                : `This order cannot be edited (status: ${orderData.status})`}
             </p>
           )}
         </div>
       )}
 
-      {/* Admin Actions */}
-      {orderData && (
+      {/* Admin Actions - Only shown if user has any relevant permission */}
+      {orderData && (hasPermission(PERMISSIONS.PERFORM_REORDER) || hasPermission(PERMISSIONS.PERFORM_RETURN) || hasPermission(PERMISSIONS.DELETE_ONGOING_ORDERS)) && (
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
           <h3 className="text-foreground text-xl mb-4">Admin Actions</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Re-order */}
-            <button 
-              onClick={handleReorder}
-              disabled={isLoading}
-              className="flex items-center gap-3 px-6 py-4 bg-[#DE3544]/10 dark:bg-[#C1EEFA]/10 border border-[#DE3544]/30 dark:border-[#C1EEFA]/30 rounded-xl hover:bg-[#DE3544]/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-[#DE3544] dark:text-[#C1EEFA] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RotateCcw className="w-5 h-5" />
-              <span>Re-order</span>
-            </button>
+            {/* Re-order - Requires perform_reorder permission */}
+            <PermissionGate permission={PERMISSIONS.PERFORM_REORDER}>
+              <button 
+                onClick={handleReorder}
+                disabled={isLoading}
+                className="flex items-center gap-3 px-6 py-4 bg-[#DE3544]/10 dark:bg-[#C1EEFA]/10 border border-[#DE3544]/30 dark:border-[#C1EEFA]/30 rounded-xl hover:bg-[#DE3544]/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-[#DE3544] dark:text-[#C1EEFA] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RotateCcw className="w-5 h-5" />
+                <span>Re-order</span>
+              </button>
+            </PermissionGate>
 
-            {/* Return Order */}
-            <button 
-              onClick={handleReturn}
-              disabled={isLoading}
-              className="flex items-center gap-3 px-6 py-4 bg-muted/30 dark:bg-[#99BFD1]/10 border border-border dark:border-[#99BFD1]/30 rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#99BFD1]/20 transition-all text-heading dark:text-[#99BFD1] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RotateCcw className="w-5 h-5" />
-              <span>Return Order</span>
-            </button>
+            {/* Return Order - Requires perform_return permission */}
+            <PermissionGate permission={PERMISSIONS.PERFORM_RETURN}>
+              <button 
+                onClick={handleReturn}
+                disabled={isLoading}
+                className="flex items-center gap-3 px-6 py-4 bg-muted/30 dark:bg-[#99BFD1]/10 border border-border dark:border-[#99BFD1]/30 rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#99BFD1]/20 transition-all text-heading dark:text-[#99BFD1] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RotateCcw className="w-5 h-5" />
+                <span>Return Order</span>
+              </button>
+            </PermissionGate>
 
-            {/* Delete Order */}
-            <button 
-              onClick={() => setShowDeleteModal(true)}
-              disabled={isLoading}
-              className="flex items-center gap-3 px-6 py-4 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-xl hover:bg-[#DE3544]/20 transition-all text-[#DE3544] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Trash2 className="w-5 h-5" />
-              <span>Delete Order</span>
-            </button>
+            {/* Delete Order - Requires delete_ongoing_orders permission (SRS: only ongoing orders) */}
+            <PermissionGate permission={PERMISSIONS.DELETE_ONGOING_ORDERS}>
+              <button 
+                onClick={() => setShowDeleteModal(true)}
+                disabled={isLoading}
+                className="flex items-center gap-3 px-6 py-4 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-xl hover:bg-[#DE3544]/20 transition-all text-[#DE3544] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-5 h-5" />
+                <span>Delete Order</span>
+              </button>
+            </PermissionGate>
           </div>
         </div>
       )}

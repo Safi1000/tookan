@@ -11,6 +11,7 @@ import { UserPermissionsPanel } from './components/UserPermissionsPanel';
 import { SystemLogsPanel } from './components/SystemLogsPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { PermissionProvider } from './contexts/PermissionContext';
 import { Toaster } from './components/ui/sonner';
 
 export default function App() {
@@ -68,25 +69,28 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <div className="flex h-screen bg-background overflow-hidden transition-colors duration-300">
-        <Navigation 
-          activeMenu={activeMenu} 
-          setActiveMenu={setActiveMenu}
-          onLogout={handleLogout}
-        />
-        <main className="flex-1 overflow-y-auto">
-          {activeMenu === 'dashboard' && <Dashboard />}
-          {activeMenu === 'reports' && <ReportsPanel />}
-          {activeMenu === 'financial' && <FinancialPanel />}
-          {activeMenu === 'order-editor' && <OrderEditorPanel />}
-          {activeMenu === 'withdrawals' && <WithdrawalRequestsPanel />}
-          {activeMenu === 'merchant-plans' && <MerchantPlansPanel />}
-          {activeMenu === 'permissions' && <UserPermissionsPanel />}
-          {activeMenu === 'logs' && <SystemLogsPanel />}
-          {activeMenu === 'settings' && <SettingsPanel />}
-        </main>
-      </div>
-      <Toaster />
+      <PermissionProvider>
+        <div className="flex h-screen bg-background overflow-hidden transition-colors duration-300">
+          <Navigation 
+            activeMenu={activeMenu} 
+            setActiveMenu={setActiveMenu}
+            onLogout={handleLogout}
+            userRole={user?.role}
+          />
+          <main className="flex-1 overflow-y-auto">
+            {activeMenu === 'dashboard' && <Dashboard />}
+            {activeMenu === 'reports' && <ReportsPanel />}
+            {activeMenu === 'financial' && <FinancialPanel />}
+            {activeMenu === 'order-editor' && <OrderEditorPanel />}
+            {activeMenu === 'withdrawals' && <WithdrawalRequestsPanel />}
+            {activeMenu === 'merchant-plans' && <MerchantPlansPanel />}
+            {activeMenu === 'permissions' && <UserPermissionsPanel />}
+            {activeMenu === 'logs' && <SystemLogsPanel />}
+            {activeMenu === 'settings' && <SettingsPanel />}
+          </main>
+        </div>
+        <Toaster />
+      </PermissionProvider>
     </ThemeProvider>
   );
 }

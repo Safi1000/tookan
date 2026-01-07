@@ -21,21 +21,24 @@ interface NavigationProps {
   activeMenu: string;
   setActiveMenu: (menu: string) => void;
   onLogout: () => void;
+  userRole?: string;
 }
 
+// Menu items with role-based visibility
+// Per SRS: Admin has full access, Staff has limited access
 const menuItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'reports', label: 'Reports Panel', icon: FileText },
-  { id: 'financial', label: 'Financial Panel', icon: Wallet },
-  { id: 'order-editor', label: 'Order Editor Panel', icon: Edit3 },
-  { id: 'withdrawals', label: 'Withdrawal Requests', icon: CreditCard },
-  { id: 'merchant-plans', label: 'Merchant Plans', icon: Package },
-  { id: 'permissions', label: 'User & Permissions', icon: Shield },
-  { id: 'logs', label: 'System Logs', icon: Activity },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'staff', 'driver', 'merchant'] },
+  { id: 'reports', label: 'Reports Panel', icon: FileText, roles: ['admin', 'staff', 'driver', 'merchant'] },
+  { id: 'financial', label: 'Financial Panel', icon: Wallet, roles: ['admin', 'staff'] },
+  { id: 'order-editor', label: 'Order Editor Panel', icon: Edit3, roles: ['admin', 'staff'] },
+  { id: 'withdrawals', label: 'Withdrawal Requests', icon: CreditCard, roles: ['admin', 'staff'] },
+  { id: 'merchant-plans', label: 'Merchant Plans', icon: Package, roles: ['admin'] }, // Admin only per SRS
+  { id: 'permissions', label: 'User & Permissions', icon: Shield, roles: ['admin'] }, // Admin only per SRS
+  { id: 'logs', label: 'System Logs', icon: Activity, roles: ['admin'] }, // Admin only per SRS
+  { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin', 'staff', 'driver', 'merchant'] },
 ];
 
-export function Navigation({ activeMenu, setActiveMenu, onLogout }: NavigationProps) {
+export function Navigation({ activeMenu, setActiveMenu, onLogout, userRole = 'staff' }: NavigationProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { theme, toggleTheme } = useTheme();
 
@@ -67,7 +70,9 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout }: NavigationPr
 
       {/* Menu Items */}
       <div className="flex-1 overflow-y-auto py-4 px-3">
-        {menuItems.map((item) => {
+        {menuItems
+          .filter(item => item.roles.includes(userRole))
+          .map((item) => {
           const Icon = item.icon;
           const isActive = activeMenu === item.id;
           

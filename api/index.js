@@ -64,6 +64,121 @@ function getApp() {
       return apiKey;
     };
 
+    // ============================================
+    // PERMISSION CONSTANTS (per SRS)
+    // ============================================
+    const PERMISSIONS = {
+      EDIT_ORDER_FINANCIALS: 'edit_order_financials',
+      MANAGE_WALLETS: 'manage_wallets',
+      PERFORM_REORDER: 'perform_reorder',
+      PERFORM_RETURN: 'perform_return',
+      DELETE_ONGOING_ORDERS: 'delete_ongoing_orders',
+      EXPORT_REPORTS: 'export_reports',
+      ADD_COD: 'add_cod',
+      CONFIRM_COD_PAYMENTS: 'confirm_cod_payments',
+      MANAGE_USERS: 'manage_users' // Admin only
+    };
+
+    // Authentication middleware
+    const authenticate = async (req, res, next) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({ status: 'error', message: 'No authorization token provided' });
+        }
+
+        const token = authHeader.split(' ')[1];
+        
+        // For now, decode the token (in production, verify JWT signature)
+        // The token contains user info from login
+        try {
+          const tokenData = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+          req.user = {
+            id: tokenData.sub || tokenData.user_id || tokenData.id,
+            email: tokenData.email,
+            role: tokenData.role || 'user',
+            permissions: tokenData.permissions || {}
+          };
+          
+          // If user has admin role, grant all permissions
+          if (req.user.role === 'admin') {
+            req.user.permissions = Object.values(PERMISSIONS).reduce((acc, perm) => {
+              acc[perm] = true;
+              return acc;
+            }, {});
+          }
+          
+          next();
+        } catch (e) {
+          // If token parsing fails, try to look up user in database
+          if (isSupabaseConfigured && supabase) {
+            const { data: userData, error } = await supabase
+              .from('tookan_users')
+              .select('*')
+              .or(`id.eq.${token},tookan_id.eq.${token}`)
+              .single();
+            
+            if (userData) {
+              req.user = {
+                id: userData.id,
+                email: userData.email,
+                role: userData.role || 'user',
+                permissions: userData.permissions || {}
+              };
+              return next();
+            }
+          }
+          return res.status(401).json({ status: 'error', message: 'Invalid authorization token' });
+        }
+      } catch (error) {
+        return res.status(401).json({ status: 'error', message: 'Authentication failed' });
+      }
+    };
+
+    // Permission check middleware
+    const requirePermission = (...requiredPermissions) => {
+      return (req, res, next) => {
+        if (!req.user) {
+          return res.status(401).json({ status: 'error', message: 'Authentication required' });
+        }
+
+        // Admins have all permissions
+        if (req.user.role === 'admin') {
+          return next();
+        }
+
+        // Check if user has at least one of the required permissions
+        const hasPermission = requiredPermissions.some(perm => {
+          return req.user.permissions && req.user.permissions[perm] === true;
+        });
+
+        if (!hasPermission) {
+          return res.status(403).json({ 
+            status: 'error', 
+            message: `Permission denied. Required: ${requiredPermissions.join(' or ')}`,
+            requiredPermissions 
+          });
+        }
+
+        next();
+      };
+    };
+
+    // Role check middleware (for backward compatibility)
+    const requireRole = (...roles) => {
+      return (req, res, next) => {
+        if (!req.user) {
+          return res.status(401).json({ status: 'error', message: 'Authentication required' });
+        }
+
+        if (!roles.includes(req.user.role)) {
+          return res.status(403).json({ status: 'error', message: 'Insufficient role permissions' });
+        }
+
+        next();
+      };
+    };
+
     // Health check
     app.get('/api/health', (req, res) => {
       res.json({ 
@@ -463,7 +578,8 @@ function getApp() {
     });
 
     // Customer wallet endpoint
-    app.post('/api/tookan/customer-wallet/payment', async (req, res) => {
+    // Wallet management requires permission
+    app.post('/api/tookan/customer-wallet/payment', authenticate, requirePermission(PERMISSIONS.MANAGE_WALLETS), async (req, res) => {
       try {
         const apiKey = getApiKey();
         const { vendor_id, amount, description } = req.body;
@@ -527,7 +643,8 @@ function getApp() {
     });
 
     // Driver wallet transaction
-    app.post('/api/tookan/driver-wallet/transaction', async (req, res) => {
+    // Driver wallet management requires permission
+    app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermission(PERMISSIONS.MANAGE_WALLETS), async (req, res) => {
       try {
         const apiKey = getApiKey();
         const { fleet_id, amount, description, transaction_type } = req.body;
@@ -739,6 +856,24 @@ function getApp() {
                 userProfile = profileData;
               }
 
+              const userRole = userProfile?.role || 'admin';
+              
+              // Admin gets all permissions per SRS
+              let userPermissions = userProfile?.permissions || {};
+              if (userRole === 'admin') {
+                userPermissions = {
+                  edit_order_financials: true,
+                  manage_wallets: true,
+                  perform_reorder: true,
+                  perform_return: true,
+                  delete_ongoing_orders: true,
+                  export_reports: true,
+                  add_cod: true,
+                  confirm_cod_payments: true,
+                  manage_users: true
+                };
+              }
+
               return res.json({
                 status: 'success',
                 message: 'Login successful',
@@ -747,8 +882,8 @@ function getApp() {
                     id: data.user.id,
                     email: data.user.email,
                     name: userProfile?.name || data.user.email,
-                    role: userProfile?.role || 'admin',
-                    permissions: userProfile?.permissions || {},
+                    role: userRole,
+                    permissions: userPermissions,
                     source: 'supabase'
                   },
                   session: {
@@ -821,8 +956,52 @@ function getApp() {
             }
           }
 
-          // Generate session token
-          const sessionToken = Buffer.from(`${userId}:${Date.now()}:${userEmail}`).toString('base64');
+          // Get user permissions from database if available
+          let userPermissions = {};
+          let userRole = userType === 'driver' ? 'driver' : 'merchant';
+          
+          if (isSupabaseConfigured && supabase) {
+            const { data: dbUser } = await supabase
+              .from('tookan_users')
+              .select('role, permissions')
+              .eq('tookan_id', userId)
+              .eq('user_type', userType)
+              .single();
+            
+            if (dbUser) {
+              userRole = dbUser.role || userRole;
+              userPermissions = dbUser.permissions || {};
+            }
+          }
+
+          // Staff default permissions per SRS: view reports, enter COD, add notes
+          // Drivers/merchants have view-only access by default (can be modified by admin)
+          if (Object.keys(userPermissions).length === 0 && userRole !== 'admin') {
+            // Default permissions for staff (Tookan users)
+            userPermissions = {
+              export_reports: false,      // Staff can view but not export by default
+              add_cod: false,             // Staff can enter COD only if granted
+              confirm_cod_payments: false,
+              edit_order_financials: false,
+              manage_wallets: false,
+              perform_reorder: false,
+              perform_return: false,
+              delete_ongoing_orders: false
+            };
+          }
+
+          // Generate JWT-like session token with user data
+          const tokenPayload = {
+            sub: userId,
+            email: userEmail,
+            name: userName,
+            role: userRole,
+            permissions: userPermissions,
+            user_type: userType,
+            iat: Math.floor(Date.now() / 1000),
+            exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+          };
+          const sessionToken = 'eyJ' + Buffer.from(JSON.stringify(tokenPayload)).toString('base64');
           const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
 
           return res.json({
@@ -833,8 +1012,8 @@ function getApp() {
                 id: userId,
                 email: userEmail,
                 name: userName,
-                role: userType === 'driver' ? 'driver' : 'merchant',
-                permissions: {},
+                role: userRole,
+                permissions: userPermissions,
                 tookanUserId: userId,
                 userType: userType,
                 source: 'tookan'
@@ -944,6 +1123,218 @@ function getApp() {
           message: error.message || 'Failed to fetch users',
           data: { users: [], total: 0 }
         });
+      }
+    });
+
+    // ============================================
+    // USER MANAGEMENT ENDPOINTS (Admin only per SRS)
+    // ============================================
+
+    // POST Create user - Admin only
+    app.post('/api/users', authenticate, requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { email, password, name, role, permissions } = req.body;
+
+        if (!email || !password) {
+          return res.status(400).json({ status: 'error', message: 'Email and password required' });
+        }
+
+        // Create user in Supabase Auth
+        const { data: authData, error: authError } = await supabaseAnon.auth.signUp({
+          email,
+          password
+        });
+
+        if (authError) {
+          return res.status(400).json({ status: 'error', message: authError.message });
+        }
+
+        // Create user profile
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .insert({
+            id: authData.user.id,
+            email,
+            name: name || email,
+            role: role || 'staff',
+            permissions: permissions || {}
+          })
+          .select()
+          .single();
+
+        if (userError) {
+          console.error('Error creating user profile:', userError);
+        }
+
+        // Log the action
+        await supabase.from('audit_logs').insert({
+          user_id: req.user.id,
+          action: 'CREATE',
+          entity_type: 'user',
+          entity_id: authData.user.id,
+          new_value: { email, name, role },
+          notes: `User ${email} created by ${req.user.email}`
+        });
+
+        res.json({
+          status: 'success',
+          message: 'User created successfully',
+          data: { user: userData || { id: authData.user.id, email, name, role } }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // PUT Update user permissions - Admin only
+    app.put('/api/users/:userId/permissions', authenticate, requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { userId } = req.params;
+        const { permissions } = req.body;
+
+        // Try updating in users table first
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .update({ permissions, updated_at: new Date().toISOString() })
+          .eq('id', userId)
+          .select()
+          .single();
+
+        if (userError && userError.code !== 'PGRST116') {
+          // If not in users table, try tookan_users
+          const { data: tookanData, error: tookanError } = await supabase
+            .from('tookan_users')
+            .update({ permissions, updated_at: new Date().toISOString() })
+            .eq('id', userId)
+            .select()
+            .single();
+
+          if (tookanError) {
+            return res.status(404).json({ status: 'error', message: 'User not found' });
+          }
+
+          // Log the action
+          await supabase.from('audit_logs').insert({
+            user_id: req.user.id,
+            action: 'UPDATE',
+            entity_type: 'user_permissions',
+            entity_id: userId,
+            new_value: permissions,
+            notes: `Permissions updated for user ${userId}`
+          });
+
+          return res.json({ status: 'success', data: { user: tookanData } });
+        }
+
+        // Log the action
+        await supabase.from('audit_logs').insert({
+          user_id: req.user.id,
+          action: 'UPDATE',
+          entity_type: 'user_permissions',
+          entity_id: userId,
+          new_value: permissions,
+          notes: `Permissions updated for user ${userId}`
+        });
+
+        res.json({ status: 'success', data: { user: userData } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // PUT Update user role - Admin only
+    app.put('/api/users/:userId/role', authenticate, requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { userId } = req.params;
+        const { role } = req.body;
+
+        if (!['admin', 'staff', 'driver', 'merchant'].includes(role)) {
+          return res.status(400).json({ status: 'error', message: 'Invalid role' });
+        }
+
+        // Try updating in users table first
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .update({ role, updated_at: new Date().toISOString() })
+          .eq('id', userId)
+          .select()
+          .single();
+
+        if (userError && userError.code !== 'PGRST116') {
+          // If not in users table, try tookan_users
+          const { data: tookanData, error: tookanError } = await supabase
+            .from('tookan_users')
+            .update({ role, updated_at: new Date().toISOString() })
+            .eq('id', userId)
+            .select()
+            .single();
+
+          if (tookanError) {
+            return res.status(404).json({ status: 'error', message: 'User not found' });
+          }
+
+          return res.json({ status: 'success', data: { user: tookanData } });
+        }
+
+        res.json({ status: 'success', data: { user: userData } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // DELETE user - Admin only (SRS: enable/disable/ban users)
+    app.delete('/api/users/:userId', authenticate, requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { userId } = req.params;
+
+        // Soft delete - mark as banned instead of deleting
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .update({ status: 'banned', updated_at: new Date().toISOString() })
+          .eq('id', userId)
+          .select()
+          .single();
+
+        if (userError && userError.code !== 'PGRST116') {
+          // Try tookan_users
+          const { error: tookanError } = await supabase
+            .from('tookan_users')
+            .delete()
+            .eq('id', userId);
+
+          if (tookanError) {
+            return res.status(404).json({ status: 'error', message: 'User not found' });
+          }
+        }
+
+        // Log the action
+        await supabase.from('audit_logs').insert({
+          user_id: req.user.id,
+          action: 'DELETE',
+          entity_type: 'user',
+          entity_id: userId,
+          notes: `User ${userId} deleted/banned by ${req.user.email}`
+        });
+
+        res.json({ status: 'success', message: 'User deleted successfully' });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
       }
     });
 
@@ -1237,7 +1628,8 @@ function getApp() {
     });
 
     // POST Export Orders Report
-    app.post('/api/reports/orders/export', async (req, res) => {
+    // Export requires permission
+    app.post('/api/reports/orders/export', authenticate, requirePermission(PERMISSIONS.EXPORT_REPORTS), async (req, res) => {
       try {
         const { dateFrom, dateTo, format } = req.body;
         const apiKey = getApiKey();
@@ -1391,7 +1783,8 @@ function getApp() {
     });
 
     // POST Add COD to queue
-    app.post('/api/cod/queue/add', async (req, res) => {
+    // Add COD requires permission
+    app.post('/api/cod/queue/add', authenticate, requirePermission(PERMISSIONS.ADD_COD), async (req, res) => {
       try {
         const { driverId, amount, notes, orderId } = req.body;
 
@@ -1414,7 +1807,8 @@ function getApp() {
     });
 
     // POST Settle COD
-    app.post('/api/cod/queue/settle', async (req, res) => {
+    // Settle COD requires permission
+    app.post('/api/cod/queue/settle', authenticate, requirePermission(PERMISSIONS.CONFIRM_COD_PAYMENTS), async (req, res) => {
       try {
         const { driverId, amount, paymentMethod, notes } = req.body;
 
@@ -1437,7 +1831,8 @@ function getApp() {
     });
 
     // PUT Settle specific COD entry
-    app.put('/api/cod/settle/:codId', async (req, res) => {
+    // Confirm COD requires permission
+    app.put('/api/cod/settle/:codId', authenticate, requirePermission(PERMISSIONS.CONFIRM_COD_PAYMENTS), async (req, res) => {
       try {
         const { codId } = req.params;
         const { paymentMethod, notes } = req.body;
@@ -1498,7 +1893,8 @@ function getApp() {
     });
 
     // PUT Update Order
-    app.put('/api/tookan/order/:orderId', async (req, res) => {
+    // Edit order requires permission
+    app.put('/api/tookan/order/:orderId', authenticate, requirePermission(PERMISSIONS.EDIT_ORDER_FINANCIALS), async (req, res) => {
       try {
         const { orderId } = req.params;
         const { total_amount, order_payment, fleet_id, custom_field, notes } = req.body;
@@ -1544,7 +1940,8 @@ function getApp() {
     });
 
     // DELETE Order
-    app.delete('/api/tookan/order/:orderId', async (req, res) => {
+    // Delete order requires permission (SRS: only ongoing orders can be deleted)
+    app.delete('/api/tookan/order/:orderId', authenticate, requirePermission(PERMISSIONS.DELETE_ONGOING_ORDERS), async (req, res) => {
       try {
         const { orderId } = req.params;
         const apiKey = getApiKey();
@@ -1580,7 +1977,8 @@ function getApp() {
     });
 
     // POST Reorder
-    app.post('/api/tookan/order/reorder', async (req, res) => {
+    // Reorder requires permission
+    app.post('/api/tookan/order/reorder', authenticate, requirePermission(PERMISSIONS.PERFORM_REORDER), async (req, res) => {
       try {
         const { originalOrderId, ...orderDetails } = req.body;
         const apiKey = getApiKey();
@@ -1643,7 +2041,8 @@ function getApp() {
     });
 
     // POST Return Order
-    app.post('/api/tookan/order/return', async (req, res) => {
+    // Return order requires permission
+    app.post('/api/tookan/order/return', authenticate, requirePermission(PERMISSIONS.PERFORM_RETURN), async (req, res) => {
       try {
         const { originalOrderId } = req.body;
         const apiKey = getApiKey();
@@ -1764,7 +2163,8 @@ function getApp() {
     });
 
     // PUT Approve Withdrawal
-    app.put('/api/withdrawal/request/:id/approve', async (req, res) => {
+    // Approve withdrawal requires wallet management permission
+    app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission(PERMISSIONS.MANAGE_WALLETS), async (req, res) => {
       try {
         const { id } = req.params;
 
@@ -1799,7 +2199,8 @@ function getApp() {
     });
 
     // PUT Reject Withdrawal
-    app.put('/api/withdrawal/request/:id/reject', async (req, res) => {
+    // Reject withdrawal requires wallet management permission
+    app.put('/api/withdrawal/request/:id/reject', authenticate, requirePermission(PERMISSIONS.MANAGE_WALLETS), async (req, res) => {
       try {
         const { id } = req.params;
         const { reason } = req.body;
