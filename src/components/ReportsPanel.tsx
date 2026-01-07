@@ -446,19 +446,23 @@ export function ReportsPanel() {
         </div>
       )}
 
-      {/* Totals Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Totals Summary - Tookan terminology: Customers = recipients, Merchants = businesses with vendor_id, Agents = drivers */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
           <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Orders</div>
           <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{totals.orders || filteredOrders.length}</div>
         </div>
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Drivers</div>
+          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Agents (Drivers)</div>
           <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{totals.drivers || drivers.length}</div>
         </div>
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Merchants</div>
-          <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{totals.merchants || customers.length}</div>
+          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Customers</div>
+          <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{customers.length}</div>
+        </div>
+        <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Merchants</div>
+          <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{(customers || []).filter((c: any) => c.vendor_id != null).length}</div>
         </div>
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
           <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Completed Deliveries</div>

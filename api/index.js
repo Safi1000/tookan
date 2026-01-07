@@ -537,14 +537,22 @@ function getApp() {
           .filter(t => t.order_payment && t.job_status === 2)
           .reduce((sum, t) => sum + (parseFloat(t.order_payment) || 0), 0);
         
+        // Tookan terminology:
+        // - Customers: delivery recipients (all entries from get_all_customers)
+        // - Merchants: registered businesses with vendor_id (subset of customers)
+        // - Agents/Drivers: delivery personnel (from get_all_fleets)
+        const totalCustomers = customers.length;
+        const totalMerchants = customers.filter(c => c.vendor_id != null).length;
+        
         res.json({
           status: 'success',
           message: 'Analytics fetched successfully',
           data: {
             kpis: {
               totalOrders: tasks.length,
-              totalDrivers: fleets.length,
-              totalMerchants: customers.length,
+              totalDrivers: fleets.length,  // Tookan calls these "Agents"
+              totalMerchants: totalMerchants,  // Only those with vendor_id
+              totalCustomers: totalCustomers,  // All delivery recipients
               pendingCOD: pendingCOD,
               driversWithPending: 0,
               completedDeliveries: completedTasks.length
@@ -553,6 +561,7 @@ function getApp() {
               orders: '+0%',
               drivers: '+0%',
               merchants: '+0%',
+              customers: '+0%',
               pendingCOD: '+0%',
               driversPending: '+0%',
               completed: '+0%'
@@ -567,8 +576,8 @@ function getApp() {
           status: 'error',
           message: error.message,
           data: {
-            kpis: { totalOrders: 0, totalDrivers: 0, totalMerchants: 0, pendingCOD: 0, driversWithPending: 0, completedDeliveries: 0 },
-            trends: { orders: '+0%', drivers: '+0%', merchants: '+0%', pendingCOD: '+0%', driversPending: '+0%', completed: '+0%' },
+            kpis: { totalOrders: 0, totalDrivers: 0, totalMerchants: 0, totalCustomers: 0, pendingCOD: 0, driversWithPending: 0, completedDeliveries: 0 },
+            trends: { orders: '+0%', drivers: '+0%', merchants: '+0%', customers: '+0%', pendingCOD: '+0%', driversPending: '+0%', completed: '+0%' },
             codStatus: [],
             orderVolume: [],
             driverPerformance: []

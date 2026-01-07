@@ -45,12 +45,17 @@ export interface CustomerWalletResponse {
 
 /**
  * Analytics Data Type
+ * Tookan terminology:
+ * - Customers: delivery recipients (people who receive packages)
+ * - Merchants: registered businesses with vendor_id
+ * - Agents (totalDrivers): delivery personnel (from get_all_fleets)
  */
 export interface AnalyticsData {
   kpis: {
     totalOrders: number;
-    totalDrivers: number;
-    totalMerchants: number;
+    totalDrivers: number;  // Tookan calls these "Agents"
+    totalMerchants: number;  // Only those with vendor_id
+    totalCustomers?: number;  // All delivery recipients
     pendingCOD: number;
     driversWithPending: number;
     completedDeliveries: number;
@@ -59,6 +64,7 @@ export interface AnalyticsData {
     orders: string;
     drivers: string;
     merchants: string;
+    customers?: string;
     pendingCOD: string;
     driversPending: string;
     completed: string;

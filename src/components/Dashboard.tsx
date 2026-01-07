@@ -9,7 +9,8 @@ import {
   CheckCircle,
   Download,
   RefreshCw,
-  Loader2
+  Loader2,
+  Users
 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { fetchAnalytics, type AnalyticsData } from '../services/tookanApi';
@@ -60,6 +61,10 @@ export function Dashboard() {
   };
 
   // Prepare KPI data from analytics
+  // Tookan terminology:
+  // - Customers: delivery recipients (people who receive packages)
+  // - Merchants: registered businesses with vendor_id
+  // - Agents (Drivers): delivery personnel
   const kpiData = analytics ? [
     { 
       id: 'orders', 
@@ -69,15 +74,22 @@ export function Dashboard() {
       trend: analytics.trends.orders 
     },
     { 
-      id: 'drivers', 
-      label: 'Total Drivers', 
+      id: 'agents', 
+      label: 'Agents (Drivers)', 
       value: formatNumber(analytics.kpis.totalDrivers), 
       icon: Car, 
       trend: analytics.trends.drivers 
     },
     { 
+      id: 'customers', 
+      label: 'Customers', 
+      value: formatNumber(analytics.kpis.totalCustomers || 0), 
+      icon: Users, 
+      trend: analytics.trends.customers || '+0%'
+    },
+    { 
       id: 'merchants', 
-      label: 'Total Merchants', 
+      label: 'Merchants', 
       value: formatNumber(analytics.kpis.totalMerchants), 
       icon: Store, 
       trend: analytics.trends.merchants 
@@ -88,13 +100,6 @@ export function Dashboard() {
       value: formatCurrency(analytics.kpis.pendingCOD), 
       icon: DollarSign, 
       trend: analytics.trends.pendingCOD 
-    },
-    { 
-      id: 'drivers-pending', 
-      label: 'Drivers with Pending', 
-      value: formatNumber(analytics.kpis.driversWithPending), 
-      icon: AlertTriangle, 
-      trend: analytics.trends.driversPending 
     },
     { 
       id: 'completed', 
