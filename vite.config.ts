@@ -1,10 +1,12 @@
 
+/// <reference types="vitest" />
   import { defineConfig } from 'vite';
   import react from '@vitejs/plugin-react-swc';
   import path from 'path';
 
   export default defineConfig({
     plugins: [react()],
+    // @ts-expect-error Vitest config; Vite 6 types don't include "test" without vitest/config
     test: {
       globals: true,
       environment: 'jsdom',
@@ -76,5 +78,13 @@
     server: {
       port: 3000,
       open: true,
+      // Proxy API calls to the local Express server during development
+      // so that requests to /api mirror the Vercel routing setup.
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+        },
+      },
     },
   });
