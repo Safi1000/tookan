@@ -3,13 +3,13 @@ import { Check, X, Search, Calendar, CheckCircle, XCircle, RefreshCw } from 'luc
 import { toast } from 'sonner';
 import { fetchWithdrawalRequests, approveWithdrawalRequest, rejectWithdrawalRequest, type WithdrawalRequest } from '../services/tookanApi';
 
-// Keep mock data as fallback
+// Keep mock data as fallback - Customer withdrawals only (per SRS)
 const mockWithdrawals = [
   {
     id: 1,
-    type: 'merchant',
-    merchantId: 'MER-001',
-    merchant: 'Restaurant A',
+    type: 'customer',
+    customerId: 'CUST-001',
+    customerName: 'Restaurant A',
     phone: '+973 1234 5678',
     iban: 'BH67 BMAG 0000 1299 1234 56',
     withdrawalAmount: 450.00,
@@ -19,21 +19,9 @@ const mockWithdrawals = [
   },
   {
     id: 2,
-    type: 'driver',
-    driverId: 'DR001',
-    driverName: 'Ahmed K.',
-    phone: '+973 1234 5678',
-    iban: 'BH89 NBOB 0000 1234 5678 90',
-    withdrawalAmount: 320.50,
-    walletAmount: 850.00,
-    date: '2025-11-27',
-    status: 'Pending'
-  },
-  {
-    id: 3,
-    type: 'merchant',
-    merchantId: 'MER-003',
-    merchant: 'Cafe C',
+    type: 'customer',
+    customerId: 'CUST-003',
+    customerName: 'Cafe C',
     phone: '+973 5555 1234',
     iban: 'BH12 ABCD 0000 9876 5432 10',
     withdrawalAmount: 580.75,
@@ -42,22 +30,10 @@ const mockWithdrawals = [
     status: 'Approved'
   },
   {
-    id: 4,
-    type: 'driver',
-    driverId: 'DR002',
-    driverName: 'Mohammed S.',
-    phone: '+973 9876 5432',
-    iban: 'BH34 EFGH 0000 1111 2222 33',
-    withdrawalAmount: 125.00,
-    walletAmount: 620.00,
-    date: '2025-11-25',
-    status: 'Rejected'
-  },
-  {
-    id: 5,
-    type: 'merchant',
-    merchantId: 'MER-002',
-    merchant: 'Shop B',
+    id: 3,
+    type: 'customer',
+    customerId: 'CUST-002',
+    customerName: 'Shop B',
     phone: '+973 9876 5432',
     iban: 'BH45 IJKL 0000 2222 3333 44',
     withdrawalAmount: 280.00,
@@ -66,21 +42,21 @@ const mockWithdrawals = [
     status: 'Pending'
   },
   {
-    id: 6,
-    type: 'driver',
-    driverId: 'DR003',
-    driverName: 'Fatima A.',
-    phone: '+973 5555 1234',
+    id: 4,
+    type: 'customer',
+    customerId: 'CUST-004',
+    customerName: 'Store D',
+    phone: '+973 3333 4444',
     iban: 'BH56 MNOP 0000 3333 4444 55',
-    withdrawalAmount: 450.00,
+    withdrawalAmount: 320.00,
     walletAmount: 1450.00,
     date: '2025-11-23',
-    status: 'Approved'
+    status: 'Rejected'
   },
 ];
 
 export function WithdrawalRequestsPanel() {
-  const [unifiedMerchantSearch, setUnifiedMerchantSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
@@ -152,35 +128,28 @@ export function WithdrawalRequestsPanel() {
   // Auto-detect search type (ID, Name, or Phone)
   const detectSearchType = (search: string) => {
     if (!search) return 'all';
-    if (/^(MER-|DR)/.test(search) || /^\d+$/.test(search)) return 'id';
+    if (/^(CUST-)/.test(search) || /^\d+$/.test(search)) return 'id';
     if (/^\+?\d/.test(search)) return 'phone';
     return 'name';
   };
 
-  // Filter withdrawals based on search and date range
+  // Filter withdrawals based on search and date range (customers only per SRS)
   const filteredWithdrawals = (withdrawals || []).filter(withdrawal => {
+    // Only show customer withdrawals per SRS
+    if (withdrawal.type !== 'customer') return false;
+    
     // Search filter
-    if (unifiedMerchantSearch) {
-      const searchLower = unifiedMerchantSearch.toLowerCase();
-      const searchType = detectSearchType(unifiedMerchantSearch);
+    if (customerSearch) {
+      const searchLower = customerSearch.toLowerCase();
+      const searchType = detectSearchType(customerSearch);
       
       let matchesSearch = false;
-      if (withdrawal.type === 'merchant') {
-        if (searchType === 'id') {
-          matchesSearch = withdrawal.merchantId?.toLowerCase().includes(searchLower) || false;
-        } else if (searchType === 'phone') {
-          matchesSearch = withdrawal.phone.includes(unifiedMerchantSearch);
-        } else {
-          matchesSearch = withdrawal.merchant?.toLowerCase().includes(searchLower) || false;
-        }
+      if (searchType === 'id') {
+        matchesSearch = withdrawal.customerId?.toLowerCase().includes(searchLower) || false;
+      } else if (searchType === 'phone') {
+        matchesSearch = withdrawal.phone.includes(customerSearch);
       } else {
-        if (searchType === 'id') {
-          matchesSearch = withdrawal.driverId?.toLowerCase().includes(searchLower) || false;
-        } else if (searchType === 'phone') {
-          matchesSearch = withdrawal.phone.includes(unifiedMerchantSearch);
-        } else {
-          matchesSearch = withdrawal.driverName?.toLowerCase().includes(searchLower) || false;
-        }
+        matchesSearch = withdrawal.customerName?.toLowerCase().includes(searchLower) || false;
       }
       if (!matchesSearch) return false;
     }
@@ -195,14 +164,11 @@ export function WithdrawalRequestsPanel() {
   const totalWalletAmount = filteredWithdrawals.reduce((sum, w) => sum + w.walletAmount, 0);
   const totalWithdrawalAmount = filteredWithdrawals.reduce((sum, w) => sum + w.withdrawalAmount, 0);
 
-  // Calculate total withdrawal amount for non-confirmed (Pending) requests for each merchant/driver
+  // Calculate total withdrawal amount for non-confirmed (Pending) requests for each customer
   const getTotalPendingWithdrawal = (withdrawal: WithdrawalRequest) => {
-    const identifier = withdrawal.type === 'merchant' ? withdrawal.merchantId : withdrawal.driverId;
+    const identifier = withdrawal.customerId;
     return (withdrawals || [])
-      .filter(w => {
-        const wIdentifier = w.type === 'merchant' ? w.merchantId : w.driverId;
-        return wIdentifier === identifier && w.status === 'Pending';
-      })
+      .filter(w => w.customerId === identifier && w.status === 'Pending')
       .reduce((sum, w) => sum + w.withdrawalAmount, 0);
   };
 
@@ -212,7 +178,7 @@ export function WithdrawalRequestsPanel() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-heading text-3xl mb-2">Withdrawal Requests</h1>
-          <p className="text-subheading">Review and manage merchant and driver withdrawal requests</p>
+          <p className="text-subheading">Review and manage customer withdrawal requests</p>
         </div>
         <button
           onClick={loadWithdrawals}
@@ -228,34 +194,34 @@ export function WithdrawalRequestsPanel() {
           <div className="bg-gradient-to-br from-[#3B82F6]/10 dark:from-[#C1EEFA]/10 to-[#DE3544]/10 rounded-xl border border-[#3B82F6]/30 dark:border-[#C1EEFA]/30 p-6 min-w-[240px]">
             <p className="text-subheading text-sm mb-1">Total Wallet Amount</p>
             <p className="text-heading text-3xl mb-1">${totalWalletAmount.toFixed(2)}</p>
-            <p className="text-[#DE3544] text-xs">All Requests</p>
+            <p className="text-[#DE3544] text-xs">Customer Requests</p>
           </div>
           <div className="bg-gradient-to-br from-[#DE3544]/10 dark:from-[#DE3544]/10 to-[#3B82F6]/10 rounded-xl border border-[#DE3544]/30 dark:border-[#DE3544]/30 p-6 min-w-[240px]">
             <p className="text-subheading text-sm mb-1">Total Withdrawal Amount</p>
             <p className="text-heading text-3xl mb-1">${totalWithdrawalAmount.toFixed(2)}</p>
-            <p className="text-[#DE3544] text-xs">All Requests</p>
+            <p className="text-[#DE3544] text-xs">Customer Requests</p>
           </div>
         </div>
       </div>
 
-      {/* Unified Search Filters */}
+      {/* Customer Search Filters */}
       <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
-        <h3 className="text-foreground mb-4">Search Requests</h3>
+        <h3 className="text-foreground mb-4">Search Customer Requests</h3>
         
         <div className="mb-4">
-          <label className="block text-heading text-sm mb-2">Search by Merchant/Driver ID, Name, or Phone Number</label>
+          <label className="block text-heading text-sm mb-2">Search by Customer ID, Name, or Phone Number</label>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
             <input
               type="text"
-              placeholder="Enter Merchant/Driver ID, Name, or Phone Number..."
-              value={unifiedMerchantSearch}
-              onChange={(e) => setUnifiedMerchantSearch(e.target.value)}
-              className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-10 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all ${getValidationColor(unifiedMerchantSearch)}`}
+              placeholder="Enter Customer ID, Name, or Phone Number..."
+              value={customerSearch}
+              onChange={(e) => setCustomerSearch(e.target.value)}
+              className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-10 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all ${getValidationColor(customerSearch)}`}
             />
-            {unifiedMerchantSearch && (
+            {customerSearch && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                {unifiedMerchantSearch.length > 3 ? (
+                {customerSearch.length > 3 ? (
                   <CheckCircle className="w-5 h-5 text-green-500 dark:text-[#C1EEFA]" />
                 ) : (
                   <XCircle className="w-5 h-5 text-[#DE3544]" />
@@ -263,9 +229,9 @@ export function WithdrawalRequestsPanel() {
               </div>
             )}
           </div>
-          {unifiedMerchantSearch && (
+          {customerSearch && (
             <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-2">
-              Searching by: {detectSearchType(unifiedMerchantSearch) === 'id' ? 'ID' : detectSearchType(unifiedMerchantSearch) === 'phone' ? 'Phone' : 'Name'}
+              Searching by: {detectSearchType(customerSearch) === 'id' ? 'Customer ID' : detectSearchType(customerSearch) === 'phone' ? 'Phone' : 'Name'}
             </p>
           )}
         </div>
@@ -299,20 +265,19 @@ export function WithdrawalRequestsPanel() {
         </div>
       </div>
 
-      {/* Withdrawals Table */}
+      {/* Customer Withdrawals Table */}
       <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
               <tr>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Type</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">ID</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Name</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Phone</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">IBAN</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Withdrawal Amount</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Total Withdrawal Amount (Pending)</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Wallet Amount</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Customer ID</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Customer Name</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Phone Number</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">IBAN Number</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Requested Amount</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Total Pending</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Wallet Balance</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Date</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Status</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Actions</th>
@@ -321,21 +286,8 @@ export function WithdrawalRequestsPanel() {
             <tbody>
               {filteredWithdrawals.map((withdrawal, index) => (
                 <tr key={withdrawal.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-lg text-xs font-medium ${
-                      withdrawal.type === 'merchant'
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                        : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-                    }`}>
-                      {withdrawal.type === 'merchant' ? 'Merchant' : 'Driver'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-subheading">
-                    {withdrawal.type === 'merchant' ? withdrawal.merchantId : withdrawal.driverId}
-                  </td>
-                  <td className="px-6 py-4 text-heading">
-                    {withdrawal.type === 'merchant' ? withdrawal.merchant : withdrawal.driverName}
-                  </td>
+                  <td className="px-6 py-4 text-subheading">{withdrawal.customerId}</td>
+                  <td className="px-6 py-4 text-heading">{withdrawal.customerName}</td>
                   <td className="px-6 py-4 text-subheading">{withdrawal.phone}</td>
                   <td className="px-6 py-4 text-subheading font-mono text-sm">{withdrawal.iban}</td>
                   <td className="px-6 py-4 text-[#DE3544] font-semibold">${withdrawal.withdrawalAmount.toFixed(2)}</td>
@@ -359,12 +311,14 @@ export function WithdrawalRequestsPanel() {
                         <button 
                           onClick={() => handleApprove(withdrawal.id)}
                           className="p-2 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-lg hover:bg-[#C1EEFA]/20 transition-all group"
+                          title="Approve"
                         >
                           <Check className="w-4 h-4 text-[#C1EEFA] group-hover:scale-110 transition-transform" />
                         </button>
                         <button 
                           onClick={() => handleReject(withdrawal.id)}
                           className="p-2 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-lg hover:bg-[#DE3544]/20 transition-all group"
+                          title="Reject"
                         >
                           <X className="w-4 h-4 text-[#DE3544] group-hover:scale-110 transition-transform" />
                         </button>
@@ -378,20 +332,6 @@ export function WithdrawalRequestsPanel() {
         </div>
       </div>
 
-      {/* Actions Summary */}
-      <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
-        <h3 className="text-foreground mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <button className="flex items-center gap-3 px-6 py-4 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-xl hover:bg-[#C1EEFA]/20 transition-all text-[#C1EEFA]">
-            <Check className="w-5 h-5" />
-            <span>Approve All Pending</span>
-          </button>
-          <button className="flex items-center gap-3 px-6 py-4 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-xl hover:bg-[#DE3544]/20 transition-all text-[#DE3544]">
-            <X className="w-5 h-5" />
-            <span>Bulk Reject</span>
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

@@ -576,69 +576,6 @@ export function OrderEditorPanel() {
               </select>
             </div>
 
-            {/* Customer Name */}
-            <div>
-              <label className="block text-heading mb-2">Customer Name</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={orderData.customerName || 'N/A'}
-                  disabled
-                  className="w-full bg-muted dark:bg-[#1A2C53] border-dashed border-2 border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 pr-10 text-heading dark:text-[#C1EEFA] opacity-60 cursor-not-allowed"
-                />
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground cursor-help" strokeWidth={3} />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>This field is locked and cannot be edited</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
-
-            {/* Customer Phone */}
-            <div>
-              <label className="block text-heading mb-2">Customer Phone</label>
-              <div className="relative">
-                <input
-                  type="tel"
-                  value={orderData.customerPhone || 'N/A'}
-                  disabled
-                  className="w-full bg-muted dark:bg-[#1A2C53] border-dashed border-2 border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 pr-10 text-heading dark:text-[#C1EEFA] opacity-60 cursor-not-allowed"
-                />
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground cursor-help" strokeWidth={3} />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>This field is locked and cannot be edited</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
-
-            {/* Customer Email */}
-            <div>
-              <label className="block text-heading mb-2">Customer Email</label>
-              <div className="relative">
-                <input
-                  type="email"
-                  value={orderData.customerEmail || 'N/A'}
-                  disabled
-                  className="w-full bg-muted dark:bg-[#1A2C53] border-dashed border-2 border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 pr-10 text-heading dark:text-[#C1EEFA] opacity-60 cursor-not-allowed"
-                />
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground cursor-help" strokeWidth={3} />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>This field is locked and cannot be edited</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
-
             {/* COD */}
             <div className="space-y-3">
               <div>

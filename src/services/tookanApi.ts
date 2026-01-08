@@ -224,18 +224,19 @@ export interface TagConfig {
 }
 
 /**
- * Withdrawal Request
+ * Withdrawal Request (Customer withdrawals per SRS)
  */
 export interface WithdrawalRequest {
-  id: string;
-  type: 'merchant' | 'driver';
-  merchantId?: number;
-  driverId?: number;
-  amount: number;
+  id: number;
+  type: 'customer';
+  customerId?: string;
+  customerName?: string;
+  phone: string;
   iban: string;
-  phone?: string;
-  name?: string;
-  status: 'pending' | 'approved' | 'rejected';
+  withdrawalAmount: number;
+  walletAmount: number;
+  date: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
   createdAt?: string;
   updatedAt?: string;
   rejectedReason?: string;

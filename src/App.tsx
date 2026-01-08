@@ -75,7 +75,6 @@ export default function App() {
             activeMenu={activeMenu} 
             setActiveMenu={setActiveMenu}
             onLogout={handleLogout}
-            userRole={user?.role}
           />
           <main className="flex-1 overflow-y-auto">
             {activeMenu === 'dashboard' && <Dashboard />}

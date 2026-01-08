@@ -45,8 +45,8 @@ interface Driver {
   balance?: number;
 }
 
-// Customer interface
-interface Customer {
+// Merchant interface
+interface Merchant {
   id: string;
   vendor_id: number | string;
   name: string;
@@ -60,18 +60,18 @@ export function FinancialPanel() {
   // COD Confirmation is hidden from UI but code remains intact
   const getShowCODSection = () => false; // Always return false - COD section hidden
   const getShowDriverWalletSection = () => localStorage.getItem('showDriverWalletSection') !== 'false';
-  const getShowCustomerWalletSection = () => localStorage.getItem('showCustomerWalletSection') !== 'false';
+  const getShowMerchantWalletSection = () => localStorage.getItem('showMerchantWalletSection') !== 'false';
   
   const [showCODSection, setShowCODSection] = useState(false); // Always false - COD section hidden
   const [showDriverWalletSection, setShowDriverWalletSection] = useState(getShowDriverWalletSection());
-  const [showCustomerWalletSection, setShowCustomerWalletSection] = useState(getShowCustomerWalletSection());
+  const [showMerchantWalletSection, setShowMerchantWalletSection] = useState(getShowMerchantWalletSection());
   
   // Listen for storage changes to update state
   useEffect(() => {
     const handleStorageChange = () => {
       setShowCODSection(getShowCODSection());
       setShowDriverWalletSection(getShowDriverWalletSection());
-      setShowCustomerWalletSection(getShowCustomerWalletSection());
+      setShowMerchantWalletSection(getShowMerchantWalletSection());
     };
     
     window.addEventListener('storage', handleStorageChange);
@@ -86,23 +86,23 @@ export function FinancialPanel() {
   
   // Determine available tabs
   // COD Confirmation tab is hidden but code remains
-  const availableTabs: Array<'reconciliation' | 'cod' | 'driver-wallets' | 'customer-wallets'> = [
+  const availableTabs: Array<'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets'> = [
     'reconciliation',
     // ...(showCODSection ? (['cod'] as const) : []), // COD tab hidden
     ...(showDriverWalletSection ? (['driver-wallets'] as const) : []),
-    ...(showCustomerWalletSection ? (['customer-wallets'] as const) : [])
+    ...(showMerchantWalletSection ? (['merchant-wallets'] as const) : [])
   ];
   
   // Ensure activeTab is valid, default to reconciliation if current tab is hidden
-  const getInitialTab = (): 'reconciliation' | 'cod' | 'driver-wallets' | 'customer-wallets' => {
+  const getInitialTab = (): 'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets' => {
     const saved = localStorage.getItem('financialPanelActiveTab');
     if (saved && availableTabs.includes(saved as any)) {
-      return saved as 'reconciliation' | 'cod' | 'driver-wallets' | 'customer-wallets';
+      return saved as 'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets';
     }
     return 'reconciliation';
   };
   
-  const [activeTab, setActiveTab] = useState<'reconciliation' | 'cod' | 'driver-wallets' | 'customer-wallets'>(getInitialTab());
+  const [activeTab, setActiveTab] = useState<'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets'>(getInitialTab());
   
   // Update activeTab if current tab becomes hidden
   useEffect(() => {
@@ -110,10 +110,10 @@ export function FinancialPanel() {
       setActiveTab('reconciliation');
       localStorage.setItem('financialPanelActiveTab', 'reconciliation');
     }
-  }, [showCODSection, showDriverWalletSection, showCustomerWalletSection, activeTab, availableTabs]);
+  }, [showCODSection, showDriverWalletSection, showMerchantWalletSection, activeTab, availableTabs]);
   
   // Save active tab to localStorage when it changes
-  const handleTabChange = (tab: 'reconciliation' | 'cod' | 'driver-wallets' | 'customer-wallets') => {
+  const handleTabChange = (tab: 'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets') => {
     setActiveTab(tab);
     localStorage.setItem('financialPanelActiveTab', tab);
   };
@@ -134,9 +134,9 @@ export function FinancialPanel() {
   // Wallet state
   const [driverWalletSearch, setDriverWalletSearch] = useState('');
   const [driverWalletValidation, setDriverWalletValidation] = useState<'valid' | 'invalid' | null>(null);
-  const [customerWalletSearch, setCustomerWalletSearch] = useState('');
-  const [customerWalletValidation, setCustomerWalletValidation] = useState<'valid' | 'invalid' | null>(null);
-  const [editingBalance, setEditingBalance] = useState<{ type: 'driver' | 'customer'; id: string } | null>(null);
+  const [merchantWalletSearch, setMerchantWalletSearch] = useState('');
+  const [merchantWalletValidation, setMerchantWalletValidation] = useState<'valid' | 'invalid' | null>(null);
+  const [editingBalance, setEditingBalance] = useState<{ type: 'driver' | 'merchant'; id: string } | null>(null);
   const [newBalance, setNewBalance] = useState('');
   const [balanceNote, setBalanceNote] = useState('');
   const [isProcessingWallet, setIsProcessingWallet] = useState(false);
@@ -152,15 +152,15 @@ export function FinancialPanel() {
   const [selectedCod, setSelectedCod] = useState<string | null>(null);
   const [codNote, setCodNote] = useState('');
   
-  // Customer wallets state
-  const [customerWallets, setCustomerWallets] = useState<CustomerWallet[]>([]);
-  const [isLoadingCustomerWallets, setIsLoadingCustomerWallets] = useState(false);
+  // Merchant wallets state
+  const [merchantWallets, setMerchantWallets] = useState<CustomerWallet[]>([]);
+  const [isLoadingMerchantWallets, setIsLoadingMerchantWallets] = useState(false);
   
   // Real data state
   const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [isLoadingDrivers, setIsLoadingDrivers] = useState(false);
-  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+  const [isLoadingMerchants, setIsLoadingMerchants] = useState(false);
   
   // Fetch drivers on mount
   useEffect(() => {
@@ -192,34 +192,34 @@ export function FinancialPanel() {
     loadDrivers();
   }, []);
   
-  // Fetch customers on mount
+  // Fetch merchants on mount
   useEffect(() => {
-    const loadCustomers = async () => {
-      setIsLoadingCustomers(true);
+    const loadMerchants = async () => {
+      setIsLoadingMerchants(true);
       try {
         const response = await fetchAllCustomers();
         if (response.status === 'success' && response.data?.customers) {
-          const customersList = response.data.customers;
-          const customersData: Customer[] = customersList.map((customer: any) => ({
-            id: customer.id?.toString() || customer.vendor_id?.toString() || '',
-            vendor_id: customer.vendor_id || customer.id || '',
-            name: customer.customer_name || customer.name || 'Unknown Customer',
-            phone: customer.customer_phone || customer.phone || '',
+          const merchantsList = response.data.customers;
+          const merchantsData: Merchant[] = merchantsList.map((merchant: any) => ({
+            id: merchant.id?.toString() || merchant.vendor_id?.toString() || '',
+            vendor_id: merchant.vendor_id || merchant.id || '',
+            name: merchant.customer_name || merchant.name || 'Unknown Merchant',
+            phone: merchant.customer_phone || merchant.phone || '',
             balance: 0,
             pending: 0
           }));
-          setCustomers(customersData);
+          setMerchants(merchantsData);
         } else {
-          toast.error(response.message || 'Failed to load customers');
+          toast.error(response.message || 'Failed to load merchants');
         }
       } catch (error) {
-        console.error('Error loading customers:', error);
-        toast.error('Failed to load customers');
+        console.error('Error loading merchants:', error);
+        toast.error('Failed to load merchants');
       } finally {
-        setIsLoadingCustomers(false);
+        setIsLoadingMerchants(false);
       }
     };
-    loadCustomers();
+    loadMerchants();
   }, []);
   
   // Load COD confirmations on mount
@@ -328,49 +328,49 @@ export function FinancialPanel() {
     }
   };
 
-  const handleCustomerWalletSearch = async () => {
-    if (!customerWalletSearch.trim()) {
-      setCustomerWalletValidation(null);
+  const handleMerchantWalletSearch = async () => {
+    if (!merchantWalletSearch.trim()) {
+      setMerchantWalletValidation(null);
       return;
     }
 
-    const searchTerm = customerWalletSearch.toLowerCase().trim();
+    const searchTerm = merchantWalletSearch.toLowerCase().trim();
 
-    // Try to find in customer wallets first, then in customers list
-    // Search by: name, id, vendor_id (customer_id), phone
-    let found = customerWallets.find(
-      c => c.name.toLowerCase().includes(searchTerm) || 
-           c.id.toLowerCase().includes(searchTerm) ||
-           c.vendor_id?.toString().includes(searchTerm) ||
-           c.phone.includes(customerWalletSearch)
+    // Try to find in merchant wallets first, then in merchants list
+    // Search by: name, id, vendor_id, phone
+    let found = merchantWallets.find(
+      m => m.name.toLowerCase().includes(searchTerm) || 
+           m.id.toLowerCase().includes(searchTerm) ||
+           m.vendor_id?.toString().includes(searchTerm) ||
+           m.phone.includes(merchantWalletSearch)
     );
 
-    // If not found in customerWallets, search in customers list
+    // If not found in merchantWallets, search in merchants list
     if (!found) {
-      const customerMatch = customers.find(
-        c => c.name.toLowerCase().includes(searchTerm) || 
-             c.id.toLowerCase().includes(searchTerm) ||
-             c.vendor_id?.toString().includes(searchTerm) ||
-             (c.phone && c.phone.includes(customerWalletSearch))
+      const merchantMatch = merchants.find(
+        m => m.name.toLowerCase().includes(searchTerm) || 
+             m.id.toLowerCase().includes(searchTerm) ||
+             m.vendor_id?.toString().includes(searchTerm) ||
+             (m.phone && m.phone.includes(merchantWalletSearch))
       );
       
-      if (customerMatch) {
-        // Convert customer to CustomerWallet format for display
+      if (merchantMatch) {
+        // Convert merchant to CustomerWallet format for display
         found = {
-          id: customerMatch.id,
-          name: customerMatch.name,
-          phone: customerMatch.phone || '',
-          balance: customerMatch.balance || 0,
-          pending: customerMatch.pending || 0,
-          vendor_id: customerMatch.vendor_id
+          id: merchantMatch.id,
+          name: merchantMatch.name,
+          phone: merchantMatch.phone || '',
+          balance: merchantMatch.balance || 0,
+          pending: merchantMatch.pending || 0,
+          vendor_id: merchantMatch.vendor_id
         } as CustomerWallet;
       }
     }
 
     if (found) {
-      setCustomerWalletValidation('valid');
+      setMerchantWalletValidation('valid');
       
-      // If customer has a vendor_id, fetch real balance from Tookan
+      // If merchant has a vendor_id, fetch real balance from Tookan
       if (found.vendor_id) {
         try {
           const response = await fetchCustomerWallet(found.vendor_id, 1, 0, 50);
@@ -380,16 +380,16 @@ export function FinancialPanel() {
               : response.data.data;
             
             if (walletData?.wallet_balance !== undefined) {
-              // Update the customer's balance with real data
-              console.log('Customer wallet balance:', walletData.wallet_balance);
+              // Update the merchant's balance with real data
+              console.log('Merchant wallet balance:', walletData.wallet_balance);
             }
           }
         } catch (error) {
-          console.error('Error fetching customer wallet:', error);
+          console.error('Error fetching merchant wallet:', error);
         }
       }
     } else {
-      setCustomerWalletValidation('invalid');
+      setMerchantWalletValidation('invalid');
     }
   };
 
@@ -447,7 +447,7 @@ export function FinancialPanel() {
         }
 
         // Get merchant vendor ID from calendar entry
-        const merchantVendorId = calendarEntry.merchantVendorId || customerWallets[0]?.vendor_id;
+        const merchantVendorId = calendarEntry.merchantVendorId || merchantWallets[0]?.vendor_id;
         if (!merchantVendorId) {
           throw new Error('Merchant vendor ID not found');
         }
@@ -477,11 +477,11 @@ export function FinancialPanel() {
               : item
           ));
           
-          // Refresh customer wallets to show updated balance
-          if (activeTab === 'customer-wallets') {
+          // Refresh merchant wallets to show updated balance
+          if (activeTab === 'merchant-wallets') {
             const walletsResult = await fetchCustomerWallets();
             if (walletsResult.status === 'success' && walletsResult.data) {
-              setCustomerWallets(walletsResult.data);
+              setMerchantWallets(walletsResult.data);
             }
           }
           
@@ -640,8 +640,8 @@ export function FinancialPanel() {
     <div className="p-8 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-heading text-3xl mb-2">Financial Panel</h1>
-        <p className="text-subheading dark:text-[#99BFD1] text-muted-light">Manage balance, COD, and wallets</p>
+        <h1 className="text-heading text-3xl mb-2">Balance Panel</h1>
+        <p className="text-subheading dark:text-[#99BFD1] text-muted-light">Manage COD reconciliation for drivers and merchants</p>
       </div>
 
       {/* Tabs */}
@@ -681,16 +681,16 @@ export function FinancialPanel() {
             Driver Wallets
           </button>
         )}
-        {showCustomerWalletSection && (
+        {showMerchantWalletSection && (
           <button
-            onClick={() => handleTabChange('customer-wallets')}
+            onClick={() => handleTabChange('merchant-wallets')}
             className={`px-6 py-3 rounded-t-xl transition-all ${
-              activeTab === 'customer-wallets'
+              activeTab === 'merchant-wallets'
                 ? 'bg-hover-bg-light dark:bg-[#223560] text-[#DE3544] dark:text-[#C1EEFA] border-b-2 border-[#DE3544]'
                 : 'text-muted-light dark:text-[#99BFD1] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
             }`}
           >
-            Customer Wallets
+            Merchant Wallets
           </button>
         )}
       </div>
@@ -1437,8 +1437,8 @@ export function FinancialPanel() {
         </div>
       )}
 
-      {/* Customer Wallets Tab */}
-      {activeTab === 'customer-wallets' && (
+      {/* Merchant Wallets Tab */}
+      {activeTab === 'merchant-wallets' && (
         <div className="space-y-6">
           <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
             <div className="flex items-center gap-3 mb-6">
@@ -1446,42 +1446,42 @@ export function FinancialPanel() {
                 <Wallet className="w-6 h-6 text-primary dark:text-[#C1EEFA]" />
               </div>
               <div>
-                <h3 className="text-heading">Customer Wallets</h3>
-                <p className="text-muted-light dark:text-[#99BFD1] text-sm">Search and manage customer balances</p>
+                <h3 className="text-heading">Merchant Wallets</h3>
+                <p className="text-muted-light dark:text-[#99BFD1] text-sm">Search and manage merchant balances</p>
               </div>
             </div>
 
-            {/* Customer Search */}
+            {/* Merchant Search */}
             <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-2">
-                <label className="block text-heading text-sm mb-2">Search by Customer ID, Vendor ID, Name, or Phone Number</label>
+                <label className="block text-heading text-sm mb-2">Search by Merchant ID, Vendor ID, Name, or Phone Number</label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
                   <input
                     type="text"
-                    placeholder="Enter customer ID (e.g., 89932635), name, or phone..."
-                    value={customerWalletSearch}
+                    placeholder="Enter merchant ID (e.g., 89932635), name, or phone..."
+                    value={merchantWalletSearch}
                     onChange={(e) => {
-                      setCustomerWalletSearch(e.target.value);
-                      setCustomerWalletValidation(null);
+                      setMerchantWalletSearch(e.target.value);
+                      setMerchantWalletValidation(null);
                     }}
                     className={`w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 pr-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${
-                      customerWalletValidation === 'valid' ? 'border-2 border-green-500' :
-                      customerWalletValidation === 'invalid' ? 'border-2 border-[#DE3544]' :
+                      merchantWalletValidation === 'valid' ? 'border-2 border-green-500' :
+                      merchantWalletValidation === 'invalid' ? 'border-2 border-[#DE3544]' :
                       'border border-input-border dark:border-[#2A3C63] focus:border-[#DE3544] dark:focus:border-[#C1EEFA]'
                     }`}
                   />
-                  {customerWalletValidation === 'valid' && (
+                  {merchantWalletValidation === 'valid' && (
                     <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
                   )}
-                  {customerWalletValidation === 'invalid' && (
+                  {merchantWalletValidation === 'invalid' && (
                     <X className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#DE3544]" />
                   )}
                 </div>
               </div>
               <div className="flex items-end">
                 <button
-                  onClick={handleCustomerWalletSearch}
+                  onClick={handleMerchantWalletSearch}
                   className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
                 >
                   <Search className="w-5 h-5" />
@@ -1490,14 +1490,14 @@ export function FinancialPanel() {
               </div>
             </div>
 
-            {/* Customer Wallet Table */}
+            {/* Merchant Wallet Table */}
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
                   <tr>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer ID</th>
+                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant ID</th>
                     <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Vendor ID</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Name</th>
+                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant Name</th>
                     <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Wallet Balance</th>
                     <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pending COD</th>
                     <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
@@ -1505,41 +1505,41 @@ export function FinancialPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Show customerWallets if available, otherwise show customers */}
-                  {(customerWallets.length > 0 ? customerWallets : customers.map(c => ({
-                    id: c.id,
-                    name: c.name,
-                    phone: c.phone || '',
-                    balance: c.balance || 0,
-                    pending: c.pending || 0,
-                    vendor_id: c.vendor_id
-                  }))).map((customer, index) => {
-                    const searchTerm = customerWalletSearch.toLowerCase().trim();
-                    const isHighlighted = customerWalletValidation === 'valid' && (
-                      customer.name.toLowerCase().includes(searchTerm) ||
-                      customer.id.toLowerCase().includes(searchTerm) ||
-                      customer.vendor_id?.toString().includes(searchTerm) ||
-                      customer.phone.includes(customerWalletSearch)
+                  {/* Show merchantWallets if available, otherwise show merchants */}
+                  {(merchantWallets.length > 0 ? merchantWallets : merchants.map(m => ({
+                    id: m.id,
+                    name: m.name,
+                    phone: m.phone || '',
+                    balance: m.balance || 0,
+                    pending: m.pending || 0,
+                    vendor_id: m.vendor_id
+                  }))).map((merchant, index) => {
+                    const searchTerm = merchantWalletSearch.toLowerCase().trim();
+                    const isHighlighted = merchantWalletValidation === 'valid' && (
+                      merchant.name.toLowerCase().includes(searchTerm) ||
+                      merchant.id.toLowerCase().includes(searchTerm) ||
+                      merchant.vendor_id?.toString().includes(searchTerm) ||
+                      merchant.phone.includes(merchantWalletSearch)
                     );
                     
                     return (
                       <tr 
-                        key={customer.id} 
+                        key={merchant.id} 
                         className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${
                           isHighlighted ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)] bg-[#C1EEFA]/10' : ''
                         }`}
                       >
-                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{customer.id}</td>
-                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] font-mono text-sm">{customer.vendor_id || '-'}</td>
-                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{customer.name}</td>
-                        <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(customer.balance || 0).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${(customer.pending || 0).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{customer.phone}</td>
+                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.id}</td>
+                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] font-mono text-sm">{merchant.vendor_id || '-'}</td>
+                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.name}</td>
+                        <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(merchant.balance || 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${(merchant.pending || 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{merchant.phone}</td>
                         <td className="px-4 py-3">
                           <button 
                             onClick={() => {
-                              setEditingBalance({ type: 'customer', id: customer.id });
-                              setNewBalance((customer.balance || 0).toFixed(2));
+                              setEditingBalance({ type: 'merchant', id: merchant.id });
+                              setNewBalance((merchant.balance || 0).toFixed(2));
                               setBalanceNote('');
                             }}
                             className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
@@ -1556,8 +1556,8 @@ export function FinancialPanel() {
               {/* Note about API limitation */}
               <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
                 <p className="text-yellow-600 dark:text-yellow-400 text-sm">
-                  <strong>Note:</strong> Due to Tookan API limitations, only the first 100 customers are displayed. 
-                  Use the search box above to find specific customers by their Customer ID.
+                  <strong>Note:</strong> Due to Tookan API limitations, only the first 100 merchants are displayed. 
+                  Use the search box above to find specific merchants by their Merchant ID.
                 </p>
               </div>
             </div>
@@ -1586,7 +1586,7 @@ export function FinancialPanel() {
             {editingBalance && (() => {
               const entity = editingBalance.type === 'driver' 
                 ? drivers.find(d => d.id === editingBalance.id)
-                : customerWallets.find(c => c.id === editingBalance.id);
+                : merchantWallets.find(m => m.id === editingBalance.id);
               
               if (!entity) return null;
               
@@ -1633,7 +1633,7 @@ export function FinancialPanel() {
                       }}
                       placeholder={editingBalance.type === 'driver' 
                         ? "Add description for this transaction (e.g., 'Earnings credit', 'Penalty adjustment')..."
-                        : "Add description for this transaction (optional, e.g., 'Order refund', 'Wallet top-up')..."
+                        : "Add description for this transaction (optional, e.g., 'COD credit', 'Wallet top-up')..."
                       }
                       rows={4}
                       className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all resize-none"
@@ -1643,7 +1643,7 @@ export function FinancialPanel() {
                         Required: Explain the reason for this transaction
                       </p>
                     )}
-                    {editingBalance.type === 'customer' && (
+                    {editingBalance.type === 'merchant' && (
                       <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1">
                         Optional: Explain the reason for adding money to the wallet
                       </p>
@@ -1728,23 +1728,23 @@ export function FinancialPanel() {
                               return;
                             }
                           } else {
-                            // Customer/Merchant wallet
-                            const customer = customerWallets.find(c => c.id === editingBalance.id);
-                            if (!customer) {
-                              throw new Error('Customer not found');
+                            // Merchant wallet
+                            const merchant = merchantWallets.find(m => m.id === editingBalance.id);
+                            if (!merchant) {
+                              throw new Error('Merchant not found');
                             }
 
-                            const currentBalance = customer.balance;
+                            const currentBalance = merchant.balance;
                             const difference = amount - currentBalance;
                             
                             if (difference > 0) {
-                              // Add money to customer wallet (only addition is supported by Tookan Custom Wallet API)
-                              const vendorId = customer.vendor_id;
+                              // Add money to merchant wallet (only addition is supported by Tookan Custom Wallet API)
+                              const vendorId = merchant.vendor_id;
                               if (!vendorId) {
-                                throw new Error('Customer vendor ID not found. Cannot process wallet transaction.');
+                                throw new Error('Merchant vendor ID not found. Cannot process wallet transaction.');
                               }
                               
-                              // Description is optional for customer wallet operations (per API documentation)
+                              // Description is optional for merchant wallet operations (per API documentation)
                               response = await addCustomerWalletPayment(
                                 vendorId,
                                 difference,
@@ -1753,7 +1753,7 @@ export function FinancialPanel() {
                             } else if (difference < 0) {
                               // Note: Tookan Custom Wallet API typically only supports adding money
                               // For debiting, you may need a different endpoint or workflow
-                              setWalletError('Debiting customer wallet is not supported via this API. To reduce balance, please use the Tookan dashboard directly.');
+                              setWalletError('Debiting merchant wallet is not supported via this API. To reduce balance, please use the Tookan dashboard directly.');
                               setIsProcessingWallet(false);
                               return;
                             } else {

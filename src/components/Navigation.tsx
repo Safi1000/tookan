@@ -14,31 +14,30 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
-import tdLogo from 'figma:asset/69bff70c5b17d559501ad9bfcdc1a4c7d2dce43e.png';
+
 import { useTheme } from '../contexts/ThemeContext';
 
 interface NavigationProps {
   activeMenu: string;
   setActiveMenu: (menu: string) => void;
   onLogout: () => void;
-  userRole?: string;
 }
 
-// Menu items with role-based visibility
-// Per SRS: Admin has full access, Staff has limited access
+// Menu items - Per SRS: No fixed roles, permissions are assigned individually
+// All panels visible, access is controlled by permission-based system
 const menuItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'staff', 'driver', 'merchant'] },
-  { id: 'reports', label: 'Reports Panel', icon: FileText, roles: ['admin', 'staff', 'driver', 'merchant'] },
-  { id: 'financial', label: 'Financial Panel', icon: Wallet, roles: ['admin', 'staff'] },
-  { id: 'order-editor', label: 'Order Editor Panel', icon: Edit3, roles: ['admin', 'staff'] },
-  { id: 'withdrawals', label: 'Withdrawal Requests', icon: CreditCard, roles: ['admin', 'staff'] },
-  { id: 'merchant-plans', label: 'Merchant Plans', icon: Package, roles: ['admin'] }, // Admin only per SRS
-  { id: 'permissions', label: 'User & Permissions', icon: Shield, roles: ['admin'] }, // Admin only per SRS
-  { id: 'logs', label: 'System Logs', icon: Activity, roles: ['admin'] }, // Admin only per SRS
-  { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin', 'staff', 'driver', 'merchant'] },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'reports', label: 'Reports Panel', icon: FileText },
+  { id: 'financial', label: 'Balance Panel', icon: Wallet },
+  { id: 'order-editor', label: 'Order Editor Panel', icon: Edit3 },
+  { id: 'withdrawals', label: 'Withdrawal Requests', icon: CreditCard },
+  { id: 'merchant-plans', label: 'Merchant Plans', icon: Package },
+  { id: 'permissions', label: 'User & Permissions', icon: Shield },
+  { id: 'logs', label: 'System Logs', icon: Activity },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
-export function Navigation({ activeMenu, setActiveMenu, onLogout, userRole = 'staff' }: NavigationProps) {
+export function Navigation({ activeMenu, setActiveMenu, onLogout }: NavigationProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { theme, toggleTheme } = useTheme();
 
@@ -47,7 +46,7 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout, userRole = 'st
       {/* Logo */}
       <div className="p-6 border-b border-sidebar-border flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src={tdLogo} alt="TD Logo" className="w-12 h-12 rounded-lg" />
+         
           <div>
             <h1 className="text-heading">TD Admin</h1>
             <p className="text-xs text-muted-light dark:text-[#99BFD1]">Internal System</p>
@@ -68,11 +67,9 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout, userRole = 'st
         </button>
       </div>
 
-      {/* Menu Items */}
+      {/* Menu Items - All visible, access controlled by permissions */}
       <div className="flex-1 overflow-y-auto py-4 px-3">
-        {menuItems
-          .filter(item => item.roles.includes(userRole))
-          .map((item) => {
+        {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeMenu === item.id;
           

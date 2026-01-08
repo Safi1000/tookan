@@ -46,12 +46,18 @@ function getApp() {
     const express = require('express');
     const cors = require('cors');
     const fetch = require('node-fetch');
+    const crypto = require('crypto');
     
     app = express();
     
     // Middleware
     app.use(cors());
-    app.use(express.json());
+    // Keep raw body for webhook signature verification
+    app.use(express.json({
+      verify: (req, res, buf) => {
+        req.rawBody = buf;
+      }
+    }));
     
     // Import all the route handlers from server/index.js
     // For Vercel, we'll include the essential routes inline
@@ -192,6 +198,24 @@ function getApp() {
     // Tookan Webhook endpoint
     app.post('/api/tookan/webhook', async (req, res) => {
       try {
+        // Optional signature verification when shared secret is set
+        const webhookSecret = process.env.TOOKAN_WEBHOOK_SECRET;
+        if (webhookSecret) {
+          const receivedSig = req.headers['x-tookan-signature'] || req.headers['x-hook-signature'] || req.headers['x-webhook-signature'];
+          if (!receivedSig) {
+            return res.status(401).json({ status: 'error', message: 'Missing webhook signature' });
+          }
+
+          const payload = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {});
+          const expectedSig = crypto.createHmac('sha256', webhookSecret).update(payload).digest('hex');
+
+          const expectedBuf = Buffer.from(expectedSig);
+          const receivedBuf = Buffer.from(receivedSig);
+          if (expectedBuf.length !== receivedBuf.length || !crypto.timingSafeEqual(expectedBuf, receivedBuf)) {
+            return res.status(401).json({ status: 'error', message: 'Invalid webhook signature' });
+          }
+        }
+
         console.log('Webhook received:', JSON.stringify(req.body, null, 2));
         
         const { 

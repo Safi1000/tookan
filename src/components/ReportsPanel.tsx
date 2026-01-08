@@ -360,76 +360,76 @@ export function ReportsPanel() {
           {/* Export buttons - Only shown if user has export_reports permission */}
           {hasPermission(PERMISSIONS.EXPORT_REPORTS) && (
             <>
-              <button 
-                onClick={async () => {
-                  try {
+          <button 
+            onClick={async () => {
+              try {
                     const token = localStorage.getItem('auth_token');
                     const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/reports/orders/export`, {
-                      method: 'POST',
+                  method: 'POST',
                       headers: { 
                         'Content-Type': 'application/json',
                         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                       },
-                      body: JSON.stringify({
-                        format: 'excel',
-                        filters: { orderIdSearch, unifiedCustomerSearch, unifiedMerchantSearch, unifiedDriverSearch, dateFrom, dateTo },
-                        columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
-                      })
-                    });
-                    if (!response.ok) throw new Error('Export failed');
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `orders-export-${new Date().toISOString().split('T')[0]}.xlsx`;
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    toast.success('Export successful');
-                  } catch (error) {
-                    console.error('Export error:', error);
-                    toast.error('Failed to export orders');
-                  }
-                }}
-                className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
-              >
-                <Download className="w-5 h-5" />
-                Export Excel
-              </button>
-              <button 
-                onClick={async () => {
-                  try {
+                  body: JSON.stringify({
+                    format: 'excel',
+                    filters: { orderIdSearch, unifiedCustomerSearch, unifiedMerchantSearch, unifiedDriverSearch, dateFrom, dateTo },
+                    columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
+                  })
+                });
+                if (!response.ok) throw new Error('Export failed');
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `orders-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                toast.success('Export successful');
+              } catch (error) {
+                console.error('Export error:', error);
+                toast.error('Failed to export orders');
+              }
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
+          >
+            <Download className="w-5 h-5" />
+            Export Excel
+          </button>
+          <button 
+            onClick={async () => {
+              try {
                     const token = localStorage.getItem('auth_token');
                     const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/reports/orders/export`, {
-                      method: 'POST',
+                  method: 'POST',
                       headers: { 
                         'Content-Type': 'application/json',
                         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                       },
-                      body: JSON.stringify({
-                        format: 'csv',
-                        filters: { orderIdSearch, unifiedCustomerSearch, unifiedMerchantSearch, unifiedDriverSearch, dateFrom, dateTo },
-                        columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
-                      })
-                    });
-                    if (!response.ok) throw new Error('Export failed');
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `orders-export-${new Date().toISOString().split('T')[0]}.csv`;
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    toast.success('Export successful');
-                  } catch (error) {
-                    console.error('Export error:', error);
-                    toast.error('Failed to export orders');
-                  }
-                }}
-                className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA]/80 text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
-              >
-                <Download className="w-5 h-5" />
-                Export CSV
-              </button>
+                  body: JSON.stringify({
+                    format: 'csv',
+                    filters: { orderIdSearch, unifiedCustomerSearch, unifiedMerchantSearch, unifiedDriverSearch, dateFrom, dateTo },
+                    columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
+                  })
+                });
+                if (!response.ok) throw new Error('Export failed');
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `orders-export-${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                toast.success('Export successful');
+              } catch (error) {
+                console.error('Export error:', error);
+                toast.error('Failed to export orders');
+              }
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA]/80 text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
+          >
+            <Download className="w-5 h-5" />
+            Export CSV
+          </button>
             </>
           )}
         </div>
