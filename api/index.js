@@ -515,7 +515,7 @@ function getApp() {
       try {
         const apiKey = getApiKey();
         
-        // Fetch data from Tookan
+        // Fetch data from Tookan - always use get_all_customers for consistency
         const [fleetsRes, customersRes, tasksRes] = await Promise.all([
           fetch('https://api.tookanapp.com/v2/get_all_fleets', {
             method: 'POST',
