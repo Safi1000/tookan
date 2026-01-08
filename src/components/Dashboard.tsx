@@ -81,15 +81,8 @@ export function Dashboard() {
       trend: analytics.trends.drivers 
     },
     { 
-      id: 'customers', 
-      label: 'Customers', 
-      value: formatNumber(analytics.kpis.totalCustomers || 0), 
-      icon: Users, 
-      trend: analytics.trends.customers || '+0%'
-    },
-    { 
       id: 'merchants', 
-      label: 'Merchants', 
+      label: 'Customers', 
       value: formatNumber(analytics.kpis.totalMerchants), 
       icon: Store, 
       trend: analytics.trends.merchants 

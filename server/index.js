@@ -4372,16 +4372,24 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
     // Use localhost for internal API calls to avoid proxy/port issues
     const baseUrl = `http://localhost:${process.env.PORT || 3001}`;
     
+    const authHeader = req.headers.authorization || '';
+
     const [ordersResult, driversResult, customersResult] = await Promise.all([
-      fetch(`${baseUrl}/api/tookan/orders?dateFrom=${startDate}&dateTo=${endDate}&limit=10000`).then(r => r.json()).catch(err => {
+      fetch(`${baseUrl}/api/tookan/orders?dateFrom=${startDate}&dateTo=${endDate}&limit=10000`, {
+        headers: authHeader ? { Authorization: authHeader } : {}
+      }).then(r => r.json()).catch(err => {
         console.error('Error fetching orders for analytics:', err);
         return { status: 'error', data: { orders: [] } };
       }),
-      fetch(`${baseUrl}/api/tookan/fleets`).then(r => r.json()).catch(err => {
+      fetch(`${baseUrl}/api/tookan/fleets`, {
+        headers: authHeader ? { Authorization: authHeader } : {}
+      }).then(r => r.json()).catch(err => {
         console.error('Error fetching drivers for analytics:', err);
         return { status: 'error', data: { fleets: [] } };
       }),
-      fetch(`${baseUrl}/api/tookan/customers`).then(r => r.json()).catch(err => {
+      fetch(`${baseUrl}/api/tookan/customers`, {
+        headers: authHeader ? { Authorization: authHeader } : {}
+      }).then(r => r.json()).catch(err => {
         console.error('Error fetching customers for analytics:', err);
         return { status: 'error', data: { customers: [] } };
       })
@@ -4555,15 +4563,18 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
       if (!endDate) endDate = end.toISOString().split('T')[0];
     }
 
-    // Fetch orders, drivers, and customers using internal API calls
+    // Fetch orders, drivers, and customers using internal API calls (reuse auth header)
     const baseUrl = `http://localhost:${process.env.PORT || 3001}`;
+    const authHeader = req.headers.authorization || '';
     
     let orders = [];
     let drivers = [];
     let customers = [];
 
     try {
-      const ordersResponse = await fetch(`${baseUrl}/api/tookan/orders?dateFrom=${startDate}&dateTo=${endDate}&limit=10000`);
+      const ordersResponse = await fetch(`${baseUrl}/api/tookan/orders?dateFrom=${startDate}&dateTo=${endDate}&limit=10000`, {
+        headers: authHeader ? { Authorization: authHeader } : {}
+      });
       const ordersData = await ordersResponse.json();
       orders = ordersData.status === 'success' ? (ordersData.data?.orders || []) : [];
     } catch (err) {
@@ -4571,7 +4582,9 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
     }
 
     try {
-      const driversResponse = await fetch(`${baseUrl}/api/tookan/fleets`);
+      const driversResponse = await fetch(`${baseUrl}/api/tookan/fleets`, {
+        headers: authHeader ? { Authorization: authHeader } : {}
+      });
       const driversData = await driversResponse.json();
       drivers = driversData.status === 'success' ? (driversData.data?.fleets || []) : [];
     } catch (err) {
@@ -4579,7 +4592,9 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
     }
 
     try {
-      const customersResponse = await fetch(`${baseUrl}/api/tookan/customers`);
+      const customersResponse = await fetch(`${baseUrl}/api/tookan/customers`, {
+        headers: authHeader ? { Authorization: authHeader } : {}
+      });
       const customersData = await customersResponse.json();
       customers = customersData.status === 'success' ? (customersData.data?.customers || []) : [];
     } catch (err) {
