@@ -161,11 +161,11 @@ export interface DriverSummary {
 }
 
 /**
- * Merchant Summary
+ * Customer Summary (previously MerchantSummary)
  */
-export interface MerchantSummary {
-  merchantId: string;
-  merchantName: string;
+export interface CustomerSummary {
+  customerId: string;
+  customerName: string;
   orderCount: number;
   codReceived: number;
   orderFees: number;
@@ -1016,11 +1016,11 @@ export async function fetchReportsSummary(
   drivers: any[];
   customers: any[];
   driverSummaries: DriverSummary[];
-  merchantSummaries: MerchantSummary[];
+  customerSummaries: CustomerSummary[];
   totals: {
     orders: number;
     drivers: number;
-    merchants: number;
+    customers: number;
     deliveries: number;
   };
 }>> {
@@ -1053,11 +1053,11 @@ export async function fetchReportsSummary(
           drivers: [],
           customers: [],
           driverSummaries: [],
-          merchantSummaries: [],
+          customerSummaries: [],
           totals: {
             orders: 0,
             drivers: 0,
-            merchants: 0,
+            customers: 0,
             deliveries: 0,
           },
         },
@@ -1074,11 +1074,11 @@ export async function fetchReportsSummary(
         drivers: [],
         customers: [],
         driverSummaries: [],
-        merchantSummaries: [],
+        customerSummaries: [],
         totals: {
           orders: 0,
           drivers: 0,
-          merchants: 0,
+          customers: 0,
           deliveries: 0,
         },
       },
@@ -1095,11 +1095,11 @@ export async function fetchReportsSummary(
         drivers: [],
         customers: [],
         driverSummaries: [],
-        merchantSummaries: [],
+        customerSummaries: [],
         totals: {
           orders: 0,
           drivers: 0,
-          merchants: 0,
+          customers: 0,
           deliveries: 0,
         },
       },

@@ -1,31 +1,30 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Download, Calendar, CheckCircle, XCircle, Settings2, X, RefreshCw, AlertCircle } from 'lucide-react';
+import { Search, Download, Calendar, CheckCircle, XCircle, Settings2, X, RefreshCw, AlertCircle, Filter } from 'lucide-react';
 import { toast } from 'sonner';
-import { fetchAllOrders, fetchAllDrivers, fetchAllCustomers, fetchReportsSummary, type OrderFilters, type DriverSummary, type MerchantSummary } from '../services/tookanApi';
+import { fetchAllOrders, fetchAllDrivers, fetchAllCustomers, fetchReportsSummary, type OrderFilters, type DriverSummary, type CustomerSummary } from '../services/tookanApi';
 import { usePermissions, PERMISSIONS, PermissionGate } from '../contexts/PermissionContext';
 
+// Simplified column definitions as per requirements
 const columnDefinitions = [
   { key: 'id', label: 'Order ID' },
-  { key: 'date', label: 'Date' },
-  { key: 'merchant', label: 'Merchant' },
-  { key: 'merchantNumber', label: 'Merchant Number' },
-  { key: 'driver', label: 'Driver' },
-  { key: 'customer', label: 'Customer' },
-  { key: 'customerNumber', label: 'Customer Number' },
+  { key: 'dateDelivered', label: 'Date/Time Delivered' },
+  { key: 'driverId', label: 'Driver ID' },
+  { key: 'driverName', label: 'Driver Name' },
+  { key: 'customerName', label: 'Customer Name' },
+  { key: 'customerPhone', label: 'Customer Phone' },
+  { key: 'pickupAddress', label: 'Pickup Address' },
+  { key: 'deliveryAddress', label: 'Delivery Address' },
   { key: 'cod', label: 'COD' },
-  { key: 'codCollected', label: 'COD Collected' },
-  { key: 'tookanFees', label: 'Tookan Fees' },
-  { key: 'fee', label: 'Order Fee' },
-  { key: 'status', label: 'Status' },
-  { key: 'addresses', label: 'Addresses' },
+  { key: 'fee', label: 'Order Fees' },
 ];
 
 export function ReportsPanel() {
   const { hasPermission } = usePermissions();
   const [orderIdSearch, setOrderIdSearch] = useState('');
   const [unifiedCustomerSearch, setUnifiedCustomerSearch] = useState('');
-  const [unifiedMerchantSearch, setUnifiedMerchantSearch] = useState('');
   const [unifiedDriverSearch, setUnifiedDriverSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<'orders' | 'drivers' | 'customers'>('orders');
+  const [showCompletedOnly, setShowCompletedOnly] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   
@@ -34,8 +33,8 @@ export function ReportsPanel() {
   const [drivers, setDrivers] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [driverSummaries, setDriverSummaries] = useState<DriverSummary[]>([]);
-  const [merchantSummaries, setMerchantSummaries] = useState<MerchantSummary[]>([]);
-  const [totals, setTotals] = useState({ orders: 0, drivers: 0, merchants: 0, deliveries: 0 });
+  const [customerSummaries, setCustomerSummaries] = useState<CustomerSummary[]>([]);
+  const [totals, setTotals] = useState({ orders: 0, drivers: 0, customers: 0, deliveries: 0 });
   
   // Loading and error states
   const [isLoading, setIsLoading] = useState(false);
@@ -47,15 +46,19 @@ export function ReportsPanel() {
   );
   const [showColumnManager, setShowColumnManager] = useState(false);
 
+  const handleTabChange = (tab: 'orders' | 'drivers' | 'customers') => {
+    setActiveTab(tab);
+    setShowColumnManager(false);
+  };
+
   // Combined search term for server-side filtering
   const combinedSearch = useMemo(() => {
     const searchTerms = [];
     if (orderIdSearch.trim()) searchTerms.push(orderIdSearch.trim());
     if (unifiedCustomerSearch.trim()) searchTerms.push(unifiedCustomerSearch.trim());
-    if (unifiedMerchantSearch.trim()) searchTerms.push(unifiedMerchantSearch.trim());
     if (unifiedDriverSearch.trim()) searchTerms.push(unifiedDriverSearch.trim());
     return searchTerms.join(' ') || undefined;
-  }, [orderIdSearch, unifiedCustomerSearch, unifiedMerchantSearch, unifiedDriverSearch]);
+  }, [orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch]);
 
   // Fetch data on mount and when filters change
   useEffect(() => {
@@ -113,14 +116,14 @@ export function ReportsPanel() {
           })));
         }
         
-        if (summaryResult.data.merchantSummaries && summaryResult.data.merchantSummaries.length > 0) {
-          setMerchantSummaries(summaryResult.data.merchantSummaries.map(m => ({
-            merchantId: m.merchantId,
-            merchantName: m.merchantName,
-            orderCount: m.totalOrders,
-            codReceived: m.codTotal,
-            orderFees: m.feesTotal,
-            revenue: m.codTotal + m.feesTotal
+        if (summaryResult.data.customerSummaries && summaryResult.data.customerSummaries.length > 0) {
+          setCustomerSummaries(summaryResult.data.customerSummaries.map(c => ({
+            customerId: c.customerId,
+            customerName: c.customerName,
+            orderCount: c.totalOrders,
+            codReceived: c.codTotal,
+            orderFees: c.feesTotal,
+            revenue: c.codTotal + c.feesTotal
           })));
         }
         
@@ -142,7 +145,7 @@ export function ReportsPanel() {
           setTotals(prev => ({
             orders: fetchedOrders.length,
             drivers: driversResult.status === 'success' ? (driversResult.data?.fleets?.length || 0) : prev.drivers,
-            merchants: customersResult.status === 'success' ? (customersResult.data?.customers?.length || 0) : prev.merchants,
+            customers: customersResult.status === 'success' ? (customersResult.data?.customers?.length || 0) : prev.customers,
             deliveries: fetchedOrders.filter((o: any) => [6, 7, 8].includes(parseInt(o.status))).length
           }));
         }
@@ -214,49 +217,49 @@ export function ReportsPanel() {
 
     setDriverSummaries(driverSummariesData);
 
-    // Merchant summaries
-    const merchantMap = new Map<string, {
-      merchantId: string;
-      merchantName: string;
+    // Customer summaries (previously Merchant summaries)
+    const customerMap = new Map<string, {
+      customerId: string;
+      customerName: string;
       orders: any[];
       codReceived: number;
       feesTotal: number;
     }>();
 
     orderData.forEach((order: any) => {
-      const merchantId = order.merchantId || order.merchant || 'unknown';
-      const merchantName = order.merchant || 'Unknown Merchant';
+      const customerId = order.merchantId || order.merchant || 'unknown';
+      const customerName = order.merchant || 'Unknown Customer';
       
-      if (!merchantMap.has(merchantId)) {
-        merchantMap.set(merchantId, {
-          merchantId,
-          merchantName,
+      if (!customerMap.has(customerId)) {
+        customerMap.set(customerId, {
+          customerId,
+          customerName,
           orders: [],
           codReceived: 0,
           feesTotal: 0
         });
       }
 
-      const merchantData = merchantMap.get(merchantId)!;
-      merchantData.orders.push(order);
+      const customerData = customerMap.get(customerId)!;
+      customerData.orders.push(order);
       
       const cod = parseFloat(order.cod?.replace('$', '') || order.codAmount || 0);
       const fee = parseFloat(order.fee?.replace('$', '') || order.orderFees || 0);
       
-      merchantData.codReceived += cod;
-      merchantData.feesTotal += fee;
+      customerData.codReceived += cod;
+      customerData.feesTotal += fee;
     });
 
-    const merchantSummariesData: MerchantSummary[] = Array.from(merchantMap.values()).map(merchant => ({
-      merchantId: merchant.merchantId,
-      merchantName: merchant.merchantName,
-      orderCount: merchant.orders.length,
-      codReceived: merchant.codReceived,
-      orderFees: merchant.feesTotal,
-      revenue: merchant.codReceived + merchant.feesTotal
+    const customerSummariesData: CustomerSummary[] = Array.from(customerMap.values()).map(customer => ({
+      customerId: customer.customerId,
+      customerName: customer.customerName,
+      orderCount: customer.orders.length,
+      codReceived: customer.codReceived,
+      orderFees: customer.feesTotal,
+      revenue: customer.codReceived + customer.feesTotal
     }));
 
-    setMerchantSummaries(merchantSummariesData);
+    setCustomerSummaries(customerSummariesData);
   };
 
   // Filter orders based on search criteria
@@ -270,19 +273,9 @@ export function ReportsPanel() {
       );
     }
 
-    // Filter by customer (ID, name, or phone)
+    // Filter by customer (ID, name, or phone) - now includes what was merchant
     if (unifiedCustomerSearch.trim()) {
       const searchLower = unifiedCustomerSearch.toLowerCase();
-      filtered = filtered.filter(order => 
-        (order.customer || order.customerName || '').toLowerCase().includes(searchLower) ||
-        (order.customerNumber || order.customerPhone || '').toLowerCase().includes(searchLower) ||
-        (order.customerId || '').toLowerCase().includes(searchLower)
-      );
-    }
-
-    // Filter by merchant (ID, name, or phone)
-    if (unifiedMerchantSearch.trim()) {
-      const searchLower = unifiedMerchantSearch.toLowerCase();
       filtered = filtered.filter(order => 
         (order.merchant || order.merchantName || '').toLowerCase().includes(searchLower) ||
         (order.merchantNumber || order.merchantPhone || '').toLowerCase().includes(searchLower) ||
@@ -299,8 +292,43 @@ export function ReportsPanel() {
       );
     }
 
+    // Filter by completed deliveries only
+    if (showCompletedOnly) {
+      filtered = filtered.filter(order => 
+        [6, 7, 8].includes(parseInt(order.status)) ||
+        (order.status || '').toLowerCase() === 'delivered' ||
+        (order.status || '').toLowerCase() === 'completed'
+      );
+    }
+
     return filtered;
-  }, [orders, orderIdSearch, unifiedCustomerSearch, unifiedMerchantSearch, unifiedDriverSearch]);
+  }, [orders, orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch, showCompletedOnly]);
+
+  // Filtered driver summaries (per tab filters)
+  const filteredDriverSummaries = useMemo(() => {
+    let filtered = driverSummaries;
+    if (unifiedDriverSearch.trim()) {
+      const searchLower = unifiedDriverSearch.toLowerCase();
+      filtered = filtered.filter(driver =>
+        (driver.driverName || '').toLowerCase().includes(searchLower) ||
+        (driver.driverId || '').toLowerCase().includes(searchLower)
+      );
+    }
+    return filtered;
+  }, [driverSummaries, unifiedDriverSearch]);
+
+  // Filtered customer summaries (per tab filters)
+  const filteredCustomerSummaries = useMemo(() => {
+    let filtered = customerSummaries;
+    if (unifiedCustomerSearch.trim()) {
+      const searchLower = unifiedCustomerSearch.toLowerCase();
+      filtered = filtered.filter(customer =>
+        (customer.customerName || '').toLowerCase().includes(searchLower) ||
+        (customer.customerId || '').toLowerCase().includes(searchLower)
+      );
+    }
+    return filtered;
+  }, [customerSummaries, unifiedCustomerSearch]);
 
   // Mock validation states for auto-suggest
   const getValidationColor = (value: string) => {
@@ -317,18 +345,15 @@ export function ReportsPanel() {
   const getOrderValue = (order: any, key: string) => {
     switch (key) {
       case 'id': return order.id || order.orderId || '';
-      case 'date': return order.date || order.orderDate || '';
-      case 'merchant': return order.merchant || order.merchantName || '';
-      case 'merchantNumber': return order.merchantNumber || order.merchantPhone || '';
-      case 'driver': return order.driver || order.driverName || '';
-      case 'customer': return order.customer || order.customerName || '';
-      case 'customerNumber': return order.customerNumber || order.customerPhone || '';
+      case 'dateDelivered': return order.completedDatetime || order.date || order.orderDate || '';
+      case 'driverId': return order.driverId || order.fleet_id || '';
+      case 'driverName': return order.driver || order.driverName || '';
+      case 'customerName': return order.merchant || order.merchantName || '';
+      case 'customerPhone': return order.merchantNumber || order.merchantPhone || '';
+      case 'pickupAddress': return order.pickup || order.pickupAddress || '';
+      case 'deliveryAddress': return order.dropoff || order.deliveryAddress || '';
       case 'cod': return order.cod || `$${order.codAmount || 0}`;
-      case 'codCollected': return order.codCollected === true ? 'Yes' : order.codCollected === false ? 'No' : 'N/A';
-      case 'tookanFees': return order.tookanFees || '$0.00';
       case 'fee': return order.fee || `$${order.orderFees || 0}`;
-      case 'status': return order.status || 'Unknown';
-      case 'addresses': return { pickup: order.pickup || order.pickupAddress || '', dropoff: order.dropoff || order.deliveryAddress || '' };
       default: return '';
     }
   };
@@ -350,86 +375,90 @@ export function ReportsPanel() {
             <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-          <button 
-            onClick={() => setShowColumnManager(!showColumnManager)}
-            className="flex items-center gap-2 px-6 py-3 bg-card border border-border rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#223560] transition-all text-heading dark:text-[#C1EEFA]"
-          >
-            <Settings2 className="w-5 h-5" />
-            Manage Columns
-          </button>
-          {/* Export buttons - Only shown if user has export_reports permission */}
-          {hasPermission(PERMISSIONS.EXPORT_REPORTS) && (
+          {activeTab === 'orders' && (
             <>
-          <button 
-            onClick={async () => {
-              try {
-                    const token = localStorage.getItem('auth_token');
-                    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/reports/orders/export`, {
-                  method: 'POST',
-                      headers: { 
-                        'Content-Type': 'application/json',
-                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                      },
-                  body: JSON.stringify({
-                    format: 'excel',
-                    filters: { orderIdSearch, unifiedCustomerSearch, unifiedMerchantSearch, unifiedDriverSearch, dateFrom, dateTo },
-                    columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
-                  })
-                });
-                if (!response.ok) throw new Error('Export failed');
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `orders-export-${new Date().toISOString().split('T')[0]}.xlsx`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-                toast.success('Export successful');
-              } catch (error) {
-                console.error('Export error:', error);
-                toast.error('Failed to export orders');
-              }
-            }}
-            className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
-          >
-            <Download className="w-5 h-5" />
-            Export Excel
-          </button>
-          <button 
-            onClick={async () => {
-              try {
-                    const token = localStorage.getItem('auth_token');
-                    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/reports/orders/export`, {
-                  method: 'POST',
-                      headers: { 
-                        'Content-Type': 'application/json',
-                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                      },
-                  body: JSON.stringify({
-                    format: 'csv',
-                    filters: { orderIdSearch, unifiedCustomerSearch, unifiedMerchantSearch, unifiedDriverSearch, dateFrom, dateTo },
-                    columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
-                  })
-                });
-                if (!response.ok) throw new Error('Export failed');
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `orders-export-${new Date().toISOString().split('T')[0]}.csv`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-                toast.success('Export successful');
-              } catch (error) {
-                console.error('Export error:', error);
-                toast.error('Failed to export orders');
-              }
-            }}
-            className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA]/80 text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
-          >
-            <Download className="w-5 h-5" />
-            Export CSV
-          </button>
+              <button 
+                onClick={() => setShowColumnManager(!showColumnManager)}
+                className="flex items-center gap-2 px-6 py-3 bg-card border border-border rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#223560] transition-all text-heading dark:text-[#C1EEFA]"
+              >
+                <Settings2 className="w-5 h-5" />
+                Manage Columns
+              </button>
+              {/* Export buttons - Only shown if user has export_reports permission */}
+              {hasPermission(PERMISSIONS.EXPORT_REPORTS) && (
+                <>
+              <button 
+                onClick={async () => {
+                  try {
+                        const token = localStorage.getItem('auth_token');
+                        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/reports/orders/export`, {
+                      method: 'POST',
+                          headers: { 
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                          },
+                      body: JSON.stringify({
+                        format: 'excel',
+                        filters: { orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch, showCompletedOnly, dateFrom, dateTo },
+                        columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
+                      })
+                    });
+                    if (!response.ok) throw new Error('Export failed');
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `orders-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    toast.success('Export successful');
+                  } catch (error) {
+                    console.error('Export error:', error);
+                    toast.error('Failed to export orders');
+                  }
+                }}
+                className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
+              >
+                <Download className="w-5 h-5" />
+                Export Excel
+              </button>
+              <button 
+                onClick={async () => {
+                  try {
+                        const token = localStorage.getItem('auth_token');
+                        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/reports/orders/export`, {
+                      method: 'POST',
+                          headers: { 
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                          },
+                      body: JSON.stringify({
+                        format: 'csv',
+                        filters: { orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch, showCompletedOnly, dateFrom, dateTo },
+                        columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
+                      })
+                    });
+                    if (!response.ok) throw new Error('Export failed');
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `orders-export-${new Date().toISOString().split('T')[0]}.csv`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    toast.success('Export successful');
+                  } catch (error) {
+                    console.error('Export error:', error);
+                    toast.error('Failed to export orders');
+                  }
+                }}
+                className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA]/80 text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
+              >
+                <Download className="w-5 h-5" />
+                Export CSV
+              </button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -446,23 +475,19 @@ export function ReportsPanel() {
         </div>
       )}
 
-      {/* Totals Summary - Tookan terminology: Customers = recipients, Merchants = businesses with vendor_id, Agents = drivers */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      {/* Totals Summary - 4 cards: Orders, Drivers, Customers, Deliveries */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
           <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Orders</div>
           <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{totals.orders || filteredOrders.length}</div>
         </div>
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Agents (Drivers)</div>
+          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Drivers</div>
           <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{totals.drivers || drivers.length}</div>
         </div>
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Customers</div>
-          <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{customers.length}</div>
-        </div>
-        <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Merchants</div>
-          <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{(customers || []).filter((c: any) => c.vendor_id != null).length}</div>
+          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Customers</div>
+          <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{totals.customers || customers.length}</div>
         </div>
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
           <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Completed Deliveries</div>
@@ -470,8 +495,25 @@ export function ReportsPanel() {
         </div>
       </div>
 
-      {/* Driver Summaries */}
-      {driverSummaries.length > 0 && (
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-border pb-2">
+        {['orders','drivers','customers'].map(tab => (
+          <button
+            key={tab}
+            onClick={() => handleTabChange(tab as 'orders' | 'drivers' | 'customers')}
+            className={`px-4 py-2 rounded-t-lg border border-border border-b-0 transition-all ${
+              activeTab === tab
+                ? 'bg-card text-heading dark:text-[#C1EEFA]'
+                : 'bg-muted/30 dark:bg-[#1A2C53] text-muted-light'
+            }`}
+          >
+            {tab === 'orders' ? 'Orders' : tab === 'drivers' ? 'Drivers' : 'Customers'}
+          </button>
+        ))}
+      </div>
+
+      {/* Driver Summaries (Drivers tab) */}
+      {activeTab === 'drivers' && filteredDriverSummaries.length > 0 && (
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
           <h3 className="text-foreground text-xl mb-4">Driver Summaries</h3>
           <div className="overflow-x-auto">
@@ -487,7 +529,7 @@ export function ReportsPanel() {
                 </tr>
               </thead>
               <tbody>
-                {driverSummaries.map((driver, index) => (
+                {filteredDriverSummaries.map((driver, index) => (
                   <tr key={driver.driverId} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
                     <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{driver.driverName}</td>
                     <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{driver.orderCount || 0}</td>
@@ -503,15 +545,15 @@ export function ReportsPanel() {
         </div>
       )}
 
-      {/* Merchant Summaries */}
-      {merchantSummaries.length > 0 && (
+      {/* Customer Summaries (Customers tab) */}
+      {activeTab === 'customers' && filteredCustomerSummaries.length > 0 && (
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
-          <h3 className="text-foreground text-xl mb-4">Merchant Summaries</h3>
+          <h3 className="text-foreground text-xl mb-4">Customer Summaries</h3>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
                 <tr>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant</th>
+                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer</th>
                   <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Orders</th>
                   <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD Received</th>
                   <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
@@ -519,13 +561,13 @@ export function ReportsPanel() {
                 </tr>
               </thead>
               <tbody>
-                {merchantSummaries.map((merchant, index) => (
-                  <tr key={merchant.merchantId} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{merchant.merchantName}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{merchant.orderCount || 0}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${(merchant.codReceived || 0).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${(merchant.orderFees || 0).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${(merchant.revenue || 0).toFixed(2)}</td>
+                {filteredCustomerSummaries.map((customer, index) => (
+                  <tr key={customer.customerId} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{customer.customerName}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{customer.orderCount || 0}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${(customer.codReceived || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${(customer.orderFees || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${(customer.revenue || 0).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -534,8 +576,8 @@ export function ReportsPanel() {
         </div>
       )}
 
-      {/* Column Manager Modal */}
-      {showColumnManager && (
+      {/* Column Manager Modal (Orders tab only) */}
+      {activeTab === 'orders' && showColumnManager && (
         <div className="bg-card rounded-2xl border border-border p-6 shadow-lg">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-heading text-xl">Manage Columns</h3>
@@ -562,270 +604,277 @@ export function ReportsPanel() {
         </div>
       )}
 
-      {/* Dynamic Search Filters */}
+      {/* Search Filters (per tab) */}
       <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
-        <h3 className="text-foreground mb-4">Dynamic Search Filters</h3>
+        <h3 className="text-foreground mb-4">Search Filters</h3>
         
-        {/* Order ID Search */}
-        <div className="mb-6">
-          <label className="block text-heading text-sm mb-2">Order ID Search</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1]" />
-            <input
-              type="text"
-              placeholder="Enter Order ID..."
-              value={orderIdSearch}
-              onChange={(e) => setOrderIdSearch(e.target.value)}
-              className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${getValidationColor(orderIdSearch)}`}
-            />
-            {orderIdSearch && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                {orderIdSearch.length > 3 ? (
-                  <CheckCircle className="w-5 h-5 text-[#10B981] dark:text-[#C1EEFA]" />
-                ) : (
-                  <XCircle className="w-5 h-5 text-[#DE3544]" />
-                )}
+        {activeTab === 'orders' && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              <div>
+                <label className="block text-heading text-sm mb-2">Order ID</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1]" />
+                  <input
+                    type="text"
+                    placeholder="Enter Order ID..."
+                    value={orderIdSearch}
+                    onChange={(e) => setOrderIdSearch(e.target.value)}
+                    className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${getValidationColor(orderIdSearch)}`}
+                  />
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Unified Customer Search */}
-        <div className="mb-6 p-4 bg-muted/30 dark:bg-[#223560]/50 rounded-xl">
-          <h4 className="text-heading dark:text-[#C1EEFA] mb-3">Customer Search</h4>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-            <input
-              type="text"
-              placeholder="Search by Customer ID, Name, or Phone Number..."
-              value={unifiedCustomerSearch}
-              onChange={(e) => setUnifiedCustomerSearch(e.target.value)}
-              className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-10 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${getValidationColor(unifiedCustomerSearch)}`}
-            />
-            {unifiedCustomerSearch && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                {unifiedCustomerSearch.length > 3 ? (
-                  <CheckCircle className="w-5 h-5 text-[#10B981] dark:text-[#C1EEFA]" />
-                ) : (
-                  <XCircle className="w-5 h-5 text-[#DE3544]" />
-                )}
+              <div>
+                <label className="block text-heading text-sm mb-2">Customer (ID, Name, Phone)</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
+                  <input
+                    type="text"
+                    placeholder="Search customer..."
+                    value={unifiedCustomerSearch}
+                    onChange={(e) => setUnifiedCustomerSearch(e.target.value)}
+                    className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${getValidationColor(unifiedCustomerSearch)}`}
+                  />
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Unified Merchant Search */}
-        <div className="mb-6 p-4 bg-muted/30 dark:bg-[#223560]/50 rounded-xl">
-          <h4 className="text-heading dark:text-[#C1EEFA] mb-3">Merchant Search</h4>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-            <input
-              type="text"
-              placeholder="Search by Merchant ID, Name, or Phone Number..."
-              value={unifiedMerchantSearch}
-              onChange={(e) => setUnifiedMerchantSearch(e.target.value)}
-              className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-10 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${getValidationColor(unifiedMerchantSearch)}`}
-            />
-            {unifiedMerchantSearch && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                {unifiedMerchantSearch.length > 3 ? (
-                  <CheckCircle className="w-5 h-5 text-[#10B981] dark:text-[#C1EEFA]" />
-                ) : (
-                  <XCircle className="w-5 h-5 text-[#DE3544]" />
-                )}
+              <div>
+                <label className="block text-heading text-sm mb-2">Driver (ID, Name)</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
+                  <input
+                    type="text"
+                    placeholder="Search driver..."
+                    value={unifiedDriverSearch}
+                    onChange={(e) => setUnifiedDriverSearch(e.target.value)}
+                    className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${getValidationColor(unifiedDriverSearch)}`}
+                  />
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Unified Driver Search */}
-        <div className="mb-6 p-4 bg-muted/30 dark:bg-[#223560]/50 rounded-xl">
-          <h4 className="text-heading dark:text-[#C1EEFA] mb-3">Driver Search</h4>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-            <input
-              type="text"
-              placeholder="Search by Driver ID, Name, or Phone Number..."
-              value={unifiedDriverSearch}
-              onChange={(e) => setUnifiedDriverSearch(e.target.value)}
-              className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-10 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${getValidationColor(unifiedDriverSearch)}`}
-            />
-            {unifiedDriverSearch && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                {unifiedDriverSearch.length > 3 ? (
-                  <CheckCircle className="w-5 h-5 text-[#10B981] dark:text-[#C1EEFA]" />
-                ) : (
-                  <XCircle className="w-5 h-5 text-[#DE3544]" />
-                )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-heading text-sm mb-2">Date From</label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1]" />
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                  />
+                </div>
               </div>
-            )}
-          </div>
-        </div>
+              <div>
+                <label className="block text-heading text-sm mb-2">Date To</label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1]" />
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-heading text-sm mb-2">Delivery Status</label>
+                <button
+                  onClick={() => setShowCompletedOnly(!showCompletedOnly)}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border transition-all ${
+                    showCompletedOnly
+                      ? 'bg-green-500/20 border-green-500/50 text-green-400'
+                      : 'bg-input-bg dark:bg-[#1A2C53] border-input-border dark:border-[#2A3C63] text-heading dark:text-[#C1EEFA]'
+                  }`}
+                >
+                  <Filter className="w-5 h-5" />
+                  {showCompletedOnly ? 'Completed Only' : 'All Deliveries'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
-        {/* Date Range */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-heading text-sm mb-2">Date From</label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1]" />
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
-              />
+        {activeTab === 'drivers' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-heading text-sm mb-2">Driver (ID, Name)</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
+                <input
+                  type="text"
+                  placeholder="Search driver..."
+                  value={unifiedDriverSearch}
+                  onChange={(e) => setUnifiedDriverSearch(e.target.value)}
+                  className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${getValidationColor(unifiedDriverSearch)}`}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-heading text-sm mb-2">Date From</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1]" />
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-heading text-sm mb-2">Date To</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1]" />
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                />
+              </div>
             </div>
           </div>
-          <div>
-            <label className="block text-heading text-sm mb-2">Date To</label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1]" />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+        )}
 
-      {/* Orders Table */}
-      <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
-        {isLoading ? (
-          <div className="p-12 text-center">
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-[#C1EEFA]" />
-            <p className="text-heading dark:text-[#C1EEFA]">Loading orders...</p>
-          </div>
-        ) : filteredOrders.length === 0 ? (
-          <div className="p-12 text-center">
-            <p className="text-heading dark:text-[#C1EEFA]">No orders found</p>
-            <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-2">
-              {orders.length === 0 ? 'No orders available. Try adjusting your filters or refresh the data.' : 'No orders match your search criteria.'}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                <tr>
-                  {visibleColumns.id && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order ID</th>
-                  )}
-                  {visibleColumns.date && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date</th>
-                  )}
-                  {visibleColumns.merchant && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant</th>
-                  )}
-                  {visibleColumns.merchantNumber && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant Number</th>
-                  )}
-                  {visibleColumns.driver && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver</th>
-                  )}
-                  {visibleColumns.customer && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer</th>
-                  )}
-                  {visibleColumns.customerNumber && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Number</th>
-                  )}
-                  {visibleColumns.cod && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD</th>
-                  )}
-                  {visibleColumns.codCollected && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD Collected</th>
-                  )}
-                  {visibleColumns.tookanFees && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tookan Fees</th>
-                  )}
-                  {visibleColumns.fee && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fee</th>
-                  )}
-                  {visibleColumns.status && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>
-                  )}
-                  {visibleColumns.addresses && (
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Addresses</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOrders.map((order, index) => {
-                  const orderValue = (key: string) => getOrderValue(order, key);
-                  const addresses = orderValue('addresses') as { pickup: string; dropoff: string };
-                  
-                  return (
-                    <tr key={order.id || order.orderId || index} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                      {visibleColumns.id && (
-                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{orderValue('id')}</td>
-                      )}
-                      {visibleColumns.date && (
-                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{orderValue('date')}</td>
-                      )}
-                      {visibleColumns.merchant && (
-                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{orderValue('merchant')}</td>
-                      )}
-                      {visibleColumns.merchantNumber && (
-                        <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{orderValue('merchantNumber')}</td>
-                      )}
-                      {visibleColumns.driver && (
-                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{orderValue('driver')}</td>
-                      )}
-                      {visibleColumns.customer && (
-                        <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{orderValue('customer')}</td>
-                      )}
-                      {visibleColumns.customerNumber && (
-                        <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{orderValue('customerNumber')}</td>
-                      )}
-                      {visibleColumns.cod && (
-                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{orderValue('cod')}</td>
-                      )}
-                      {visibleColumns.codCollected && (
-                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            orderValue('codCollected') === 'Yes' 
-                              ? 'bg-green-500/20 text-green-600 dark:text-green-400' 
-                              : orderValue('codCollected') === 'No'
-                              ? 'bg-red-500/20 text-red-600 dark:text-red-400'
-                              : 'bg-gray-500/20 text-gray-600 dark:text-gray-400'
-                          }`}>
-                            {orderValue('codCollected')}
-                          </span>
-                        </td>
-                      )}
-                      {visibleColumns.tookanFees && (
-                        <td className="px-6 py-4 text-[#DE3544]">{orderValue('tookanFees')}</td>
-                      )}
-                      {visibleColumns.fee && (
-                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{orderValue('fee')}</td>
-                      )}
-                      {visibleColumns.status && (
-                        <td className="px-6 py-4">
-                          <span className={`px-3 py-1 rounded-lg text-xs ${
-                            (orderValue('status') as string).toLowerCase() === 'delivered' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                            (orderValue('status') as string).toLowerCase() === 'ongoing' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                            'bg-red-500/20 text-red-400 border border-red-500/30'
-                          }`}>
-                            {orderValue('status')}
-                          </span>
-                        </td>
-                      )}
-                      {visibleColumns.addresses && (
-                        <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs">
-                          <div className="truncate">{addresses?.pickup || ''}</div>
-                          <div className="truncate text-xs mt-1">{addresses?.dropoff || ''}</div>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        {activeTab === 'customers' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-heading text-sm mb-2">Customer (ID, Name, Phone)</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
+                <input
+                  type="text"
+                  placeholder="Search customer..."
+                  value={unifiedCustomerSearch}
+                  onChange={(e) => setUnifiedCustomerSearch(e.target.value)}
+                  className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${getValidationColor(unifiedCustomerSearch)}`}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-heading text-sm mb-2">Date From</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1]" />
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-heading text-sm mb-2">Date To</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1]" />
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                />
+              </div>
+            </div>
           </div>
         )}
       </div>
+
+      {activeTab === 'orders' && (
+        <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
+          {isLoading ? (
+            <div className="p-12 text-center">
+              <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-[#C1EEFA]" />
+              <p className="text-heading dark:text-[#C1EEFA]">Loading orders...</p>
+            </div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="p-12 text-center">
+              <p className="text-heading dark:text-[#C1EEFA]">No orders found</p>
+              <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-2">
+                {orders.length === 0 ? 'No orders available. Try adjusting your filters or refresh the data.' : 'No orders match your search criteria.'}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                  <tr>
+                    {visibleColumns.id && (
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order ID</th>
+                    )}
+                    {visibleColumns.dateDelivered && (
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date/Time Delivered</th>
+                    )}
+                    {visibleColumns.driverId && (
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
+                    )}
+                    {visibleColumns.driverName && (
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
+                    )}
+                    {visibleColumns.customerName && (
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Name</th>
+                    )}
+                    {visibleColumns.customerPhone && (
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Phone</th>
+                    )}
+                    {visibleColumns.pickupAddress && (
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pickup Address</th>
+                    )}
+                    {visibleColumns.deliveryAddress && (
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Delivery Address</th>
+                    )}
+                    {visibleColumns.cod && (
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD</th>
+                    )}
+                    {visibleColumns.fee && (
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrders.map((order, index) => {
+                    const orderValue = (key: string) => getOrderValue(order, key);
+                    
+                    return (
+                      <tr key={order.id || order.orderId || index} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                        {visibleColumns.id && (
+                          <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{orderValue('id')}</td>
+                        )}
+                        {visibleColumns.dateDelivered && (
+                          <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{orderValue('dateDelivered')}</td>
+                        )}
+                        {visibleColumns.driverId && (
+                          <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{orderValue('driverId')}</td>
+                        )}
+                        {visibleColumns.driverName && (
+                          <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{orderValue('driverName')}</td>
+                        )}
+                        {visibleColumns.customerName && (
+                          <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{orderValue('customerName')}</td>
+                        )}
+                        {visibleColumns.customerPhone && (
+                          <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{orderValue('customerPhone')}</td>
+                        )}
+                        {visibleColumns.pickupAddress && (
+                          <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate">{orderValue('pickupAddress')}</td>
+                        )}
+                        {visibleColumns.deliveryAddress && (
+                          <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate">{orderValue('deliveryAddress')}</td>
+                        )}
+                        {visibleColumns.cod && (
+                          <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{orderValue('cod')}</td>
+                        )}
+                        {visibleColumns.fee && (
+                          <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{orderValue('fee')}</td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -4060,89 +4060,51 @@ app.get('/api/tookan/customers', authenticate, async (req, res) => {
     console.log('Request received at:', new Date().toISOString());
     
     const apiKey = getApiKey();
-    
-    // Extract pagination parameters from query
-    const limit = parseInt(req.query.limit) || 1000;
-    const offset = parseInt(req.query.offset) || 0;
 
-    // Use fetch_customers_wallet endpoint to get all customers (merchants)
-    // This endpoint can return all customers if no vendor_id is specified
-    const tookanPayload = {
-      api_key: apiKey,
-      is_pagination: 1,
-      off_set: offset,
-      limit: limit
-    };
+    console.log('Calling Tookan API: https://api.tookanapp.com/v2/get_all_customers');
 
-    console.log('Calling Tookan API: https://api.tookanapp.com/v2/fetch_customers_wallet');
-    console.log('Tookan API payload:', JSON.stringify({ ...tookanPayload, api_key: '***HIDDEN***' }, null, 2));
-
-    const response = await fetch('https://api.tookanapp.com/v2/fetch_customers_wallet', {
+    const response = await fetch('https://api.tookanapp.com/v2/get_all_customers', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(tookanPayload),
+      body: JSON.stringify({ api_key: apiKey }),
     });
 
-    const textResponse = await response.text();
-    let data;
+    const data = await response.json();
+    
+    // Ensure customers is always an array
+    const customers = Array.isArray(data.data) ? data.data : 
+                      Array.isArray(data.customers) ? data.customers : 
+                      Array.isArray(data) ? data : [];
 
-    try {
-      data = JSON.parse(textResponse);
-    } catch (parseError) {
-      return res.status(500).json({
-        status: 'error',
-        message: `API returned non-JSON response: ${textResponse.substring(0, 200)}`,
-        data: {}
+    if (data.status === 200 || customers.length > 0) {
+      console.log('✅ Customers (Merchants) fetched successfully:', customers.length);
+      console.log('=== END REQUEST (SUCCESS) ===\n');
+      
+      res.json({
+        status: 'success',
+        action: 'fetch_customers',
+        entity: 'customer',
+        message: 'Customers fetched successfully',
+        data: { customers: customers }
       });
-    }
-
-    if (!response.ok || data.status !== 200) {
-      return res.status(response.status || 500).json({
+    } else {
+      console.log('❌ Failed to fetch customers:', data.message);
+      console.log('=== END REQUEST (ERROR) ===\n');
+      
+      res.json({
         status: 'error',
         message: data.message || 'Failed to fetch customers',
-        data: {}
+        data: { customers: [] }
       });
     }
-
-    // Transform Tookan response to standardized format
-    // Note: Tookan returns "customers" which are merchants (vendor_id)
-    const customersData = data.data || [];
-    const customers = Array.isArray(customersData) ? customersData.map((customer) => ({
-      id: customer.vendor_id || customer.customer_id || customer.id || '',
-      name: customer.customer_name || customer.name || '',
-      phone: customer.customer_phone || customer.phone || '',
-      email: customer.customer_email || customer.email || '',
-      walletBalance: parseFloat(customer.wallet_balance || 0),
-      rawData: customer
-    })) : [];
-
-    // If pagination is supported, get total count
-    const total = data.total || customers.length;
-
-    console.log('✅ Customers (Merchants) fetched successfully:', customers.length, 'of', total);
-    console.log('=== END REQUEST (SUCCESS) ===\n');
-    
-    res.json({
-      status: 'success',
-      action: 'fetch_customers',
-      entity: 'customer', // UI terminology: "merchant", Tookan terminology: "customer"
-      message: 'Customers (Merchants) fetched successfully',
-      data: {
-        customers: customers,
-        total: total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        hasMore: customers.length === parseInt(limit) // Indicates more data available
-      }
-    });
   } catch (error) {
     console.error('❌ Get customers error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
-      data: {}
+      data: { customers: [] }
     });
   }
 });
