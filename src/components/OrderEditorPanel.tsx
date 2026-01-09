@@ -178,7 +178,15 @@ export function OrderEditorPanel() {
     if (!order) return;
     setIsAction(true);
     try {
-      const result = await returnOrder(order.jobId, {});
+      // Send order data so backend doesn't need to fetch from Tookan
+      const result = await returnOrder(order.jobId, {
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        customerEmail: order.customerEmail,
+        pickupAddress: order.pickupAddress,
+        deliveryAddress: order.deliveryAddress,
+        notes: order.notes
+      });
       if (result.status === 'success') {
         toast.success('Return order created');
       } else {

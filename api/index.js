@@ -2612,9 +2612,9 @@ function getApp() {
 
     // POST Return Order
     // Return order requires permission
-    app.post('/api/tookan/order/return', authenticate, requirePermission(PERMISSIONS.PERFORM_RETURN), async (req, res) => {
+    app.post('/api/tookan/order/return', authenticate, requirePermission(PERMISSIONS.PERFORM_REORDER), async (req, res) => {
       try {
-        const { orderId, originalOrderId } = req.body;
+        const { orderId, originalOrderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, notes } = req.body;
         const orderIdToUse = orderId || originalOrderId;
         const apiKey = getApiKey();
 
@@ -2622,54 +2622,68 @@ function getApp() {
           return res.status(400).json({ status: 'error', message: 'Order ID is required' });
         }
 
-        // Get original order
-        const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_key: apiKey, job_id: orderIdToUse })
-        });
-        const originalData = await getResponse.json();
+        // Use data from request body if provided
+        let orderData = {
+          customerName: customerName || '',
+          customerPhone: customerPhone || '',
+          customerEmail: customerEmail || '',
+          pickupAddress: pickupAddress || '',
+          deliveryAddress: deliveryAddress || '',
+          notes: notes || ''
+        };
 
-        if (originalData.status !== 200) {
-          return res.status(404).json({ status: 'error', message: 'Original order not found' });
+        // Only fetch from Tookan if addresses not provided
+        if (!orderData.pickupAddress || !orderData.deliveryAddress) {
+          const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKey, job_id: orderIdToUse })
+          });
+          const originalData = await getResponse.json();
+
+          if (originalData.status !== 200) {
+            return res.status(404).json({ status: 'error', message: 'Original order not found' });
+          }
+
+          const original = originalData.data || {};
+          orderData.customerName = orderData.customerName || original.customer_name || original.customer_username || 'Customer';
+          orderData.customerPhone = orderData.customerPhone || original.customer_phone || '';
+          orderData.customerEmail = orderData.customerEmail || original.customer_email || '';
+          orderData.pickupAddress = orderData.pickupAddress || original.job_pickup_address || original.pickup_address || '';
+          orderData.deliveryAddress = orderData.deliveryAddress || original.customer_address || original.job_address || original.delivery_address || '';
+          orderData.notes = orderData.notes || original.customer_comments || '';
         }
 
-        const original = originalData.data || {};
-
-        // For returns: old delivery becomes new pickup, old pickup becomes new delivery
-        const newPickupAddr = original.customer_address || original.job_address || original.delivery_address || '';
-        const newDeliveryAddr = original.job_pickup_address || original.pickup_address || '';
-
-        // Generate datetime (now for pickup, +3 hours for delivery)
+        // For return: REVERSE the addresses
+        const returnPickupAddr = orderData.deliveryAddress;
+        const returnDeliveryAddr = orderData.pickupAddress;
+        
+        // Task time: pickup = now, delivery = now + 3 hours
         const now = new Date();
         const pickupTime = now;
         const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000);
         const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
-
-        // Create return task with correct Tookan API fields
+        
+        // Use same pattern as reorder: has_pickup=1, has_delivery=1, both addresses
         const returnPayload = {
           api_key: apiKey,
-          customer_username: original.customer_name || original.customer_username || 'Customer',
-          customer_phone: original.customer_phone || '',
-          customer_email: original.customer_email || '',
-          customer_address: newDeliveryAddr,
-          job_pickup_address: newPickupAddr,
+          customer_username: orderData.customerName || 'Customer',
+          customer_phone: orderData.customerPhone || '',
+          customer_email: orderData.customerEmail || '',
+          job_pickup_address: returnPickupAddr,
           job_pickup_datetime: formatDateTime(pickupTime),
+          customer_address: returnDeliveryAddr,
           job_delivery_datetime: formatDateTime(deliveryTime),
           has_pickup: 1,
           has_delivery: 1,
           layout_type: 0,
           timezone: '-180',
-          cod: 0, // No COD for returns
-          order_payment: parseFloat(original.order_payment) || 0,
-          customer_comments: `Return order for ${orderIdToUse}. ${original.customer_comments || ''}`.trim(),
-          job_description: `Return order for ${orderIdToUse}. ${original.customer_comments || ''}`.trim(),
+          cod: 0,
+          order_payment: 0,
+          customer_comments: `Return order for ${orderIdToUse}. ${orderData.notes || ''}`.trim(),
+          job_description: `Return order for ${orderIdToUse}. ${orderData.notes || ''}`.trim(),
           auto_assignment: 0
         };
-
-        if (original.fleet_id) {
-          returnPayload.fleet_id = original.fleet_id;
-        }
 
         const response = await fetch('https://api.tookanapp.com/v2/create_task', {
           method: 'POST',
@@ -2685,15 +2699,15 @@ function getApp() {
           try {
             await supabase.from('tasks').upsert({
               job_id: returnOrderId,
-              customer_name: original.customer_name || original.customer_username || 'Customer',
-              customer_phone: original.customer_phone || '',
-              customer_email: original.customer_email,
-              pickup_address: newPickupAddr,
-              delivery_address: newDeliveryAddr,
+              customer_name: orderData.customerName || 'Customer',
+              customer_phone: orderData.customerPhone || '',
+              customer_email: orderData.customerEmail || null,
+              pickup_address: returnPickupAddr,
+              delivery_address: returnDeliveryAddr,
               cod_amount: 0,
-              order_fees: parseFloat(original.order_payment) || 0,
-              notes: `Return order for ${orderIdToUse}`,
-              fleet_id: original.fleet_id,
+              order_fees: 0,
+              notes: `Return order for ${orderIdToUse}. ${orderData.notes || ''}`.trim(),
+              fleet_id: orderData.assignedDriver || null,
               status: 0,
               creation_datetime: new Date().toISOString(),
               source: 'return',
