@@ -65,7 +65,14 @@ async function authenticate(req, res, next) {
     });
   }
 
-  // Try Supabase JWT token first
+  // Development fallback: if Supabase is not configured, accept any token and treat as admin
+  if (!isConfigured()) {
+    req.user = { id: 'local-dev', email: 'local@dev', role: 'admin', permissions: {}, source: 'local' };
+    req.userId = 'local-dev';
+    return next();
+  }
+
+  // Try Supabase JWT token first (only when configured)
   let user = await verifyToken(token);
   
   // If not Supabase token, try Tookan session token

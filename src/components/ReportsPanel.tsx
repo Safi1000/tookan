@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+import React from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Download, Calendar, CheckCircle, XCircle, Settings2, X, RefreshCw, AlertCircle, Filter } from 'lucide-react';
 import { toast } from 'sonner';
@@ -53,17 +55,17 @@ export function ReportsPanel() {
 
   // Combined search term for server-side filtering
   const combinedSearch = useMemo(() => {
-    const searchTerms = [];
+    const searchTerms: string[] = [];
     if (orderIdSearch.trim()) searchTerms.push(orderIdSearch.trim());
     if (unifiedCustomerSearch.trim()) searchTerms.push(unifiedCustomerSearch.trim());
     if (unifiedDriverSearch.trim()) searchTerms.push(unifiedDriverSearch.trim());
     return searchTerms.join(' ') || undefined;
   }, [orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch]);
 
-  // Fetch data on mount and when filters change
+  // Fetch data ONLY on mount - filtering is done client-side
   useEffect(() => {
     loadData();
-  }, [dateFrom, dateTo, combinedSearch]); // Reload when date filters or search change
+  }, []); // Only fetch once on mount - use Refresh button to reload
 
   const loadData = async () => {
     setIsLoading(true);
@@ -90,6 +92,12 @@ export function ReportsPanel() {
       if (driversResult.status === 'success' && driversResult.data) {
         setDrivers(driversResult.data.fleets || []);
       }
+      const driverLookup = new Map(
+        (driversResult.data?.fleets || []).map((d: any) => [
+          (d.id || d.fleet_id || '').toString(),
+          d,
+        ])
+      );
 
       // Fetch customers
       const customersResult = await fetchAllCustomers();
@@ -105,26 +113,53 @@ export function ReportsPanel() {
       if (summaryResult.status === 'success' && summaryResult.data) {
         // Use API summaries if available
         if (summaryResult.data.driverSummaries && summaryResult.data.driverSummaries.length > 0) {
-          setDriverSummaries(summaryResult.data.driverSummaries.map(d => ({
-            driverId: d.driverId,
-            driverName: d.driverName,
-            orderCount: d.totalOrders,
-            codTotal: d.codTotal,
-            orderFees: d.feesTotal,
-            totalValue: d.codTotal + d.feesTotal,
-            avgDeliveryTime: d.averageDeliveryTime
-          })));
+          const apiDriverSummaries = summaryResult.data.driverSummaries as any[];
+          setDriverSummaries(apiDriverSummaries.map(d => {
+            const driverId = (d.driverId ?? d.fleet_id ?? '').toString();
+            const driverFromLookup = driverLookup.get(driverId);
+            // Map new field names from refactored API
+            const driverName = d.driverName ?? d.driver_name ?? driverFromLookup?.name ?? 'Unknown Driver';
+            const driverEmail = d.driverEmail ?? d.email ?? driverFromLookup?.email ?? '';
+            const driverPhone = d.driverPhone ?? d.phone ?? driverFromLookup?.phone ?? '';
+            // Use numberOfOrders (new) with fallbacks
+            const totalOrders = d.numberOfOrders ?? d.totalOrders ?? d.orderCount ?? d.total_orders ?? 0;
+            const codTotal = d.codTotal ?? d.cod_total ?? d.cod ?? 0;
+            // Use orderFees (new) with fallbacks
+            const feesTotal = d.orderFees ?? d.feesTotal ?? d.fees_total ?? d.order_payment ?? 0;
+            // Use totalOrderValue from API instead of calculating
+            const totalValue = d.totalOrderValue ?? (codTotal + feesTotal);
+            const avgDeliveryTime = d.averageDeliveryTime ?? d.avgDeliveryTime ?? d.avg_delivery_time ?? 0;
+            return {
+              driverId,
+              driverName,
+              driverEmail,
+              driverPhone,
+              orderCount: totalOrders,
+              codTotal,
+              orderFees: feesTotal,
+              totalValue,
+              avgDeliveryTime
+            };
+          }));
         }
         
         if (summaryResult.data.customerSummaries && summaryResult.data.customerSummaries.length > 0) {
-          setCustomerSummaries(summaryResult.data.customerSummaries.map(c => ({
-            customerId: c.customerId,
-            customerName: c.customerName,
-            orderCount: c.totalOrders,
-            codReceived: c.codTotal,
-            orderFees: c.feesTotal,
-            revenue: c.codTotal + c.feesTotal
-          })));
+          const apiCustomerSummaries = summaryResult.data.customerSummaries as any[];
+          setCustomerSummaries(apiCustomerSummaries.map(c => {
+            const customerId = c.customerId ?? c.merchantId ?? c.vendor_id ?? '';
+            const customerName = c.customerName ?? c.merchantName ?? c.name ?? 'Unknown Customer';
+            const totalOrders = c.orderCount ?? c.totalOrders ?? c.total_orders ?? 0;
+            const codTotal = c.codReceived ?? c.codTotal ?? c.cod_total ?? c.cod ?? 0;
+            const feesTotal = c.orderFees ?? c.feesTotal ?? c.fees_total ?? c.order_payment ?? 0;
+            return {
+              customerId,
+              customerName,
+              orderCount: totalOrders,
+              codReceived: codTotal,
+              orderFees: feesTotal,
+              revenue: codTotal + feesTotal
+            };
+          }));
         }
         
         if (summaryResult.data.totals) {
@@ -146,7 +181,7 @@ export function ReportsPanel() {
             orders: fetchedOrders.length,
             drivers: driversResult.status === 'success' ? (driversResult.data?.fleets?.length || 0) : prev.drivers,
             customers: customersResult.status === 'success' ? (customersResult.data?.customers?.length || 0) : prev.customers,
-            deliveries: fetchedOrders.filter((o: any) => [6, 7, 8].includes(parseInt(o.status))).length
+            deliveries: fetchedOrders.filter((o: any) => [2].includes(parseInt(o.status))).length
           }));
         }
       }
@@ -161,44 +196,57 @@ export function ReportsPanel() {
 
   // Calculate driver and merchant summaries from order data
   const calculateSummaries = (orderData: any[]) => {
-    // Driver summaries
+    // Driver summaries - Include ALL drivers from fetched drivers list
     const driverMap = new Map<string, {
       driverId: string;
       driverName: string;
+      driverEmail?: string;
+      driverPhone?: string;
       orders: any[];
       codTotal: number;
       feesTotal: number;
+      totalOrderValue: number;
       deliveryTimes: number[];
     }>();
 
-    orderData.forEach((order: any) => {
-      const driverId = order.driverId || order.fleet_id || 'unknown';
-      const driverName = order.driver || order.driverName || 'Unknown Driver';
-      
-      if (!driverMap.has(driverId)) {
-        driverMap.set(driverId, {
-          driverId,
-          driverName,
+    // Step 1: Initialize map with ALL drivers (regardless of orders)
+    drivers.forEach((driver: any) => {
+      const id = (driver.fleet_id || driver.id || '').toString();
+      if (id) {
+        driverMap.set(id, {
+          driverId: id,
+          driverName: driver.fleet_name || driver.name || driver.username || 'Unknown Driver',
+          driverEmail: driver.email || '',
+          driverPhone: driver.phone || driver.fleet_phone || '',
           orders: [],
           codTotal: 0,
           feesTotal: 0,
+          totalOrderValue: 0,
           deliveryTimes: []
         });
       }
+    });
 
-      const driverData = driverMap.get(driverId)!;
-      driverData.orders.push(order);
+    // Step 2: Aggregate order data by driver
+    orderData.forEach((order: any) => {
+      const driverId = (order.driverId || order.fleet_id || '').toString();
       
-      const cod = parseFloat(order.cod?.replace('$', '') || order.codAmount || 0);
-      const fee = parseFloat(order.fee?.replace('$', '') || order.orderFees || 0);
-      
-      driverData.codTotal += cod;
-      driverData.feesTotal += fee;
-      
-      if (order.deliveryTime && order.deliveryTime !== '-') {
-        const timeMatch = order.deliveryTime.match(/(\d+)/);
-        if (timeMatch) {
-          driverData.deliveryTimes.push(parseInt(timeMatch[1]));
+      if (driverId && driverMap.has(driverId)) {
+        const driverData = driverMap.get(driverId)!;
+        driverData.orders.push(order);
+        
+        const cod = parseFloat(String(order.cod || order.codAmount || 0).replace(/[^0-9.-]/g, '')) || 0;
+        const fee = parseFloat(String(order.fee || order.orderFees || 0).replace(/[^0-9.-]/g, '')) || 0;
+        
+        driverData.codTotal += cod;
+        driverData.feesTotal += fee;
+        driverData.totalOrderValue += (cod + fee);
+        
+        if (order.deliveryTime && order.deliveryTime !== '-') {
+          const timeMatch = order.deliveryTime.match(/(\d+)/);
+          if (timeMatch) {
+            driverData.deliveryTimes.push(parseInt(timeMatch[1]));
+          }
         }
       }
     });
@@ -206,12 +254,14 @@ export function ReportsPanel() {
     const driverSummariesData: DriverSummary[] = Array.from(driverMap.values()).map(driver => ({
       driverId: driver.driverId,
       driverName: driver.driverName,
+      driverEmail: driver.driverEmail,
+      driverPhone: driver.driverPhone,
       orderCount: driver.orders.length,
-      codTotal: driver.codTotal,
-      orderFees: driver.feesTotal,
-      totalValue: driver.codTotal + driver.feesTotal,
+      codTotal: Math.round(driver.codTotal * 100) / 100,
+      orderFees: Math.round(driver.feesTotal * 100) / 100,
+      totalValue: Math.round(driver.totalOrderValue * 100) / 100,
       avgDeliveryTime: driver.deliveryTimes.length > 0
-        ? driver.deliveryTimes.reduce((a, b) => a + b, 0) / driver.deliveryTimes.length
+        ? Math.round(driver.deliveryTimes.reduce((a, b) => a + b, 0) / driver.deliveryTimes.length)
         : 0
     }));
 
@@ -262,9 +312,27 @@ export function ReportsPanel() {
     setCustomerSummaries(customerSummariesData);
   };
 
-  // Filter orders based on search criteria
+  // Filter orders based on search criteria (ALL filtering done client-side)
   const filteredOrders = useMemo(() => {
     let filtered = orders;
+
+    // Filter by date range (client-side)
+    if (dateFrom) {
+      const fromDate = new Date(dateFrom);
+      fromDate.setHours(0, 0, 0, 0);
+      filtered = filtered.filter(order => {
+        const orderDate = new Date(order.date);
+        return orderDate >= fromDate;
+      });
+    }
+    if (dateTo) {
+      const toDate = new Date(dateTo);
+      toDate.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(order => {
+        const orderDate = new Date(order.date);
+        return orderDate <= toDate;
+      });
+    }
 
     // Filter by order ID
     if (orderIdSearch.trim()) {
@@ -292,17 +360,17 @@ export function ReportsPanel() {
       );
     }
 
-    // Filter by completed deliveries only
+    // Filter by completed deliveries only (status 2 = Successful in Tookan)
     if (showCompletedOnly) {
-      filtered = filtered.filter(order => 
-        [6, 7, 8].includes(parseInt(order.status)) ||
-        (order.status || '').toLowerCase() === 'delivered' ||
-        (order.status || '').toLowerCase() === 'completed'
-      );
+      filtered = filtered.filter(order => {
+        const statusNum = parseInt(order.status);
+        const statusStr = String(order.status || '').toLowerCase();
+        return statusNum === 2 || statusStr === 'delivered' || statusStr === 'completed';
+      });
     }
 
     return filtered;
-  }, [orders, orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch, showCompletedOnly]);
+  }, [orders, dateFrom, dateTo, orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch, showCompletedOnly]);
 
   // Filtered driver summaries (per tab filters)
   const filteredDriverSummaries = useMemo(() => {
@@ -311,7 +379,9 @@ export function ReportsPanel() {
       const searchLower = unifiedDriverSearch.toLowerCase();
       filtered = filtered.filter(driver =>
         (driver.driverName || '').toLowerCase().includes(searchLower) ||
-        (driver.driverId || '').toLowerCase().includes(searchLower)
+        (driver.driverId || '').toLowerCase().includes(searchLower) ||
+        (driver.driverEmail || '').toLowerCase().includes(searchLower) ||
+        (driver.driverPhone || '').toLowerCase().includes(searchLower)
       );
     }
     return filtered;
@@ -491,7 +561,7 @@ export function ReportsPanel() {
         </div>
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
           <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Completed Deliveries</div>
-          <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{totals.deliveries || filteredOrders.filter((o: any) => (o.status || '').toLowerCase() === 'delivered').length}</div>
+          <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{totals.deliveries || filteredOrders.filter((o: any) => parseInt(o.status) === 2).length}</div>
         </div>
       </div>
 
@@ -513,14 +583,24 @@ export function ReportsPanel() {
       </div>
 
       {/* Driver Summaries (Drivers tab) */}
-      {activeTab === 'drivers' && filteredDriverSummaries.length > 0 && (
+      {activeTab === 'drivers' && (
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
           <h3 className="text-foreground text-xl mb-4">Driver Summaries</h3>
+          {filteredDriverSummaries.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-muted-light dark:text-[#99BFD1]">
+                {isLoading ? 'Loading driver summaries...' : 'No driver summaries available. Driver summaries are calculated from orders with assigned drivers.'}
+              </p>
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
                 <tr>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver</th>
+                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
+                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Name</th>
+                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Email</th>
+                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
                   <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Orders</th>
                   <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD Total</th>
                   <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
@@ -531,7 +611,10 @@ export function ReportsPanel() {
               <tbody>
                 {filteredDriverSummaries.map((driver, index) => (
                   <tr key={driver.driverId} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{driver.driverId}</td>
                     <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{driver.driverName}</td>
+                    <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{driver.driverEmail || '—'}</td>
+                    <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{driver.driverPhone || '—'}</td>
                     <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{driver.orderCount || 0}</td>
                     <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${(driver.codTotal || 0).toFixed(2)}</td>
                     <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${(driver.orderFees || 0).toFixed(2)}</td>
@@ -542,13 +625,21 @@ export function ReportsPanel() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
 
       {/* Customer Summaries (Customers tab) */}
-      {activeTab === 'customers' && filteredCustomerSummaries.length > 0 && (
+      {activeTab === 'customers' && (
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
           <h3 className="text-foreground text-xl mb-4">Customer Summaries</h3>
+          {filteredCustomerSummaries.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-muted-light dark:text-[#99BFD1]">
+                {isLoading ? 'Loading customer summaries...' : 'No customer summaries available. Customer summaries are calculated from orders.'}
+              </p>
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
@@ -573,6 +664,7 @@ export function ReportsPanel() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
 

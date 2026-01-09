@@ -75,6 +75,9 @@
     "dev": "vite",
     "build": "vite build",
     "server": "node server/index.js",
-    "dev:all": "concurrently \"npm run server\" \"npm run dev\""
+    "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
+    "sync:orders": "node sync-tookan-orders.js",
+    "sync:incremental": "node sync-tookan-orders.js --incremental",
+    "sync:status": "node sync-tookan-orders.js --status"
   }
 }

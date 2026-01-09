@@ -153,6 +153,8 @@ export interface OrderFilters {
 export interface DriverSummary {
   driverId: string;
   driverName: string;
+  driverEmail?: string;
+  driverPhone?: string;
   orderCount: number;
   codTotal: number;
   orderFees: number;
@@ -1361,6 +1363,244 @@ export async function rejectWithdrawalRequest(
       entity: 'withdrawal',
       message: error instanceof Error ? error.message : 'Network error occurred',
       data: {} as WithdrawalRequest,
+    };
+  }
+}
+
+// ============================================================
+// CACHED ORDERS & AGENTS ENDPOINTS
+// ============================================================
+
+/**
+ * Agent data type
+ */
+export interface AgentData {
+  fleet_id: number;
+  name: string;
+  email?: string;
+  phone?: string;
+  username?: string;
+  status?: number;
+  is_active: boolean;
+  team_id?: number;
+  team_name?: string;
+  last_synced_at?: string;
+}
+
+/**
+ * Cached order filters
+ */
+export interface CachedOrderFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  driverId?: string;
+  customerId?: string;
+  status?: string;
+  search?: string;
+  limit?: number;
+  page?: number;
+}
+
+/**
+ * Fetch cached orders from database
+ */
+export async function fetchCachedOrders(
+  filters?: CachedOrderFilters
+): Promise<TookanApiResponse<{ orders: OrderData[]; total: number; page: number; limit: number; hasMore: boolean }>> {
+  try {
+    let url = `${API_BASE_URL}/api/tookan/orders/cached`;
+    const params = new URLSearchParams();
+    
+    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+    if (filters?.driverId) params.append('driverId', filters.driverId);
+    if (filters?.customerId) params.append('customerId', filters.customerId);
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.page) params.append('page', filters.page.toString());
+    
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_cached_orders',
+        entity: 'order',
+        message: data.message || 'Failed to fetch cached orders',
+        data: { orders: [], total: 0, page: 1, limit: 50, hasMore: false },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_cached_orders',
+      entity: 'order',
+      message: data.message || 'Cached orders fetched successfully',
+      data: data.data || { orders: [], total: 0, page: 1, limit: 50, hasMore: false },
+    };
+  } catch (error) {
+    console.error('Fetch cached orders error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_cached_orders',
+      entity: 'order',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { orders: [], total: 0, page: 1, limit: 50, hasMore: false },
+    };
+  }
+}
+
+/**
+ * Fetch agents from database
+ */
+export async function fetchAgentsFromDB(
+  filters?: { isActive?: boolean; teamId?: string; search?: string }
+): Promise<TookanApiResponse<{ agents: AgentData[]; total: number }>> {
+  try {
+    let url = `${API_BASE_URL}/api/agents`;
+    const params = new URLSearchParams();
+    
+    if (filters?.isActive !== undefined) params.append('isActive', filters.isActive.toString());
+    if (filters?.teamId) params.append('teamId', filters.teamId);
+    if (filters?.search) params.append('search', filters.search);
+    
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_agents',
+        entity: 'agent',
+        message: data.message || 'Failed to fetch agents',
+        data: { agents: [], total: 0 },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_agents',
+      entity: 'agent',
+      message: data.message || 'Agents fetched successfully',
+      data: data.data || { agents: [], total: 0 },
+    };
+  } catch (error) {
+    console.error('Fetch agents error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_agents',
+      entity: 'agent',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { agents: [], total: 0 },
+    };
+  }
+}
+
+/**
+ * Assign driver to order
+ * Updates both Tookan API and Supabase database
+ */
+export async function assignDriverToOrder(
+  jobId: string | number,
+  fleetId: string | number | null,
+  notes?: string
+): Promise<TookanApiResponse<{ jobId: string; fleet_id: number | null; fleet_name: string | null; tookan_synced: boolean; database_synced: boolean }>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/orders/${jobId}/assign`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        fleet_id: fleetId,
+        notes: notes
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'assign_driver',
+        entity: 'order',
+        message: data.message || 'Failed to assign driver',
+        data: { jobId: jobId.toString(), fleet_id: null, fleet_name: null, tookan_synced: false, database_synced: false },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'assign_driver',
+      entity: 'order',
+      message: data.message || 'Driver assigned successfully',
+      data: data.data || { jobId: jobId.toString(), fleet_id: fleetId, fleet_name: null, tookan_synced: true, database_synced: true },
+    };
+  } catch (error) {
+    console.error('Assign driver error:', error);
+    return {
+      status: 'error',
+      action: 'assign_driver',
+      entity: 'order',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { jobId: jobId.toString(), fleet_id: null, fleet_name: null, tookan_synced: false, database_synced: false },
+    };
+  }
+}
+
+/**
+ * Sync agents manually
+ */
+export async function syncAgents(): Promise<TookanApiResponse<{ synced: number; errors: number }>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/agents/sync`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'sync_agents',
+        entity: 'agent',
+        message: data.message || 'Failed to sync agents',
+        data: { synced: 0, errors: 0 },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'sync_agents',
+      entity: 'agent',
+      message: data.message || 'Agents synced successfully',
+      data: data.data || { synced: 0, errors: 0 },
+    };
+  } catch (error) {
+    console.error('Sync agents error:', error);
+    return {
+      status: 'error',
+      action: 'sync_agents',
+      entity: 'agent',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { synced: 0, errors: 0 },
     };
   }
 }

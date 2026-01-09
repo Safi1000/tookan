@@ -70,6 +70,39 @@ function getApp() {
       return apiKey;
     };
 
+    const getWebhookSecret = () => process.env.TOOKAN_WEBHOOK_SECRET || '';
+
+    const normalizeTags = (tags) => {
+      if (!tags) return [];
+      if (Array.isArray(tags)) return tags;
+      if (typeof tags === 'string') return tags.split(',').map(t => t.trim()).filter(Boolean);
+      return [];
+    };
+
+    const transformFleetToAgent = (fleet) => ({
+      fleet_id: parseInt(fleet.fleet_id || fleet.id),
+      name: fleet.fleet_name || fleet.name || fleet.username || 'Unknown Agent',
+      email: fleet.email || null,
+      phone: fleet.phone || fleet.fleet_phone || null,
+      username: fleet.username || null,
+      status: parseInt(fleet.status) || 1,
+      is_active: fleet.is_active !== false && fleet.status !== 0,
+      team_id: fleet.team_id ? parseInt(fleet.team_id) : null,
+      team_name: fleet.team_name || null,
+      tags: normalizeTags(fleet.tags),
+      latitude: fleet.latitude ? parseFloat(fleet.latitude) : null,
+      longitude: fleet.longitude ? parseFloat(fleet.longitude) : null,
+      battery_level: fleet.battery_level ? parseInt(fleet.battery_level) : null,
+      registration_status: fleet.registration_status ? parseInt(fleet.registration_status) : null,
+      transport_type: fleet.transport_type ? parseInt(fleet.transport_type) : null,
+      transport_desc: fleet.transport_desc || null,
+      license: fleet.license || null,
+      color: fleet.color || null,
+      raw_data: fleet,
+      last_synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+
     // ============================================
     // PERMISSION CONSTANTS (per SRS)
     // ============================================
@@ -388,6 +421,93 @@ function getApp() {
       }
     });
 
+    // Tookan task webhook (body or header secret)
+    app.post('/api/webhooks/tookan/task', async (req, res) => {
+      try {
+        const expected = getWebhookSecret();
+        const secretHeader = req.headers['x-webhook-secret'];
+        const bodySecret = (req.body && req.body.tookan_shared_secret) || null;
+        if (expected && secretHeader !== expected && bodySecret !== expected) {
+          return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+        }
+
+        const payload = req.body || {};
+        const jobId = payload.job_id || payload.id || payload.task_id;
+        if (!jobId) {
+          return res.status(400).json({ status: 'error', message: 'job_id is required' });
+        }
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+        }
+
+        const record = {
+          job_id: parseInt(jobId) || jobId,
+          cod_amount: parseFloat(payload.cod_amount || payload.cod || 0),
+          order_fees: parseFloat(payload.order_fees || payload.order_payment || 0),
+          fleet_id: payload.fleet_id ? parseInt(payload.fleet_id) : null,
+          fleet_name: payload.fleet_name || payload.driver_name || '',
+          notes: payload.customer_comments || payload.notes || '',
+          status: payload.status || payload.job_status || null,
+          creation_datetime: payload.creation_datetime || payload.job_time || payload.created_at || payload.timestamp || new Date().toISOString(),
+          raw_data: payload,
+          last_synced_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        const { error } = await supabase
+          .from('tasks')
+          .upsert(record, { onConflict: 'job_id', ignoreDuplicates: false });
+
+        if (error) {
+          console.error('Supabase task upsert error:', error.message);
+          return res.status(500).json({ status: 'error', message: error.message });
+        }
+
+        return res.status(200).json({ status: 'success', message: 'Task upserted' });
+      } catch (error) {
+        console.error('Webhook task error:', error);
+        return res.status(500).json({ status: 'error', message: error.message || 'Internal error' });
+      }
+    });
+
+    // Tookan agent webhook (body or header secret)
+    app.post('/api/webhooks/tookan/agent', async (req, res) => {
+      try {
+        const expected = getWebhookSecret();
+        const secretHeader = req.headers['x-webhook-secret'];
+        const bodySecret = (req.body && req.body.tookan_shared_secret) || null;
+        if (expected && secretHeader !== expected && bodySecret !== expected) {
+          return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+        }
+
+        const payload = req.body || {};
+        const fleetId = payload.fleet_id || payload.id;
+        if (!fleetId) {
+          return res.status(400).json({ status: 'error', message: 'fleet_id is required' });
+        }
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+        }
+
+        const agentRecord = transformFleetToAgent(payload);
+        const { error } = await supabase
+          .from('agents')
+          .upsert(agentRecord, { onConflict: 'fleet_id', ignoreDuplicates: false });
+
+        if (error) {
+          console.error('Supabase agent upsert error:', error.message);
+          return res.status(500).json({ status: 'error', message: error.message });
+        }
+
+        return res.status(200).json({ status: 'success', message: 'Agent upserted' });
+      } catch (error) {
+        console.error('Webhook agent error:', error);
+        return res.status(500).json({ status: 'error', message: error.message || 'Internal error' });
+      }
+    });
+
     // Get all fleets (drivers)
     app.get('/api/tookan/fleets', async (req, res) => {
       try {
@@ -464,43 +584,162 @@ function getApp() {
       }
     });
 
-    // Get orders from Tookan
+    // Get orders from Tookan (cache-first strategy with 6-month range)
     app.get('/api/tookan/orders', async (req, res) => {
       try {
-        const apiKey = getApiKey();
-        const { dateFrom, dateTo, limit = 100 } = req.query;
+        const { dateFrom, dateTo, limit = 100, page = 1, forceRefresh } = req.query;
         
-        const response = await fetch('https://api.tookanapp.com/v2/get_all_tasks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            api_key: apiKey,
-            job_status: '0,1,2,3,4,5,6,7,8,9',
-            start_date: dateFrom || undefined,
-            end_date: dateTo || undefined,
-            limit: parseInt(limit)
-          })
-        });
-        const data = await response.json();
+        // Calculate default date range: last 6 months (Tookan only keeps 6 months)
+        const formatDate = (date) => date.toISOString().split('T')[0];
+        const today = new Date();
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
         
-        // Ensure orders is always an array
-        const orders = Array.isArray(data.data) ? data.data : 
-                       Array.isArray(data.tasks) ? data.tasks : 
-                       Array.isArray(data) ? data : [];
+        let startDate = dateFrom || formatDate(sixMonthsAgo);
+        let endDate = dateTo || formatDate(today);
         
-        if (data.status === 200 || orders.length > 0) {
-          res.json({
-            status: 'success',
-            message: 'Orders fetched successfully',
-            data: { orders: orders, total: orders.length }
-          });
-        } else {
-          res.json({
-            status: 'error',
-            message: data.message || 'Failed to fetch orders',
-            data: { orders: [], total: 0 }
-          });
+        // Validate dates don't exceed 6 months ago
+        const sixMonthsAgoDate = new Date();
+        sixMonthsAgoDate.setMonth(sixMonthsAgoDate.getMonth() - 6);
+        const requestedStart = new Date(startDate);
+        if (requestedStart < sixMonthsAgoDate) {
+          startDate = formatDate(sixMonthsAgoDate);
         }
+        
+        let orders = [];
+        let source = 'api';
+        
+        // Try cache first if Supabase is configured
+        if (isSupabaseConfigured && supabase && !forceRefresh) {
+          try {
+            // Check if cache is fresh
+            const { data: syncStatus } = await supabase
+              .from('sync_status')
+              .select('last_successful_sync')
+              .eq('sync_type', 'orders')
+              .single();
+            
+            let isFresh = false;
+            if (syncStatus?.last_successful_sync) {
+              const lastSync = new Date(syncStatus.last_successful_sync);
+              const now = new Date();
+              const hoursDiff = (now - lastSync) / (1000 * 60 * 60);
+              isFresh = hoursDiff < 24;
+            }
+            
+            if (isFresh) {
+              // Fetch from cache
+              const { data: cachedOrders, error: cacheError } = await supabase
+                .from('tasks')
+                .select('*')
+                .gte('creation_datetime', startDate)
+                .lte('creation_datetime', endDate + 'T23:59:59.999Z')
+                .order('creation_datetime', { ascending: false })
+                .limit(parseInt(limit));
+              
+              if (!cacheError && cachedOrders && cachedOrders.length > 0) {
+                orders = cachedOrders.map(task => ({
+                  id: task.job_id?.toString(),
+                  job_id: task.job_id,
+                  orderId: task.order_id || task.job_id?.toString(),
+                  date: task.creation_datetime,
+                  status: task.status,
+                  job_type: task.job_type,
+                  customer: task.customer_name || task.delivery_name,
+                  driver: task.fleet_name,
+                  driverId: task.fleet_id?.toString(),
+                  cod: task.total_amount || task.cod_amount || 0,
+                  orderFees: task.order_fees || 0,
+                  pickup_address: task.pickup_address,
+                  delivery_address: task.delivery_address
+                }));
+                source = 'cache';
+              }
+            }
+          } catch (cacheErr) {
+            console.log('Cache check failed, falling back to API:', cacheErr.message);
+          }
+        }
+        
+        // Fallback to Tookan API if cache miss
+        if (orders.length === 0) {
+          const apiKey = getApiKey();
+          
+          // Fetch with retry logic
+          const fetchWithRetry = async (url, options, retries = 3) => {
+            for (let attempt = 1; attempt <= retries; attempt++) {
+              try {
+                return await fetch(url, options);
+              } catch (error) {
+                if (error.message.includes('SSL') || error.message.includes('ECONNRESET')) {
+                  if (attempt < retries) {
+                    await new Promise(r => setTimeout(r, 1000 * attempt));
+                    continue;
+                  }
+                }
+                throw error;
+              }
+            }
+          };
+          
+          // Fetch all job types
+          const jobTypes = [0, 1, 2, 3];
+          const allTasks = [];
+          
+          for (const jobType of jobTypes) {
+            try {
+              const response = await fetchWithRetry('https://api.tookanapp.com/v2/get_all_tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  api_key: apiKey,
+                  job_type: jobType,
+                  job_status: '0,1,2,3,4,5,6,7,8,9',
+                  start_date: startDate,
+                  end_date: endDate,
+                  limit: parseInt(limit),
+                  custom_fields: 1
+                })
+              });
+              
+              const data = await response.json();
+              if (data.status === 200 || data.status === 1) {
+                const tasks = Array.isArray(data.data) ? data.data : [];
+                allTasks.push(...tasks);
+              }
+            } catch (err) {
+              console.error(`Error fetching job type ${jobType}:`, err.message);
+            }
+          }
+          
+          orders = allTasks.map(task => ({
+            id: task.job_id?.toString(),
+            job_id: task.job_id,
+            orderId: task.order_id || task.job_id?.toString(),
+            date: task.creation_datetime,
+            status: task.job_status,
+            job_type: task.job_type,
+            customer: task.customer_name || task.customer_username,
+            driver: task.fleet_name,
+            driverId: task.fleet_id?.toString(),
+            cod: parseFloat(task.total_amount || task.cod || 0),
+            orderFees: parseFloat(task.order_payment || 0),
+            pickup_address: task.job_pickup_address,
+            delivery_address: task.job_address
+          }));
+          source = 'api';
+        }
+        
+        res.json({
+          status: 'success',
+          message: 'Orders fetched successfully',
+          data: { 
+            orders: orders, 
+            total: orders.length,
+            source: source,
+            filters: { dateFrom: startDate, dateTo: endDate }
+          }
+        });
       } catch (error) {
         res.status(500).json({
           status: 'error',
@@ -532,8 +771,10 @@ function getApp() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               api_key: apiKey,
+              job_type: 1,
               job_status: '0,1,2,3,4,5,6,7,8,9',
-              limit: 100
+              limit: 100,
+              custom_fields: 1
             })
           })
         ]);
@@ -1503,10 +1744,12 @@ function getApp() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               api_key: apiKey,
+              job_type: 1,
               job_status: '0,1,2,3,4,5,6,7,8,9',
               start_date: dateFrom || undefined,
               end_date: dateTo || undefined,
-              limit: 1000
+              limit: 1000,
+              custom_fields: 1
             })
           })
         ]);
@@ -1593,10 +1836,12 @@ function getApp() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             api_key: apiKey,
+            job_type: 1,
             job_status: '0,1,2,3,4,5,6,7,8,9',
             start_date: today,
             end_date: today,
-            limit: 500
+            limit: 500,
+            custom_fields: 1
           })
         });
 
@@ -1634,10 +1879,12 @@ function getApp() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             api_key: apiKey,
+            job_type: 1,
             job_status: '0,1,2,3,4,5,6,7,8,9',
             start_date: startDate,
             end_date: endDate,
-            limit: 2000
+            limit: 2000,
+            custom_fields: 1
           })
         });
 
@@ -1672,10 +1919,12 @@ function getApp() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             api_key: apiKey,
+            job_type: 1,
             job_status: '0,1,2,3,4,5,6,7,8,9',
             start_date: dateFrom,
             end_date: dateTo,
-            limit: 5000
+            limit: 5000,
+            custom_fields: 1
           })
         });
 
@@ -1717,8 +1966,10 @@ function getApp() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             api_key: apiKey,
+            job_type: 1,
             job_status: '2', // Completed only
-            limit: 500
+            limit: 500,
+            custom_fields: 1
           })
         });
         const tasksData = await tasksRes.json();
@@ -2417,6 +2668,98 @@ function getApp() {
         });
       } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // ADMIN SYNC ENDPOINTS (Limited in Serverless)
+    // ============================================
+
+    // GET Sync Status
+    app.get('/api/admin/sync/status', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.json({
+            status: 'success',
+            data: {
+              syncStatus: { status: 'not_configured' },
+              cachedOrderCount: 0,
+              isCacheFresh: false,
+              supabaseConfigured: false
+            }
+          });
+        }
+
+        // Get sync status
+        const { data: syncStatus } = await supabase
+          .from('sync_status')
+          .select('*')
+          .eq('sync_type', 'orders')
+          .single();
+
+        // Get cached order count
+        const { count: cachedCount } = await supabase
+          .from('tasks')
+          .select('*', { count: 'exact', head: true });
+
+        // Check if cache is fresh (within 24 hours)
+        let isFresh = false;
+        if (syncStatus?.last_successful_sync) {
+          const lastSync = new Date(syncStatus.last_successful_sync);
+          const now = new Date();
+          const hoursDiff = (now - lastSync) / (1000 * 60 * 60);
+          isFresh = hoursDiff < 24;
+        }
+
+        res.json({
+          status: 'success',
+          data: {
+            syncStatus: syncStatus || { status: 'never_synced' },
+            cachedOrderCount: cachedCount || 0,
+            isCacheFresh: isFresh,
+            supabaseConfigured: true
+          }
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to get sync status'
+        });
+      }
+    });
+
+    // POST Trigger Sync (Note: Full sync not supported in serverless due to timeout limits)
+    app.post('/api/admin/sync/orders', authenticate, async (req, res) => {
+      try {
+        // Check admin role
+        if (req.user?.role !== 'admin') {
+          return res.status(403).json({
+            status: 'error',
+            message: 'Admin role required'
+          });
+        }
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Supabase not configured. Cannot run sync without database.'
+          });
+        }
+
+        // In serverless mode, we can only do a limited incremental sync
+        // Full sync should be run via the local server or a scheduled job
+        res.json({
+          status: 'warning',
+          message: 'Full sync is not available in serverless mode due to timeout limits. Please run sync from the local server using: node -e "require(\'./server/services/orderSyncService\').syncOrders().then(console.log)"',
+          data: {
+            suggestion: 'Run locally: cd server && node -e "require(\'./services/orderSyncService\').syncOrders().then(console.log)"'
+          }
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to trigger sync'
+        });
       }
     });
 

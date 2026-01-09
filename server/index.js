@@ -15,6 +15,12 @@ const webhookEventsModel = require('./db/models/webhookEvents');
 const { supabase, supabaseAnon, isConfigured } = require('./db/supabase');
 const { authenticate, optionalAuth, requirePermission, requireRole } = require('./middleware/auth');
 const auditLogger = require('./middleware/auditLogger');
+// Order sync service for 6-month caching
+const orderSyncService = require('./services/orderSyncService');
+// Agent sync service for caching drivers/fleets
+const agentSyncService = require('./services/agentSyncService');
+const agentModel = require('./db/models/agents');
+const taskModel = require('./db/models/tasks');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -30,6 +36,15 @@ const getApiKey = () => {
     throw new Error('TOOKAN_API_KEY not configured in environment variables');
   }
   return apiKey;
+};
+
+// Get webhook secret
+const getWebhookSecret = () => {
+  const secret = process.env.TOOKAN_WEBHOOK_SECRET;
+  if (!secret) {
+    console.warn('⚠️  TOOKAN_WEBHOOK_SECRET not set. Webhook requests will fail auth.');
+  }
+  return secret;
 };
 
 // Driver Wallet - Create Transaction
@@ -1416,7 +1431,7 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
     }
     
     // Warn but allow editing successful orders (status 6, 7, 8)
-    const successfulStatuses = [6, 7, 8]; // Completed, Delivered, etc.
+    const successfulStatuses = [2]; // Tookan status 2 = Successful/Completed
     if (successfulStatuses.includes(parseInt(currentStatus))) {
       console.log('⚠️  Warning: Attempting to edit successful order. Tookan API may reject this.');
     }
@@ -1981,7 +1996,7 @@ app.delete('/api/tookan/order/:orderId', authenticate, requirePermission('delete
     
     // Check if order is successful (delivered/completed)
     // Status 6 = Completed, 7 = Delivered, etc.
-    const successfulStatuses = [6, 7, 8]; // Completed, Delivered, etc.
+    const successfulStatuses = [2]; // Tookan status 2 = Successful/Completed
     const isSuccessful = successfulStatuses.includes(statusInt) || 
                          ['completed', 'delivered'].includes(currentStatus.toString().toLowerCase());
 
@@ -3425,276 +3440,320 @@ app.get('/api/tookan/tags', authenticate, async (req, res) => {
 // REPORTS PANEL - DATA FETCHING ENDPOINTS
 // ============================================
 
+// Helper function to extract values from task meta_data / pickup_meta_data
+function extractMetaValue(task, labels) {
+  const metaFields = [
+    ...(task.meta_data || []),
+    ...(task.pickup_meta_data || [])
+  ];
+  
+  for (const field of metaFields) {
+    const fieldLabel = (field.label || '').toLowerCase();
+    if (labels.some(l => fieldLabel.includes(l.toLowerCase()))) {
+      // Handle different field structures
+      const value = field.data || field.value || field.fleet_data || '0';
+      // Remove currency symbols and parse
+      const numStr = String(value).replace(/[^0-9.-]/g, '');
+      return parseFloat(numStr) || 0;
+    }
+  }
+  
+  // Fallback to top-level fields
+  if (labels.some(l => l.toLowerCase().includes('cod'))) {
+    return parseFloat(task.cod || task.cod_amount || 0);
+  }
+  if (labels.some(l => l.toLowerCase().includes('fee'))) {
+    return parseFloat(task.order_payment || 0);
+  }
+  if (labels.some(l => l.toLowerCase().includes('price') || l.toLowerCase().includes('value') || l.toLowerCase().includes('total'))) {
+    return parseFloat(task.total_amount || task.order_value || task.cod || 0);
+  }
+  
+  return 0;
+}
+
 // GET All Orders (with filters)
-// Fetches orders from Tookan API using /v2/get_all_tasks with date filtering and pagination
+// Cache-first strategy: Check Supabase cache, fallback to Tookan API
+// Supports 6-month date range (Tookan only keeps 6 months of data)
 app.get('/api/tookan/orders', authenticate, async (req, res) => {
   try {
-    console.log('\n=== GET ALL ORDERS REQUEST ===');
+    console.log('\n=== GET ALL ORDERS REQUEST (CACHE-FIRST) ===');
     console.log('Query params:', JSON.stringify(req.query, null, 2));
     console.log('Request received at:', new Date().toISOString());
     
-    const apiKey = getApiKey();
-    const { dateFrom, dateTo, driverId, customerId, status, limit = 100, page = 1 } = req.query;
+    const { dateFrom, dateTo, driverId, customerId, status, search, limit = 100, page = 1, forceRefresh } = req.query;
 
-    // Prepare date range - Tookan API allows MAX 31 days
-    // If no dates provided, fetch last 31 days
-    let startDate = dateFrom;
-    let endDate = dateTo;
+    // Calculate default date range: last 6 months (Tookan only keeps 6 months)
+    const formatDate = (date) => date.toISOString().split('T')[0];
+    const today = new Date();
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     
-    if (!startDate || !endDate) {
-      const end = new Date();
-      const start = new Date();
-      start.setDate(start.getDate() - 31); // Max 31 days allowed by Tookan
-      
-      if (!startDate) {
-        startDate = start.toISOString().split('T')[0]; // YYYY-MM-DD format
-      }
-      if (!endDate) {
-        endDate = end.toISOString().split('T')[0];
-      }
+    let startDate = dateFrom || formatDate(sixMonthsAgo);
+    let endDate = dateTo || formatDate(today);
+    
+    // Validate dates don't exceed 6 months ago
+    const sixMonthsAgoDate = new Date();
+    sixMonthsAgoDate.setMonth(sixMonthsAgoDate.getMonth() - 6);
+    const requestedStart = new Date(startDate);
+    if (requestedStart < sixMonthsAgoDate) {
+      startDate = formatDate(sixMonthsAgoDate);
+      console.log(`⚠️  Start date adjusted to 6 months ago: ${startDate}`);
     }
     
-    // Validate date range is not more than 31 days
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-    if (daysDiff > 31) {
-      // Adjust to last 31 days
-      const adjustedEnd = new Date();
-      const adjustedStart = new Date();
-      adjustedStart.setDate(adjustedStart.getDate() - 31);
-      startDate = adjustedStart.toISOString().split('T')[0];
-      endDate = adjustedEnd.toISOString().split('T')[0];
-      console.log(`⚠️  Date range adjusted to max 31 days: ${startDate} to ${endDate}`);
-    }
+    console.log(`📅 Date range: ${startDate} to ${endDate}`);
+
+    // Check if Supabase is configured and cache is available
+    let useCache = false;
+    let cacheOrders = [];
     
-    console.log(`📅 Fetching orders from ${startDate} to ${endDate} (${daysDiff} days)`);
-
-    // Fetch orders from Tookan API with pagination
-    const allOrders = [];
-    let offset = 0;
-    const batchLimit = 50; // Tookan API limit per request
-    let hasMore = true;
-    let totalFetched = 0;
-    let useDateRange = true;
-
-    // Tookan API seems to require dates - use today's date if no dates provided
-    // This ensures we get recent orders
-    let actualStartDate = startDate;
-    let actualEndDate = endDate;
-    
-    if (!actualStartDate || !actualEndDate) {
-      const today = new Date();
-      actualEndDate = today.toISOString().split('T')[0];
-      const start = new Date(today);
-      start.setDate(start.getDate() - 7); // Last 7 days by default
-      actualStartDate = start.toISOString().split('T')[0];
-      console.log(`📅 Using default date range: ${actualStartDate} to ${actualEndDate}`);
-    }
-    
-    while (hasMore && allOrders.length < parseInt(limit) * 2) {
-      const tookanPayload = {
-        api_key: apiKey,
-        start_date: actualStartDate,
-        end_date: actualEndDate,
-        is_pagination: 1,
-        off_set: offset,
-        limit: batchLimit
-      };
-
-      console.log(`📥 Fetching orders batch: offset=${offset}, limit=${batchLimit}, dates: ${actualStartDate} to ${actualEndDate}`);
-
-      const response = await fetch('https://api.tookanapp.com/v2/get_all_tasks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(tookanPayload),
-      });
-
-      const textResponse = await response.text();
-      let data;
-
+    if (isConfigured() && !forceRefresh) {
       try {
-        data = JSON.parse(textResponse);
-      } catch (parseError) {
-        console.error('❌ Failed to parse Tookan API response:', textResponse.substring(0, 200));
-        // If date format is wrong, try without dates
-        if (textResponse.includes('date') || textResponse.includes('Date') || textResponse.includes('invalid')) {
-          console.log('⚠️  Date format issue detected, retrying without date range...');
-          const retryPayload = {
-            api_key: apiKey,
-            is_pagination: 1,
-            off_set: offset,
-            limit: batchLimit
-          };
+        // Check if cache is fresh (synced within last 24 hours)
+        const isFresh = await taskModel.isCacheFresh(24);
+        const cachedCount = await taskModel.getCachedTaskCount(startDate, endDate);
+        
+        console.log(`📦 Cache status: ${isFresh ? 'FRESH' : 'STALE'}, ${cachedCount} orders in range`);
+        
+        if (isFresh && cachedCount > 0) {
+          useCache = true;
+          console.log('✅ Using cached orders from Supabase');
           
-          const retryResponse = await fetch('https://api.tookanapp.com/v2/get_all_tasks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(retryPayload),
+          // Fetch from cache with filters
+          cacheOrders = await taskModel.getCachedOrders({
+            dateFrom: startDate,
+            dateTo: endDate,
+            driverId: driverId || null,
+            customerId: customerId || null,
+            status: status !== undefined ? parseInt(status) : null,
+            search: search || null
           });
           
-          const retryText = await retryResponse.text();
-          try {
-            data = JSON.parse(retryText);
-            console.log('✅ Retry successful, got response without date filter');
-          } catch (e) {
-            console.error('❌ Retry also failed to parse:', retryText.substring(0, 200));
-            hasMore = false;
-            break;
-          }
-        } else {
-          console.error('❌ Failed to parse response:', textResponse.substring(0, 300));
-          hasMore = false;
-          break;
+          console.log(`📦 Retrieved ${cacheOrders.length} orders from cache`);
         }
+      } catch (cacheError) {
+        console.warn('⚠️  Cache check failed, falling back to API:', cacheError.message);
       }
+    }
 
-      // Tookan API can return status 200 or 1 for success
-      // If date range error, retry without dates
-      if (!response.ok || (data.status !== 200 && data.status !== 1)) {
-        if (useDateRange && (data.message?.includes('Date range') || data.message?.includes('date'))) {
-          console.log('⚠️  Date range issue, retrying without date filter...');
-          useDateRange = false;
-          continue; // Retry without dates
+    let allOrders = [];
+    
+    if (useCache && cacheOrders.length > 0) {
+      allOrders = cacheOrders;
+    } else {
+      // Fallback to Tookan API with retry logic
+      console.log('📥 Fetching from Tookan API (cache miss or stale)...');
+      
+      const apiKey = getApiKey();
+      const batchLimit = 50;
+      const jobTypes = [0, 1, 2, 3]; // Pickup, Delivery, Appointment, FOS
+      const jobTypeNames = ['Pickup', 'Delivery', 'Appointment', 'FOS'];
+      
+      // For API, we can only fetch 31 days at a time
+      // Split into batches if date range exceeds 31 days
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(endDate);
+      const daysDiff = Math.ceil((endDateObj - startDateObj) / (1000 * 60 * 60 * 24));
+      
+      // Generate 31-day batches
+      const dateBatches = [];
+      let currentEnd = new Date(endDateObj);
+      
+      while (currentEnd > startDateObj) {
+        const batchStart = new Date(currentEnd);
+        batchStart.setDate(batchStart.getDate() - 30);
+        if (batchStart < startDateObj) {
+          batchStart.setTime(startDateObj.getTime());
         }
         
-        console.log('⚠️  Tookan API returned error:', data.message || 'Unknown');
-        console.log('Response status:', data.status);
-        console.log('Response keys:', Object.keys(data).join(', '));
-        if (data.data) {
-          console.log('Data type:', typeof data.data, Array.isArray(data.data) ? '(array)' : '(object)');
-        }
-        hasMore = false;
-        break;
-      }
-
-      // Tookan API can return data in different structures
-      // Try multiple possible paths
-      let tasks = [];
-      if (Array.isArray(data.data)) {
-        tasks = data.data;
-        console.log(`✅ Found ${tasks.length} tasks in data array`);
-      } else if (data.data && Array.isArray(data.data.data)) {
-        tasks = data.data.data;
-        console.log(`✅ Found ${tasks.length} tasks in data.data array`);
-      } else if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
-        // Check if it's an object with task properties (single task)
-        if (data.data.job_id || data.data.id) {
-          tasks = [data.data];
-          console.log('✅ Found single task object');
-        } else {
-          // Try to extract tasks from object values
-          const values = Object.values(data.data);
-          tasks = values.filter(item => item && typeof item === 'object' && (item.job_id || item.id));
-          console.log(`✅ Found ${tasks.length} tasks in object values`);
-        }
-      } else if (data.tookanData && Array.isArray(data.tookanData)) {
-        tasks = data.tookanData;
-        console.log(`✅ Found ${tasks.length} tasks in tookanData array`);
+        dateBatches.push({
+          startDate: formatDate(batchStart),
+          endDate: formatDate(currentEnd)
+        });
+        
+        currentEnd = new Date(batchStart);
+        currentEnd.setDate(currentEnd.getDate() - 1);
       }
       
-      if (tasks.length === 0) {
-        console.log('⚠️  No tasks found in response. Full response structure:');
-        console.log(JSON.stringify(data, null, 2).substring(0, 1000));
-        hasMore = false;
-        break;
+      console.log(`📅 Split into ${dateBatches.length} date batches (31-day chunks)`);
+      
+      // Helper function with retry logic
+      const fetchWithRetry = async (url, options, retries = 3) => {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+          try {
+            const response = await fetch(url, options);
+            return response;
+          } catch (error) {
+            const isSSLError = error.message.includes('SSL') || 
+                               error.message.includes('ssl') ||
+                               error.message.includes('decryption') ||
+                               error.message.includes('ECONNRESET');
+            
+            if (isSSLError && attempt < retries) {
+              const delay = 1000 * Math.pow(2, attempt - 1);
+              console.log(`⚠️  Retry ${attempt}/${retries} after ${delay}ms`);
+              await new Promise(r => setTimeout(r, delay));
+              continue;
+            }
+            throw error;
+          }
+        }
+      };
+      
+      // Fetch tasks for each batch and job type
+      const tasks = [];
+      
+      for (const batch of dateBatches) {
+        console.log(`   Processing batch: ${batch.startDate} to ${batch.endDate}`);
+        
+        for (const jobType of jobTypes) {
+          let offset = 0;
+          let hasMore = true;
+          
+          while (hasMore && tasks.length < 10000) {
+            const payload = {
+              api_key: apiKey,
+              job_type: jobType,
+              start_date: batch.startDate,
+              end_date: batch.endDate,
+              is_pagination: 1,
+              off_set: offset,
+              limit: batchLimit,
+              custom_fields: 1
+            };
+            
+            try {
+              const response = await fetchWithRetry('https://api.tookanapp.com/v2/get_all_tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              });
+              
+              const data = await response.json();
+              
+              if (data.status === 200 || data.status === 1) {
+                const batchTasks = Array.isArray(data.data) ? data.data : [];
+                tasks.push(...batchTasks);
+                
+                if (batchTasks.length < batchLimit) {
+                  hasMore = false;
+                } else {
+                  offset += batchLimit;
+                }
+              } else {
+                hasMore = false;
+              }
+            } catch (err) {
+              console.error(`❌ Error fetching ${jobTypeNames[jobType]} tasks:`, err.message);
+              hasMore = false;
+            }
+          }
+        }
       }
-
+      
+      console.log(`✅ Fetched ${tasks.length} tasks from Tookan API`);
+      
+      // Transform and cache the results if Supabase is configured
+      if (tasks.length > 0 && isConfigured()) {
+        try {
+          // Transform tasks to cache format
+          const cacheRecords = tasks.map(task => orderSyncService.transformTaskToRecord(task));
+          
+          // Bulk upsert to cache (don't await to avoid blocking response)
+          taskModel.bulkUpsertTasks(cacheRecords).then(result => {
+            console.log(`📦 Cached ${result.inserted} orders to Supabase`);
+          }).catch(err => {
+            console.warn('⚠️  Failed to cache orders:', err.message);
+          });
+        } catch (cacheErr) {
+          console.warn('⚠️  Failed to prepare cache:', cacheErr.message);
+        }
+      }
+      
       // Transform Tookan task data to our order format
-      const transformedOrders = tasks.map((task) => {
+      allOrders = tasks.map((task) => {
         const jobId = task.job_id || task.id;
         const jobStatus = task.job_status || task.status || 0;
-        const codAmount = parseFloat(task.cod || task.cod_amount || 0);
-        const orderPayment = parseFloat(task.order_payment || task.order_fees || 0);
+        
+        const metaCod = extractMetaValue(task, ['COD', 'COD Total', 'Cash on Delivery']);
+        const metaFee = extractMetaValue(task, ['Fee', 'Delivery Fee', 'Order Fee', 'Order Fees']);
+        const metaValue = extractMetaValue(task, ['Price', 'Order Value', 'Total Value', 'Total', 'Amount']);
+        
+        const codAmount = metaCod || parseFloat(task.cod || task.cod_amount || 0);
+        const orderPayment = metaFee || parseFloat(task.order_payment || task.order_fees || 0);
+        const totalValue = metaValue || (codAmount + orderPayment);
+        
         const creationDate = task.creation_datetime || task.created_at || task.job_time || task.creation_date || new Date().toISOString();
-        
-        // Extract driver info - can be in fleet_name or job_details_by_fleet
         const driverName = task.fleet_name || task.driver_name || '';
-        const driverId = task.fleet_id || task.driver_id || null;
-        
-        // Extract customer/merchant info with multiple fallbacks
+        const driverIdVal = task.fleet_id || task.driver_id || null;
         const customerName = task.customer_name || task.customer_username || task.job_pickup_name || '';
         const customerPhone = task.customer_phone || task.job_pickup_phone || '';
         const merchantName = task.merchant_name || task.vendor_name || '';
-        const merchantId = task.vendor_id || task.merchant_id || null;
+        const merchantIdVal = task.vendor_id || task.merchant_id || null;
         
         return {
           id: jobId?.toString() || '',
           jobId: jobId?.toString() || '',
+          job_id: jobId,
           date: creationDate,
           status: jobStatus,
           statusText: getStatusText(jobStatus),
-          merchant: merchantName || customerName, // Use merchant name if available, else customer
-          merchantId: merchantId || null,
+          jobType: task.job_type,
+          jobTypeName: jobTypeNames[task.job_type] || 'Unknown',
+          merchant: merchantName || customerName,
+          merchantId: merchantIdVal || null,
           merchantNumber: task.merchant_phone || '',
           driver: driverName,
-          driverId: driverId?.toString() || null,
+          driverId: driverIdVal?.toString() || null,
           customer: customerName,
           customerId: task.customer_id?.toString() || null,
           customerNumber: customerPhone,
           cod: codAmount,
           codAmount: codAmount,
-          tookanFees: 0, // Tookan fees may be in a different field
+          tookanFees: 0,
           fee: orderPayment,
           orderFees: orderPayment,
+          totalValue: totalValue,
           pickupAddress: task.job_pickup_address || task.pickup_address || '',
           deliveryAddress: task.job_address || task.delivery_address || '',
           addresses: `${task.job_pickup_address || task.pickup_address || ''} → ${task.job_address || task.delivery_address || ''}`,
           notes: task.customer_comments || task.job_description || '',
-          rawData: task
+          source: 'api'
         };
       });
-
-      allOrders.push(...transformedOrders);
-      totalFetched += tasks.length;
-      offset += batchLimit;
-
-      // Stop if we got fewer than requested (last page)
-      if (tasks.length < batchLimit) {
-        hasMore = false;
-      }
     }
+    
+    console.log(`✅ Total orders: ${allOrders.length}`);
 
-    console.log(`✅ Fetched ${allOrders.length} orders from Tookan`);
-
-    // Apply date filtering client-side (as additional filter, since API may not filter correctly)
+    // Apply additional client-side filtering (for filters not applied at cache/API level)
     let filteredOrders = allOrders;
     
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      
-      filteredOrders = filteredOrders.filter(order => {
-        if (!order.date) return false;
-        try {
-          const orderDate = new Date(order.date);
-          return orderDate >= start && orderDate <= end;
-        } catch (e) {
-          return false;
-        }
-      });
-      
-      console.log(`📅 Client-side filtered to ${filteredOrders.length} orders within date range`);
-    }
-    
-    if (driverId) {
+    if (driverId && !useCache) {
       filteredOrders = filteredOrders.filter(order => 
         order.driverId === driverId?.toString() || order.driverId === driverId
       );
     }
     
-    if (customerId) {
+    if (customerId && !useCache) {
       filteredOrders = filteredOrders.filter(order => 
         order.customerId === customerId?.toString() || order.merchantId === customerId?.toString()
       );
     }
     
-    if (status) {
+    if (status !== undefined && status !== '' && !useCache) {
       filteredOrders = filteredOrders.filter(order => 
         order.status === parseInt(status) || order.statusText === status
+      );
+    }
+    
+    if (search && !useCache) {
+      const searchLower = search.toLowerCase();
+      filteredOrders = filteredOrders.filter(order => 
+        (order.id && order.id.toLowerCase().includes(searchLower)) ||
+        (order.orderId && order.orderId.toLowerCase().includes(searchLower)) ||
+        (order.customer && order.customer.toLowerCase().includes(searchLower)) ||
+        (order.driver && order.driver.toLowerCase().includes(searchLower)) ||
+        (order.merchant && order.merchant.toLowerCase().includes(searchLower))
       );
     }
 
@@ -3705,6 +3764,7 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
     const paginatedOrders = filteredOrders.slice(startIndex, startIndex + limitNum);
 
     console.log(`✅ Returning ${paginatedOrders.length} orders (page ${pageNum}, total filtered: ${filteredOrders.length})`);
+    console.log(`📦 Source: ${useCache ? 'CACHE' : 'API'}`);
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -3719,12 +3779,14 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
         page: pageNum,
         limit: limitNum,
         hasMore: filteredOrders.length > startIndex + limitNum,
+        source: useCache ? 'cache' : 'api',
         filters: {
           dateFrom: startDate,
           dateTo: endDate,
           driverId: driverId || null,
           customerId: customerId || null,
-          status: status || null
+          status: status || null,
+          search: search || null
         }
       }
     });
@@ -3746,170 +3808,63 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
   }
 });
 
-// GET Orders from Cache (webhook-based storage)
+// GET Orders from Cache (database-first, paginated, minimal fields)
 app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
   try {
     console.log('\n=== GET CACHED ORDERS REQUEST ===');
     console.log('Query params:', JSON.stringify(req.query, null, 2));
     
-    const { dateFrom, dateTo, driverId, customerId, status, search, limit = 100, page = 1 } = req.query;
-    
-    // Get all tasks from database or file fallback
-    let tasks = [];
-    let useDatabase = false;
-    let totalCount = 0;
-    
-    if (isConfigured()) {
-      try {
-        const filters = {
-          dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined,
-          driverId: driverId || undefined,
-          customerId: customerId || undefined,
-          status: status ? parseInt(status) : undefined,
-          search: search || undefined
-          // Note: Don't pass limit/page here - we'll handle pagination after transformation
-        };
-        tasks = await taskModel.getAllTasks(filters);
-        totalCount = tasks.length;
-        useDatabase = true;
-        console.log(`📦 Found ${tasks.length} tasks from database`);
-      } catch (error) {
-        console.warn('Database fetch failed, falling back to file storage:', error.message);
-        // Fallback to file-based storage
-        const tasksData = taskStorage.getAllTasks();
-        tasks = Object.values(tasksData.tasks || {});
-        totalCount = tasks.length;
-        console.log(`📦 Found ${tasks.length} tasks from file cache`);
-      }
-    } else {
-      // Fallback to file-based storage
-      const tasksData = taskStorage.getAllTasks();
-      tasks = Object.values(tasksData.tasks || {});
-      totalCount = tasks.length;
-      console.log(`📦 Found ${tasks.length} tasks from file cache`);
+    const { dateFrom, dateTo, driverId, customerId, status, search, limit = 50, page = 1 } = req.query;
+
+    if (!isConfigured()) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'Supabase not configured',
+        data: { orders: [], total: 0, page: 1, limit: 50, hasMore: false }
+      });
     }
-    
-    // Transform tasks to order format (matching Reports Panel format)
-    const transformedOrders = tasks.map((task) => {
-      const jobId = task.job_id || task.order_id;
-      const jobStatus = task.status || task.job_status || 0;
-      const codAmount = parseFloat(task.cod_amount || task.cod || 0);
-      const orderPayment = parseFloat(task.order_fees || task.order_payment || 0);
-      const creationDate = task.creation_datetime || task.job_time || task.created_at || task.webhook_received_at || new Date().toISOString();
-      
+
+    const filters = {
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      driverId: driverId || undefined,
+      customerId: customerId || undefined,
+      status: status ? parseInt(status) : undefined,
+      search: search || undefined
+    };
+
+    const result = await taskModel.getAllTasksPaginated(filters, page, limit);
+
+    const orders = (result.tasks || []).map(task => {
+      const codAmount = parseFloat(task.cod_amount || 0);
+      const orderFees = parseFloat(task.order_fees || 0);
       return {
-        id: jobId?.toString() || '',
-        jobId: jobId?.toString() || '',
-        date: creationDate,
-        status: jobStatus,
-        statusText: getStatusText(jobStatus),
-        merchant: task.customer_name || '', // May need adjustment based on actual data structure
-        merchantId: task.vendor_id || null,
-        merchantNumber: task.customer_phone || '',
-        driver: task.fleet_name || '',
-        driverId: task.fleet_id?.toString() || null,
-        customer: task.customer_name || '',
-        customerId: task.customer_id?.toString() || null,
-        customerNumber: task.customer_phone || '',
-        cod: codAmount,
-        codAmount: codAmount,
-        codCollected: task.cod_collected || false,
-        tookanFees: 0,
-        fee: orderPayment,
-        orderFees: orderPayment,
-        pickupAddress: task.pickup_address || '',
-        deliveryAddress: task.delivery_address || '',
-        addresses: `${task.pickup_address || ''} → ${task.delivery_address || ''}`,
+        jobId: task.job_id?.toString() || '',
+        codAmount,
+        orderFees,
+        assignedDriver: task.fleet_id || null,
+        assignedDriverName: task.fleet_name || '',
         notes: task.notes || '',
-        rawData: task
+        date: task.creation_datetime || null
       };
     });
-    
-    // Apply filters (only if not using database, as database already filtered)
-    let filteredOrders = transformedOrders;
-    
-    if (!useDatabase) {
-      // Date filter
-      if (dateFrom && dateTo) {
-        const start = new Date(dateFrom);
-        const end = new Date(dateTo);
-        end.setHours(23, 59, 59, 999);
-        
-        filteredOrders = filteredOrders.filter(order => {
-          if (!order.date) return false;
-          try {
-            const orderDate = new Date(order.date);
-            return orderDate >= start && orderDate <= end;
-          } catch (e) {
-            return false;
-          }
-        });
-      }
-      
-      // Driver filter
-      if (driverId) {
-        filteredOrders = filteredOrders.filter(order => 
-          order.driverId === driverId?.toString() || order.driverId === driverId
-        );
-      }
-      
-      // Customer/Merchant filter
-      if (customerId) {
-        filteredOrders = filteredOrders.filter(order => 
-          order.customerId === customerId?.toString() || order.merchantId === customerId?.toString()
-        );
-      }
-      
-      // Status filter
-      if (status) {
-        filteredOrders = filteredOrders.filter(order => 
-          order.status === parseInt(status) || order.statusText === status
-        );
-      }
-      
-      // Search filter (orderId, customer, merchant, driver)
-      if (search) {
-        const searchLower = search.toLowerCase();
-        filteredOrders = filteredOrders.filter(order => 
-          order.id?.toLowerCase().includes(searchLower) ||
-          order.customer?.toLowerCase().includes(searchLower) ||
-          order.merchant?.toLowerCase().includes(searchLower) ||
-          order.driver?.toLowerCase().includes(searchLower) ||
-          order.customerNumber?.includes(search) ||
-          order.merchantNumber?.includes(search)
-        );
-      }
-    }
-    
-    // Sort by date (most recent first) - always needed for consistent ordering
-    filteredOrders.sort((a, b) => {
-      const dateA = new Date(a.date || 0);
-      const dateB = new Date(b.date || 0);
-      return dateB - dateA;
-    });
-    
-    // Apply pagination
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const startIndex = (pageNum - 1) * limitNum;
-    const paginatedOrders = filteredOrders.slice(startIndex, startIndex + limitNum);
-    
-    console.log(`✅ Returning ${paginatedOrders.length} cached orders (page ${pageNum}, total filtered: ${filteredOrders.length})`);
+
+    const hasMore = (result.page * result.limit) < result.total;
+
+    console.log(`✅ Returning ${orders.length} cached orders (page ${result.page}, total: ${result.total})`);
     console.log('=== END REQUEST (SUCCESS) ===\n');
-    
+
     res.json({
       status: 'success',
       action: 'fetch_orders_cached',
       entity: 'order',
       message: 'Cached orders fetched successfully',
       data: {
-        orders: paginatedOrders,
-        total: filteredOrders.length,
-        totalCached: totalCount,
-        page: pageNum,
-        limit: limitNum,
-        hasMore: filteredOrders.length > startIndex + limitNum,
+        orders,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        hasMore,
         filters: {
           dateFrom: dateFrom || null,
           dateTo: dateTo || null,
@@ -3918,7 +3873,7 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
           status: status || null,
           search: search || null
         },
-        source: useDatabase ? 'database' : 'cache'
+        source: 'database'
       }
     });
   } catch (error) {
@@ -3926,8 +3881,78 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
-      data: {}
+      data: { orders: [], total: 0, page: 1, limit: 50, hasMore: false }
     });
+  }
+});
+
+// ============================================================
+// Tookan Webhooks
+// ============================================================
+
+// TASK webhook (create/update)
+app.post('/api/webhooks/tookan/task', async (req, res) => {
+  try {
+    const secretHeader = req.headers['x-webhook-secret'];
+    const expected = getWebhookSecret();
+    const payload = req.body || {};
+    const bodySecret = payload.tookan_shared_secret;
+
+    if (!expected || (secretHeader !== expected && bodySecret !== expected)) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const jobId = payload.job_id || payload.id || payload.task_id;
+
+    if (!jobId) {
+      return res.status(400).json({ status: 'error', message: 'job_id is required' });
+    }
+
+    const record = {
+      job_id: parseInt(jobId) || jobId,
+      cod_amount: parseFloat(payload.cod_amount || payload.cod || 0),
+      order_fees: parseFloat(payload.order_fees || payload.order_payment || 0),
+      fleet_id: payload.fleet_id ? parseInt(payload.fleet_id) : null,
+      fleet_name: payload.fleet_name || payload.driver_name || '',
+      notes: payload.customer_comments || payload.notes || '',
+      status: payload.status || payload.job_status || null,
+      creation_datetime: payload.creation_datetime || payload.job_time || payload.created_at || payload.timestamp || new Date().toISOString(),
+      raw_data: payload,
+      last_synced_at: new Date().toISOString()
+    };
+
+    await taskModel.upsertTask(record.job_id, record);
+
+    return res.status(200).json({ status: 'success', message: 'Task upserted' });
+  } catch (error) {
+    console.error('❌ Webhook task error:', error);
+    return res.status(500).json({ status: 'error', message: error.message || 'Internal error' });
+  }
+});
+
+// AGENT webhook (if enabled on Tookan side)
+app.post('/api/webhooks/tookan/agent', async (req, res) => {
+  try {
+    const secretHeader = req.headers['x-webhook-secret'];
+    const expected = getWebhookSecret();
+    const payload = req.body || {};
+    const bodySecret = payload.tookan_shared_secret;
+
+    if (!expected || (secretHeader !== expected && bodySecret !== expected)) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const fleetId = payload.fleet_id || payload.id;
+
+    if (!fleetId) {
+      return res.status(400).json({ status: 'error', message: 'fleet_id is required' });
+    }
+
+    const agentRecord = agentModel.transformFleetToAgent(payload);
+    await agentModel.upsertAgent(agentRecord.fleet_id, agentRecord);
+
+    return res.status(200).json({ status: 'success', message: 'Agent upserted' });
+  } catch (error) {
+    console.error('❌ Webhook agent error:', error);
+    return res.status(500).json({ status: 'error', message: error.message || 'Internal error' });
   }
 });
 
@@ -3948,6 +3973,315 @@ function getStatusText(status) {
   };
   return statusMap[status] || 'Unknown';
 }
+
+// ============================================================
+// AGENTS ENDPOINTS (Supabase-cached)
+// ============================================================
+
+// GET Agents from Database
+app.get('/api/agents', authenticate, async (req, res) => {
+  try {
+    console.log('\n=== GET AGENTS FROM DATABASE ===');
+    console.log('Request received at:', new Date().toISOString());
+    
+    const { isActive, teamId, search } = req.query;
+    
+    if (!isConfigured()) {
+      // Fallback to Tookan API if database not configured
+      console.log('⚠️  Database not configured, fetching from Tookan API');
+      const apiKey = getApiKey();
+      
+      const response = await fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: apiKey }),
+      });
+      
+      const data = await response.json();
+      const fleets = data.data || [];
+      
+      return res.json({
+        status: 'success',
+        message: 'Agents fetched from Tookan API (database not configured)',
+        data: {
+          agents: fleets.map(f => ({
+            fleet_id: f.fleet_id || f.id,
+            name: f.fleet_name || f.name || f.username,
+            email: f.email,
+            phone: f.phone,
+            is_active: f.status !== 0
+          })),
+          total: fleets.length,
+          source: 'tookan_api'
+        }
+      });
+    }
+    
+    const filters = {
+      isActive: isActive !== undefined ? isActive === 'true' : undefined,
+      teamId: teamId || undefined,
+      search: search || undefined
+    };
+    
+    const agents = await agentModel.getAllAgents(filters);
+    console.log(`✅ Found ${agents.length} agents from database`);
+    
+    res.json({
+      status: 'success',
+      message: 'Agents fetched successfully',
+      data: {
+        agents: agents,
+        total: agents.length,
+        source: 'database'
+      }
+    });
+  } catch (error) {
+    console.error('❌ Get agents error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to fetch agents',
+      data: { agents: [] }
+    });
+  }
+});
+
+// POST Sync Agents from Tookan
+app.post('/api/agents/sync', authenticate, requirePermission('manage_system'), async (req, res) => {
+  try {
+    console.log('\n=== SYNC AGENTS REQUEST ===');
+    console.log('Request received at:', new Date().toISOString());
+    console.log('Requested by user:', req.user?.email || 'unknown');
+    
+    const result = await agentSyncService.syncAgents();
+    
+    if (result.success) {
+      res.json({
+        status: 'success',
+        message: result.message,
+        data: {
+          synced: result.synced,
+          errors: result.errors
+        }
+      });
+    } else {
+      res.status(500).json({
+        status: 'error',
+        message: result.message,
+        data: {
+          synced: result.synced,
+          errors: result.errors
+        }
+      });
+    }
+  } catch (error) {
+    console.error('❌ Sync agents error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to sync agents',
+      data: {}
+    });
+  }
+});
+
+// GET Agent Sync Status
+app.get('/api/agents/sync/status', authenticate, async (req, res) => {
+  try {
+    const status = await agentSyncService.getSyncStatus();
+    
+    res.json({
+      status: 'success',
+      message: 'Sync status retrieved',
+      data: status || { totalAgents: 0, activeAgents: 0, lastSyncedAt: null }
+    });
+  } catch (error) {
+    console.error('❌ Get sync status error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to get sync status',
+      data: {}
+    });
+  }
+});
+
+// PUT Assign Driver to Order
+// Updates both Tookan API and Supabase database
+app.put('/api/orders/:jobId/assign', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { fleet_id, notes } = req.body;
+    
+    console.log('\n=== ASSIGN DRIVER TO ORDER ===');
+    console.log('Job ID:', jobId);
+    console.log('New Fleet ID:', fleet_id);
+    console.log('Request received at:', new Date().toISOString());
+    
+    if (!jobId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Job ID is required'
+      });
+    }
+    
+    if (fleet_id === undefined) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'fleet_id is required'
+      });
+    }
+    
+    const apiKey = getApiKey();
+    
+    // Step 1: Fetch current task from Tookan to get existing data
+    console.log('Fetching current task from Tookan...');
+    const getTaskResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        job_id: jobId
+      }),
+    });
+    
+    const getTaskText = await getTaskResponse.text();
+    let currentTaskData;
+    
+    try {
+      currentTaskData = JSON.parse(getTaskText);
+    } catch (parseError) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to parse task data from Tookan'
+      });
+    }
+    
+    if (!getTaskResponse.ok || currentTaskData.status !== 200) {
+      return res.status(404).json({
+        status: 'error',
+        message: currentTaskData.message || 'Task not found in Tookan'
+      });
+    }
+    
+    const currentTask = Array.isArray(currentTaskData.data) 
+      ? currentTaskData.data[0] 
+      : currentTaskData.data;
+    
+    const oldFleetId = currentTask.fleet_id;
+    
+    // Step 2: Update task in Tookan using edit_task API
+    console.log('Updating task in Tookan...');
+    const updatePayload = {
+      api_key: apiKey,
+      job_id: parseInt(jobId),
+      fleet_id: fleet_id ? parseInt(fleet_id) : null,
+      // Preserve existing task data
+      customer_name: currentTask.customer_name || '',
+      customer_phone: currentTask.customer_phone || '',
+      customer_email: currentTask.customer_email || '',
+      job_pickup_address: currentTask.job_pickup_address || currentTask.pickup_address || '',
+      job_address: currentTask.job_address || currentTask.delivery_address || '',
+      job_type: currentTask.job_type || 0
+    };
+    
+    // Add notes if provided
+    if (notes !== undefined) {
+      updatePayload.customer_comments = notes;
+    }
+    
+    const editResponse = await fetch('https://api.tookanapp.com/v2/edit_task', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatePayload),
+    });
+    
+    const editText = await editResponse.text();
+    let editData;
+    
+    try {
+      editData = JSON.parse(editText);
+    } catch (parseError) {
+      console.error('Failed to parse Tookan edit response:', editText.substring(0, 200));
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to parse response from Tookan'
+      });
+    }
+    
+    if (!editResponse.ok || editData.status !== 200) {
+      console.error('Tookan edit_task failed:', editData);
+      return res.status(500).json({
+        status: 'error',
+        message: editData.message || 'Failed to update task in Tookan'
+      });
+    }
+    
+    console.log('✅ Task updated in Tookan');
+    
+    // Step 3: Update task in Supabase database
+    let databaseUpdated = false;
+    let fleetName = null;
+    
+    if (isConfigured()) {
+      try {
+        // Get fleet name from agents table if available
+        if (fleet_id) {
+          const agent = await agentModel.getAgent(parseInt(fleet_id));
+          fleetName = agent?.name || null;
+        }
+        
+        const updateData = {
+          fleet_id: fleet_id ? parseInt(fleet_id) : null,
+          fleet_name: fleetName
+        };
+        
+        if (notes !== undefined) {
+          updateData.notes = notes;
+        }
+        
+        await taskModel.updateTask(parseInt(jobId), updateData);
+        databaseUpdated = true;
+        console.log('✅ Task updated in database');
+      } catch (dbError) {
+        console.warn('⚠️  Database update failed (will rely on next sync):', dbError.message);
+      }
+    }
+    
+    // Audit log
+    await auditLogger.createAuditLog(
+      req,
+      'assign_driver',
+      'order',
+      jobId,
+      { fleet_id: oldFleetId },
+      { fleet_id: fleet_id }
+    );
+    
+    console.log('✅ Driver assignment completed');
+    console.log('=== END REQUEST (SUCCESS) ===\n');
+    
+    res.json({
+      status: 'success',
+      message: 'Driver assigned successfully',
+      data: {
+        jobId: jobId,
+        fleet_id: fleet_id,
+        fleet_name: fleetName,
+        tookan_synced: true,
+        database_synced: databaseUpdated
+      }
+    });
+  } catch (error) {
+    console.error('❌ Assign driver error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to assign driver',
+      data: {}
+    });
+  }
+});
+
+// ============================================================
+// END AGENTS ENDPOINTS
+// ============================================================
 
 // GET All Fleets (Drivers/Agents)
 // Note: In Tookan API, Drivers are called "Agents" or "Fleets"
@@ -4417,7 +4751,7 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
       .reduce((sum, o) => sum + (parseFloat(o.cod) || 0), 0);
     
     const collectedCOD = orders
-      .filter(o => [6, 7, 8].includes(parseInt(o.status))) // Completed orders
+      .filter(o => [2].includes(parseInt(o.status))) // Tookan status 2 = Successful/Completed
       .reduce((sum, o) => sum + (parseFloat(o.cod) || 0), 0);
     
     const driversWithPending = new Set(
@@ -4427,7 +4761,7 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
         .filter(id => id)
     ).size;
     
-    const completedDeliveries = orders.filter(o => [6, 7, 8].includes(parseInt(o.status))).length;
+    const completedDeliveries = orders.filter(o => [2].includes(parseInt(o.status))).length;
 
     // Calculate COD Collection Status (for pie chart)
     // Note: Settled COD would come from COD queue settlement data
@@ -4470,7 +4804,7 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
     // Calculate Driver Performance (top 5 by delivery count)
     const driverPerformanceMap = new Map();
     orders.forEach(order => {
-      if (order.driverId && [6, 7, 8].includes(parseInt(order.status))) {
+      if (order.driverId && [2].includes(parseInt(order.status))) {
         const driverId = order.driverId.toString();
         if (!driverPerformanceMap.has(driverId)) {
           const driver = drivers.find(d => d.id === driverId);
@@ -4601,50 +4935,79 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
       console.error('Error fetching customers for summary:', err);
     }
 
-    // Calculate driver summaries
+    // Calculate driver summaries - Include ALL drivers from fleets
     const driverMap = new Map();
+    
+    // Step 1: Create driver map from ALL fleets (regardless of task assignment)
+    drivers.forEach(driver => {
+      const id = (driver.fleet_id || driver.id)?.toString();
+      if (id) {
+        driverMap.set(id, {
+          driverId: id,
+          driverName: driver.fleet_name || driver.name || driver.username || 'Unknown Driver',
+          driverEmail: driver.email || '',
+          driverPhone: driver.phone || driver.fleet_phone || '',
+          tasks: [],
+          codTotal: 0,
+          feesTotal: 0,
+          totalOrderValue: 0,
+          deliveryTimes: []
+        });
+      }
+    });
+    
+    // Step 2: Group ALL tasks/orders by fleet_id (no status filter)
     orders.forEach(order => {
-      if (order.driverId) {
-        const driverId = order.driverId.toString();
-        if (!driverMap.has(driverId)) {
-          const driver = drivers.find(d => d.id === driverId);
-          driverMap.set(driverId, {
-            driverId: driverId,
-            driverName: driver?.name || order.driver || 'Unknown Driver',
-            orders: [],
-            codTotal: 0,
-            feesTotal: 0,
-            deliveryTimes: []
-          });
-        }
+      const fleetId = (order.driverId || order.fleet_id || order.rawData?.fleet_id)?.toString();
+      
+      if (fleetId && driverMap.has(fleetId)) {
+        const driverData = driverMap.get(fleetId);
+        driverData.tasks.push(order);
         
-        const driverData = driverMap.get(driverId);
-        driverData.orders.push(order);
-        driverData.codTotal += parseFloat(order.cod || 0);
-        driverData.feesTotal += parseFloat(order.fee || order.orderFees || 0);
+        // Extract COD from meta_data or fallback to top-level fields
+        const rawTask = order.rawData || order;
+        const cod = extractMetaValue(rawTask, ['COD', 'COD Total', 'Cash on Delivery', 'cod']);
+        const fee = extractMetaValue(rawTask, ['Fee', 'Delivery Fee', 'Order Fee', 'Order Fees', 'fee']);
+        const price = extractMetaValue(rawTask, ['Price', 'Order Value', 'Total Value', 'Total', 'Amount']);
         
-        // Calculate delivery time if available
-        if (order.rawData?.completed_datetime && order.rawData?.creation_datetime) {
-          const start = new Date(order.rawData.creation_datetime);
-          const end = new Date(order.rawData.completed_datetime);
-          const minutes = (end.getTime() - start.getTime()) / (1000 * 60);
-          if (minutes > 0) driverData.deliveryTimes.push(minutes);
+        driverData.codTotal += cod;
+        driverData.feesTotal += fee;
+        driverData.totalOrderValue += price > 0 ? price : (cod + fee);
+        
+        // Calculate delivery time for completed tasks only (status 2 = Successful)
+        const taskStatus = parseInt(rawTask.job_status || order.status || 0);
+        if (taskStatus === 2) {
+          const completedTime = rawTask.completed_datetime;
+          const startedTime = rawTask.started_datetime || rawTask.creation_datetime;
+          
+          if (completedTime && startedTime && 
+              !completedTime.includes('0000-00-00') && !startedTime.includes('0000-00-00')) {
+            const start = new Date(startedTime);
+            const end = new Date(completedTime);
+            const minutes = (end.getTime() - start.getTime()) / (1000 * 60);
+            if (minutes > 0 && minutes < 1440) { // Sanity check: less than 24 hours
+              driverData.deliveryTimes.push(minutes);
+            }
+          }
         }
       }
     });
 
+    // Build driver summaries array with enhanced fields
     const driverSummaries = Array.from(driverMap.values()).map(driver => ({
       driverId: driver.driverId,
       driverName: driver.driverName,
-      totalOrders: driver.orders.length,
-      codTotal: driver.codTotal,
-      feesTotal: driver.feesTotal,
+      driverEmail: driver.driverEmail,
+      driverPhone: driver.driverPhone,
+      numberOfOrders: driver.tasks.length,
+      totalOrders: driver.tasks.length, // Alias for backward compatibility
+      codTotal: Math.round(driver.codTotal * 100) / 100,
+      orderFees: Math.round(driver.feesTotal * 100) / 100,
+      feesTotal: Math.round(driver.feesTotal * 100) / 100, // Alias for backward compatibility
+      totalOrderValue: Math.round(driver.totalOrderValue * 100) / 100,
       averageDeliveryTime: driver.deliveryTimes.length > 0
         ? Math.round(driver.deliveryTimes.reduce((a, b) => a + b, 0) / driver.deliveryTimes.length)
-        : 0,
-      completionRate: driver.orders.length > 0
-        ? (driver.orders.filter(o => [6, 7, 8].includes(parseInt(o.status))).length / driver.orders.length * 100).toFixed(1)
-        : '0'
+        : 0
     }));
 
     // Calculate merchant summaries
@@ -4685,11 +5048,14 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
     const totals = {
       orders: orders.length,
       drivers: drivers.length,
-      merchants: customers.length,
-      deliveries: orders.filter(o => [6, 7, 8].includes(parseInt(o.status))).length
+      customers: customers.length,
+      merchants: customers.length, // Alias for backward compatibility
+      deliveries: orders.filter(o => [2].includes(parseInt(o.status))).length
     };
 
     console.log('✅ Reports summary calculated successfully');
+    console.log(`   - Total drivers in summary: ${driverSummaries.length}`);
+    console.log(`   - Drivers with orders: ${driverSummaries.filter(d => d.numberOfOrders > 0).length}`);
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -4700,7 +5066,8 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
       data: {
         totals: totals,
         driverSummaries: driverSummaries,
-        merchantSummaries: merchantSummaries,
+        customerSummaries: merchantSummaries, // Renamed from merchantSummaries
+        merchantSummaries: merchantSummaries, // Keep for backward compatibility
         filters: {
           dateFrom: startDate,
           dateTo: endDate
@@ -6171,13 +6538,216 @@ app.get('/api/audit-logs/:entityType/:entityId', authenticate, requireRole('admi
   }
 });
 
+// ============================================
+// ADMIN SYNC ENDPOINTS
+// Endpoints for managing order cache sync
+// ============================================
+
+// GET Sync Status
+app.get('/api/admin/sync/status', authenticate, async (req, res) => {
+  try {
+    console.log('\n=== GET SYNC STATUS ===');
+    
+    const status = await taskModel.getSyncStatus();
+    const cachedCount = await taskModel.getCachedTaskCount();
+    const isFresh = await taskModel.isCacheFresh(24);
+    
+    res.json({
+      status: 'success',
+      data: {
+        syncStatus: status || { status: 'never_synced' },
+        cachedOrderCount: cachedCount,
+        isCacheFresh: isFresh,
+        supabaseConfigured: isConfigured()
+      }
+    });
+  } catch (error) {
+    console.error('Get sync status error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to get sync status'
+    });
+  }
+});
+
+// POST Trigger Full Sync (Admin only)
+app.post('/api/admin/sync/orders', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    console.log('\n=== TRIGGER FULL ORDER SYNC ===');
+    console.log('Requested by:', req.user?.email || 'Unknown');
+    
+    if (!isConfigured()) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Supabase not configured. Cannot run sync without database.'
+      });
+    }
+    
+    const { forceSync, resumeFromBatch } = req.body;
+    
+    // Check if sync is already running
+    const currentStatus = await taskModel.getSyncStatus();
+    if (currentStatus?.status === 'in_progress' && !forceSync) {
+      return res.status(409).json({
+        status: 'error',
+        message: 'Sync already in progress. Use forceSync: true to override.',
+        data: { currentStatus }
+      });
+    }
+    
+    // Start sync in background (don't block response)
+    res.json({
+      status: 'success',
+      message: 'Sync started in background. Check /api/admin/sync/status for progress.',
+      data: {
+        startedAt: new Date().toISOString(),
+        forceSync: !!forceSync,
+        resumeFromBatch: resumeFromBatch || 0
+      }
+    });
+    
+    // Run sync after response is sent
+    setImmediate(async () => {
+      try {
+        const result = await orderSyncService.syncOrders({
+          forceSync: !!forceSync,
+          resumeFromBatch: resumeFromBatch || 0
+        });
+        console.log('Full sync completed:', result);
+      } catch (syncError) {
+        console.error('Full sync failed:', syncError);
+      }
+    });
+    
+  } catch (error) {
+    console.error('Trigger sync error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to trigger sync'
+    });
+  }
+});
+
+// POST Trigger Incremental Sync
+app.post('/api/admin/sync/incremental', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    console.log('\n=== TRIGGER INCREMENTAL SYNC ===');
+    console.log('Requested by:', req.user?.email || 'Unknown');
+    
+    if (!isConfigured()) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Supabase not configured. Cannot run sync without database.'
+      });
+    }
+    
+    // Check if sync is already running
+    const currentStatus = await taskModel.getSyncStatus();
+    if (currentStatus?.status === 'in_progress') {
+      return res.status(409).json({
+        status: 'error',
+        message: 'Sync already in progress. Please wait for it to complete.',
+        data: { currentStatus }
+      });
+    }
+    
+    // Start sync in background
+    res.json({
+      status: 'success',
+      message: 'Incremental sync started in background.',
+      data: {
+        startedAt: new Date().toISOString()
+      }
+    });
+    
+    // Run sync after response is sent
+    setImmediate(async () => {
+      try {
+        const result = await orderSyncService.incrementalSync();
+        console.log('Incremental sync completed:', result);
+      } catch (syncError) {
+        console.error('Incremental sync failed:', syncError);
+      }
+    });
+    
+  } catch (error) {
+    console.error('Trigger incremental sync error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to trigger incremental sync'
+    });
+  }
+});
+
+// DELETE Clear Order Cache (Admin only)
+app.delete('/api/admin/sync/cache', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    console.log('\n=== CLEAR ORDER CACHE ===');
+    console.log('Requested by:', req.user?.email || 'Unknown');
+    
+    if (!isConfigured()) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Supabase not configured.'
+      });
+    }
+    
+    // Delete all cached tasks
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .neq('job_id', 0); // Delete all
+    
+    if (error) {
+      throw error;
+    }
+    
+    // Reset sync status
+    await taskModel.updateSyncStatus({
+      status: 'idle',
+      last_successful_sync: null,
+      synced_records: 0,
+      completed_batches: 0
+    });
+    
+    res.json({
+      status: 'success',
+      message: 'Order cache cleared successfully'
+    });
+  } catch (error) {
+    console.error('Clear cache error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to clear cache'
+    });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'API server is running' });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Tookan API Proxy Server running on http://localhost:${PORT}`);
   console.log(`📡 Proxying requests to Tookan API`);
+  
+  // Auto-sync agents on startup (non-blocking)
+  if (isConfigured()) {
+    console.log('\n🔄 Starting automatic agent sync...');
+    agentSyncService.syncAgents()
+      .then(result => {
+        if (result.success) {
+          console.log(`✅ Agent sync completed: ${result.synced} agents synced`);
+        } else {
+          console.log(`⚠️  Agent sync failed: ${result.message}`);
+        }
+      })
+      .catch(err => {
+        console.error('❌ Agent sync error:', err.message);
+      });
+  } else {
+    console.log('⚠️  Supabase not configured, skipping agent auto-sync');
+  }
 });
 
