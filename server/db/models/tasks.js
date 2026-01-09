@@ -99,7 +99,7 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
 
   let query = supabase
     .from('tasks')
-    .select('job_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime', { count: 'exact' });
+    .select('job_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address', { count: 'exact' });
 
   if (filters.dateFrom) {
     query = query.gte('creation_datetime', filters.dateFrom);
@@ -118,22 +118,10 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
   }
   if (filters.search) {
     const term = String(filters.search).trim().replace(/,/g, '');
-
-    if (/^\\d+$/.test(term)) {
-      // Numeric search: approximate prefix via range
-      const digits = term.length;
-      const maxDigits = 12;
-      const power = Math.pow(10, Math.max(0, maxDigits - digits));
-      const lower = parseInt(term, 10) * power;
-      const upper = (parseInt(term, 10) + 1) * power - 1;
-      query = query.gte('job_id', lower).lte('job_id', upper);
-    } else {
-      const like = `%${term}%`;
-      const ors = [
-        `customer_name.ilike.${like}`,
-        `fleet_name.ilike.${like}`
-      ];
-      query = query.or(ors.join(','));
+    // Search by job_id (numeric, primary)
+    const numTerm = parseInt(term, 10);
+    if (!isNaN(numTerm)) {
+      query = query.eq('job_id', numTerm);
     }
   }
 

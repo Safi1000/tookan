@@ -20,7 +20,6 @@ const orderSyncService = require('./services/orderSyncService');
 // Agent sync service for caching drivers/fleets
 const agentSyncService = require('./services/agentSyncService');
 const agentModel = require('./db/models/agents');
-const taskModel = require('./db/models/tasks');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -1678,28 +1677,44 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
 
       const currentTask = getData.data || {};
       
+      console.log('📋 Tookan task data received:', JSON.stringify(currentTask, null, 2));
+      
       // Use fetched data if not provided
       // Tookan uses different field names, so we need to check multiple possibilities
+      // For notes: only use provided notes if it has actual content, otherwise use original
+      const originalNotes = currentTask.customer_comments || currentTask.job_description || '';
+      const effectiveNotes = (notes && notes.trim()) ? notes.trim() : originalNotes;
+      
       orderData = {
-        customerName: customerName || currentTask.customer_name || currentTask.customer_username || currentTask.job_pickup_name || '',
+        customerName: customerName || currentTask.customer_username || currentTask.customer_name || currentTask.job_pickup_name || 'Customer',
         customerPhone: customerPhone || currentTask.customer_phone || currentTask.job_pickup_phone || '',
         customerEmail: customerEmail || currentTask.customer_email || currentTask.job_pickup_email || '',
-        pickupAddress: pickupAddress || currentTask.pickup_address || currentTask.job_pickup_address || '',
-        deliveryAddress: deliveryAddress || currentTask.delivery_address || currentTask.job_address || currentTask.delivery_address || '',
-        codAmount: codAmount !== undefined ? codAmount : (currentTask.cod || 0),
-        orderFees: orderFees !== undefined ? orderFees : (currentTask.order_payment || 0),
+        pickupAddress: pickupAddress || currentTask.job_pickup_address || currentTask.pickup_address || '',
+        deliveryAddress: deliveryAddress || currentTask.customer_address || currentTask.job_address || currentTask.delivery_address || '',
+        codAmount: codAmount !== undefined ? codAmount : (parseFloat(currentTask.cod) || 0),
+        orderFees: orderFees !== undefined ? orderFees : (parseFloat(currentTask.order_payment) || 0),
         assignedDriver: assignedDriver !== undefined ? assignedDriver : (currentTask.fleet_id || null),
-        notes: notes || currentTask.customer_comments || currentTask.job_description || ''
+        notes: effectiveNotes
       };
+      
+      console.log('📋 Merged order data:', JSON.stringify(orderData, null, 2));
     }
 
-    // Validate required fields
-    if (!orderData.customerName || !orderData.customerPhone || !orderData.pickupAddress || !orderData.deliveryAddress) {
+    // Validate required fields - only addresses are truly required
+    if (!orderData.pickupAddress || !orderData.deliveryAddress) {
       return res.status(400).json({
         status: 'error',
-        message: 'Original order ID and order data are required',
+        message: 'Pickup and delivery addresses are required',
         data: {}
       });
+    }
+    
+    // Use defaults for missing customer info
+    if (!orderData.customerName) {
+      orderData.customerName = 'Customer';
+    }
+    if (!orderData.customerPhone) {
+      orderData.customerPhone = '+97300000000'; // Default phone
     }
 
     // Get tags for this task
@@ -1714,18 +1729,37 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
     };
     const tags = tagService.getTagsForTask(taskDataForTags);
     
-    // Create new task with same data
+    // Create new task - use delivery task type (job_type: 1)
+    // Pickup datetime = now, Delivery datetime = now + 3 hours
+    const now = new Date();
+    const pickupTime = now;
+    const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours
+    const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
+    
+    // Timezone for Bahrain (UTC+3) = -180 minutes
+    const timezone = '-180';
+    
     const createPayload = {
       api_key: apiKey,
-      job_type: 0, // 0 = delivery task
-      customer_name: orderData.customerName,
+      customer_username: orderData.customerName || 'Customer',
       customer_phone: orderData.customerPhone,
       customer_email: orderData.customerEmail || '',
-      pickup_address: orderData.pickupAddress,
-      delivery_address: orderData.deliveryAddress,
+      // Delivery task required fields
+      customer_address: orderData.deliveryAddress || '',
+      job_delivery_datetime: formatDateTime(deliveryTime),
+      has_pickup: 1, // Has pickup
+      has_delivery: 1, // Has delivery
+      layout_type: 0, // Required: fixed to 0
+      timezone: timezone,
+      // Pickup fields
+      job_pickup_address: orderData.pickupAddress || '',
+      job_pickup_datetime: formatDateTime(pickupTime),
+      // Payment fields
       cod: parseFloat(orderData.codAmount) || 0,
       order_payment: parseFloat(orderData.orderFees) || 0,
       customer_comments: orderData.notes || '',
+      job_description: orderData.notes || '',
+      auto_assignment: 0,
     };
 
     // Add tags if any
@@ -1774,6 +1808,35 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
     const newOrderId = data.data?.job_id || data.data?.jobId || null;
 
     console.log('✅ Re-order created successfully:', newOrderId);
+    
+    // Save the new task to Supabase for caching
+    if (newOrderId && isConfigured()) {
+      try {
+        const newTaskRecord = {
+          job_id: newOrderId,
+          order_id: data.data?.order_id || null,
+          customer_name: orderData.customerName,
+          customer_phone: orderData.customerPhone,
+          customer_email: orderData.customerEmail || null,
+          pickup_address: orderData.pickupAddress,
+          delivery_address: orderData.deliveryAddress,
+          cod_amount: parseFloat(orderData.codAmount) || 0,
+          order_fees: parseFloat(orderData.orderFees) || 0,
+          notes: orderData.notes || '',
+          fleet_id: orderData.assignedDriver || null,
+          status: 0, // New/Assigned
+          creation_datetime: new Date().toISOString(),
+          source: 'reorder',
+          last_synced_at: new Date().toISOString()
+        };
+        
+        await taskModel.upsertTask(newOrderId, newTaskRecord);
+        console.log('✅ New re-order task saved to Supabase:', newOrderId);
+      } catch (dbError) {
+        console.error('⚠️ Failed to save re-order to Supabase (task still created in Tookan):', dbError.message);
+      }
+    }
+    
     console.log('=== END REQUEST (SUCCESS) ===\n');
     
     res.json({
@@ -1859,17 +1922,41 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
     const tags = tagService.getTagsForTask(returnTaskData);
     
     // Create return order with reversed addresses and COD = 0
+    // For returns: old delivery becomes new pickup, old pickup becomes new delivery
+    // For returns: old delivery becomes new pickup, old pickup becomes new delivery
+    const newPickupAddr = currentTask.job_address || currentTask.delivery_address || currentTask.customer_address || '';
+    const newDeliveryAddr = currentTask.job_pickup_address || currentTask.pickup_address || '';
+    
+    // Pickup datetime = now, Delivery datetime = now + 3 hours
+    const now = new Date();
+    const pickupTime = now;
+    const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours
+    const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
+    
+    // Timezone for Bahrain (UTC+3) = -180 minutes
+    const timezone = '-180';
+    
     const createPayload = {
       api_key: apiKey,
-      job_type: 0, // 0 = delivery task
-      customer_name: currentTask.customer_name || '',
+      customer_username: currentTask.customer_name || currentTask.customer_username || 'Customer',
       customer_phone: currentTask.customer_phone || '',
       customer_email: currentTask.customer_email || '',
-      pickup_address: currentTask.delivery_address || '', // Reversed
-      delivery_address: currentTask.pickup_address || '', // Reversed
-      cod: 0, // COD automatically removed for returns
+      // Delivery task required fields
+      customer_address: newDeliveryAddr, // Reversed: old pickup
+      job_delivery_datetime: formatDateTime(deliveryTime),
+      has_pickup: 1, // Has pickup
+      has_delivery: 1, // Has delivery
+      layout_type: 0, // Required: fixed to 0
+      timezone: timezone,
+      // Pickup fields (reversed)
+      job_pickup_address: newPickupAddr, // Reversed: old delivery
+      job_pickup_datetime: formatDateTime(pickupTime),
+      // Payment fields - COD removed for returns
+      cod: 0,
       order_payment: parseFloat(currentTask.order_payment || 0),
       customer_comments: `Return order for ${orderId}. ${currentTask.customer_comments || ''}`.trim(),
+      job_description: `Return order for ${orderId}. ${currentTask.customer_comments || ''}`.trim(),
+      auto_assignment: 0,
     };
 
     // Add tags if any
@@ -1918,6 +2005,35 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
     const returnOrderId = data.data?.job_id || data.data?.jobId || null;
 
     console.log('✅ Return order created successfully:', returnOrderId);
+    
+    // Save the new return task to Supabase for caching
+    if (returnOrderId && isConfigured()) {
+      try {
+        const returnTaskRecord = {
+          job_id: returnOrderId,
+          order_id: data.data?.order_id || null,
+          customer_name: currentTask.customer_name || currentTask.customer_username || 'Customer',
+          customer_phone: currentTask.customer_phone || '',
+          customer_email: currentTask.customer_email || null,
+          pickup_address: newPickupAddr,
+          delivery_address: newDeliveryAddr,
+          cod_amount: 0, // COD removed for returns
+          order_fees: parseFloat(currentTask.order_payment) || 0,
+          notes: `Return order for ${orderId}. ${currentTask.customer_comments || ''}`.trim(),
+          fleet_id: currentTask.fleet_id || null,
+          status: 0, // New/Assigned
+          creation_datetime: new Date().toISOString(),
+          source: 'return',
+          last_synced_at: new Date().toISOString()
+        };
+        
+        await taskModel.upsertTask(returnOrderId, returnTaskRecord);
+        console.log('✅ New return order task saved to Supabase:', returnOrderId);
+      } catch (dbError) {
+        console.error('⚠️ Failed to save return order to Supabase (task still created in Tookan):', dbError.message);
+      }
+    }
+    
     console.log('=== END REQUEST (SUCCESS) ===\n');
     
     res.json({
@@ -3845,7 +3961,12 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
         assignedDriver: task.fleet_id || null,
         assignedDriverName: task.fleet_name || '',
         notes: task.notes || '',
-        date: task.creation_datetime || null
+        date: task.creation_datetime || null,
+        customerName: task.customer_name || '',
+        customerPhone: task.customer_phone || '',
+        customerEmail: task.customer_email || '',
+        pickupAddress: task.pickup_address || '',
+        deliveryAddress: task.delivery_address || ''
       };
     });
 
