@@ -1857,13 +1857,13 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
 });
 
 // RETURN Order
-app.post('/api/tookan/order/return', authenticate, requirePermission('perform_return'), async (req, res) => {
+app.post('/api/tookan/order/return', authenticate, requirePermission('perform_reorder'), async (req, res) => {
   try {
     console.log('\n=== RETURN ORDER REQUEST ===');
     console.log('Request body:', JSON.stringify(req.body, null, 2));
     
     const apiKey = getApiKey();
-    const { orderId } = req.body;
+    const { orderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, notes } = req.body;
 
     if (!orderId) {
       return res.status(400).json({
@@ -1873,61 +1873,90 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
       });
     }
 
-    // First, fetch current order to get addresses
-    const getTaskPayload = {
-      api_key: apiKey,
-      job_id: orderId
+    // Use data from request body if provided, otherwise fetch from Tookan
+    let orderData = {
+      customerName: customerName || '',
+      customerPhone: customerPhone || '',
+      customerEmail: customerEmail || '',
+      pickupAddress: pickupAddress || '',
+      deliveryAddress: deliveryAddress || '',
+      notes: notes || ''
     };
 
-    const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(getTaskPayload),
-    });
+    // Only fetch from Tookan if addresses not provided
+    if (!orderData.pickupAddress || !orderData.deliveryAddress) {
+      console.log('📋 Fetching order data from Tookan for return...');
+      const getTaskPayload = {
+        api_key: apiKey,
+        job_id: orderId
+      };
 
-    const getTextResponse = await getResponse.text();
-    let getData;
-    try {
-      getData = JSON.parse(getTextResponse);
-    } catch (parseError) {
-      return res.status(500).json({
-        status: 'error',
-        message: 'Failed to fetch order for return',
-        data: {}
+      const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(getTaskPayload),
       });
-    }
 
-    if (!getResponse.ok || getData.status !== 200) {
-      return res.status(getResponse.status || 500).json({
-        status: 'error',
-        message: getData.message || 'Order not found',
-        data: {}
-      });
-    }
+      const getTextResponse = await getResponse.text();
+      let getData;
+      try {
+        getData = JSON.parse(getTextResponse);
+      } catch (parseError) {
+        return res.status(500).json({
+          status: 'error',
+          message: 'Failed to fetch order for return',
+          data: {}
+        });
+      }
 
-    const currentTask = getData.data || {};
+      if (!getResponse.ok || getData.status !== 200) {
+        return res.status(getResponse.status || 500).json({
+          status: 'error',
+          message: getData.message || 'Order not found',
+          data: {}
+        });
+      }
+
+      const currentTask = getData.data || {};
+      
+      // Merge with fetched data
+      orderData.customerName = orderData.customerName || currentTask.customer_name || currentTask.customer_username || 'Customer';
+      orderData.customerPhone = orderData.customerPhone || currentTask.customer_phone || '';
+      orderData.customerEmail = orderData.customerEmail || currentTask.customer_email || '';
+      orderData.pickupAddress = orderData.pickupAddress || currentTask.job_pickup_address || currentTask.pickup_address || '';
+      orderData.deliveryAddress = orderData.deliveryAddress || currentTask.customer_address || currentTask.job_address || currentTask.delivery_address || '';
+      orderData.notes = orderData.notes || currentTask.customer_comments || '';
+    }
 
     // Get tags for return order
     const returnTaskData = {
-      customerName: currentTask.customer_name,
-      customerPhone: currentTask.customer_phone,
-      pickupAddress: currentTask.delivery_address, // Reversed
-      deliveryAddress: currentTask.pickup_address, // Reversed
-      customerPlan: currentTask.customer_plan,
-      deliveryZone: currentTask.delivery_zone,
-      ...currentTask
+      customerName: orderData.customerName,
+      customerPhone: orderData.customerPhone,
+      pickupAddress: orderData.deliveryAddress, // Reversed
+      deliveryAddress: orderData.pickupAddress, // Reversed
+      ...orderData
     };
     const tags = tagService.getTagsForTask(returnTaskData);
     
-    // Create return order with reversed addresses and COD = 0
-    // For returns: old delivery becomes new pickup, old pickup becomes new delivery
-    // For returns: old delivery becomes new pickup, old pickup becomes new delivery
-    const newPickupAddr = currentTask.job_address || currentTask.delivery_address || currentTask.customer_address || '';
-    const newDeliveryAddr = currentTask.job_pickup_address || currentTask.pickup_address || '';
+    // Get original addresses (from request body or merged data)
+    const originalPickupAddr = orderData.pickupAddress;
+    const originalDeliveryAddr = orderData.deliveryAddress;
     
-    // Pickup datetime = now, Delivery datetime = now + 3 hours
+    // For return: REVERSE the addresses
+    // New pickup = where we delivered (original delivery address)
+    // New delivery = where we picked up from (original pickup address)
+    const returnPickupAddr = originalDeliveryAddr;
+    const returnDeliveryAddr = originalPickupAddr;
+    
+    console.log('Return order - reversing addresses:');
+    console.log(`  Original pickup: ${originalPickupAddr}`);
+    console.log(`  Original delivery: ${originalDeliveryAddr}`);
+    console.log(`  Return pickup (from customer): ${returnPickupAddr}`);
+    console.log(`  Return delivery (back to origin): ${returnDeliveryAddr}`);
+    
+    // Task time: pickup = now, delivery = now + 3 hours
     const now = new Date();
     const pickupTime = now;
     const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours
@@ -1936,28 +1965,30 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
     // Timezone for Bahrain (UTC+3) = -180 minutes
     const timezone = '-180';
     
+    // Use same pattern as reorder: has_pickup=1, has_delivery=1, both addresses
     const createPayload = {
       api_key: apiKey,
-      customer_username: currentTask.customer_name || currentTask.customer_username || 'Customer',
-      customer_phone: currentTask.customer_phone || '',
-      customer_email: currentTask.customer_email || '',
-      // Delivery task required fields
-      customer_address: newDeliveryAddr, // Reversed: old pickup
-      job_delivery_datetime: formatDateTime(deliveryTime),
-      has_pickup: 1, // Has pickup
-      has_delivery: 1, // Has delivery
-      layout_type: 0, // Required: fixed to 0
-      timezone: timezone,
-      // Pickup fields (reversed)
-      job_pickup_address: newPickupAddr, // Reversed: old delivery
+      customer_username: orderData.customerName || 'Customer',
+      customer_phone: orderData.customerPhone || '',
+      customer_email: orderData.customerEmail || '',
+      // Reversed addresses
+      job_pickup_address: returnPickupAddr, // Pick up from where we delivered
       job_pickup_datetime: formatDateTime(pickupTime),
-      // Payment fields - COD removed for returns
-      cod: 0,
-      order_payment: parseFloat(currentTask.order_payment || 0),
-      customer_comments: `Return order for ${orderId}. ${currentTask.customer_comments || ''}`.trim(),
-      job_description: `Return order for ${orderId}. ${currentTask.customer_comments || ''}`.trim(),
+      customer_address: returnDeliveryAddr, // Deliver back to original pickup
+      job_delivery_datetime: formatDateTime(deliveryTime),
+      has_pickup: 1,
+      has_delivery: 1,
+      layout_type: 0,
+      timezone: timezone,
+      cod: 0, // COD removed for returns
+      order_payment: 0,
+      customer_comments: `Return order for ${orderId}. ${orderData.notes || ''}`.trim(),
+      job_description: `Return order for ${orderId}. ${orderData.notes || ''}`.trim(),
       auto_assignment: 0,
     };
+    
+    // For Supabase save
+    const returnAddress = returnDeliveryAddr;
 
     // Add tags if any
     if (tags && tags.length > 0) {
@@ -1965,9 +1996,9 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
       console.log('Tags assigned to return order:', tags);
     }
 
-    // Add fleet_id if driver was assigned
-    if (currentTask.fleet_id) {
-      createPayload.fleet_id = currentTask.fleet_id;
+    // Add fleet_id if driver was assigned in request
+    if (orderData.assignedDriver) {
+      createPayload.fleet_id = orderData.assignedDriver;
     }
 
     console.log('Calling Tookan API: https://api.tookanapp.com/v2/create_task');
@@ -2012,15 +2043,15 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
         const returnTaskRecord = {
           job_id: returnOrderId,
           order_id: data.data?.order_id || null,
-          customer_name: currentTask.customer_name || currentTask.customer_username || 'Customer',
-          customer_phone: currentTask.customer_phone || '',
-          customer_email: currentTask.customer_email || null,
-          pickup_address: newPickupAddr,
-          delivery_address: newDeliveryAddr,
+          customer_name: orderData.customerName || 'Customer',
+          customer_phone: orderData.customerPhone || '',
+          customer_email: orderData.customerEmail || null,
+          pickup_address: returnPickupAddr,
+          delivery_address: returnDeliveryAddr,
           cod_amount: 0, // COD removed for returns
-          order_fees: parseFloat(currentTask.order_payment) || 0,
-          notes: `Return order for ${orderId}. ${currentTask.customer_comments || ''}`.trim(),
-          fleet_id: currentTask.fleet_id || null,
+          order_fees: 0,
+          notes: `Return order for ${orderId}. ${orderData.notes || ''}`.trim(),
+          fleet_id: orderData.assignedDriver || null,
           status: 0, // New/Assigned
           creation_datetime: new Date().toISOString(),
           source: 'return',
