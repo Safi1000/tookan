@@ -201,6 +201,12 @@ function getApp() {
           return res.status(401).json({ status: 'error', message: 'Authentication required' });
         }
 
+        // Bypass permissions for whitelisted test email (if configured)
+        const bypassEmail = process.env.TEST_EMAIL;
+        if (bypassEmail && req.user.email === bypassEmail) {
+          return next();
+        }
+
         // Admins have all permissions
         if (req.user.role === 'admin') {
           return next();
