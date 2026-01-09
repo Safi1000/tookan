@@ -103,6 +103,26 @@ function getApp() {
       updated_at: new Date().toISOString()
     });
 
+    const fetchFleetsFromTookan = async () => {
+      const apiKey = getApiKey();
+      const response = await fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: apiKey })
+      });
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error('Failed to parse Tookan fleets response');
+      }
+      if (!response.ok || (data.status !== 200 && data.status !== 1)) {
+        throw new Error(data.message || 'Failed to fetch fleets');
+      }
+      return data.data || [];
+    };
+
     // ============================================
     // PERMISSION CONSTANTS (per SRS)
     // ============================================
@@ -505,6 +525,93 @@ function getApp() {
       } catch (error) {
         console.error('Webhook agent error:', error);
         return res.status(500).json({ status: 'error', message: error.message || 'Internal error' });
+      }
+    });
+
+    // GET Agents from database (serverless)
+    app.get('/api/agents', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({
+            status: 'error',
+            message: 'Supabase not configured',
+            data: { agents: [], total: 0 }
+          });
+        }
+
+        const { isActive, teamId, search } = req.query;
+        let query = supabase.from('agents').select('*');
+
+        if (isActive !== undefined) {
+          query = query.eq('is_active', isActive === 'true');
+        }
+        if (teamId) {
+          query = query.eq('team_id', teamId);
+        }
+        if (search) {
+          const term = `%${search}%`;
+          query = query.or(`name.ilike.${term},email.ilike.${term},phone.ilike.${term}`);
+        }
+
+        query = query.order('name', { ascending: true });
+        const { data, error } = await query;
+        if (error) {
+          console.error('Get agents error:', error.message);
+          return res.status(500).json({ status: 'error', message: error.message, data: { agents: [], total: 0 } });
+        }
+
+        return res.json({
+          status: 'success',
+          message: 'Agents fetched successfully',
+          data: { agents: data || [], total: (data || []).length }
+        });
+      } catch (error) {
+        console.error('Get agents error:', error);
+        return res.status(500).json({ status: 'error', message: error.message || 'Internal error', data: { agents: [], total: 0 } });
+      }
+    });
+
+    // POST Sync agents from Tookan (serverless)
+    app.post('/api/agents/sync', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+        }
+
+        const fleets = await fetchFleetsFromTookan();
+        if (!fleets.length) {
+          return res.json({ status: 'success', message: 'No fleets to sync', data: { synced: 0, errors: 0 } });
+        }
+
+        const now = new Date().toISOString();
+        const records = fleets.map(f => {
+          const a = transformFleetToAgent(f);
+          return { ...a, last_synced_at: now, updated_at: now };
+        });
+
+        const CHUNK_SIZE = 50;
+        let inserted = 0;
+        let errors = 0;
+
+        for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+          const chunk = records.slice(i, i + CHUNK_SIZE);
+          const { error } = await supabase.from('agents').upsert(chunk, { onConflict: 'fleet_id', ignoreDuplicates: false });
+          if (error) {
+            console.error('Bulk upsert agents error:', error.message);
+            errors += chunk.length;
+          } else {
+            inserted += chunk.length;
+          }
+        }
+
+        return res.json({
+          status: 'success',
+          message: 'Agents synced successfully',
+          data: { synced: inserted, errors }
+        });
+      } catch (error) {
+        console.error('Sync agents error:', error);
+        return res.status(500).json({ status: 'error', message: error.message || 'Internal error', data: { synced: 0, errors: 0 } });
       }
     });
 
