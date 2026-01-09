@@ -508,6 +508,111 @@ function getApp() {
       }
     });
 
+    // GET Orders from Cache (database-first, paginated, minimal fields) - serverless
+    app.get('/api/tookan/orders/cached', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({
+            status: 'error',
+            message: 'Supabase not configured',
+            data: { orders: [], total: 0, page: 1, limit: 50, hasMore: false }
+          });
+        }
+
+        const { dateFrom, dateTo, driverId, customerId, status, search, limit = 50, page = 1 } = req.query;
+        const pageNum = Math.max(1, parseInt(page, 10) || 1);
+        const limitNum = Math.max(1, parseInt(limit, 10) || 50);
+        const from = (pageNum - 1) * limitNum;
+        const to = from + limitNum - 1;
+
+        let query = supabase
+          .from('tasks')
+          .select('job_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime', { count: 'exact' });
+
+        if (dateFrom) query = query.gte('creation_datetime', dateFrom);
+        if (dateTo) query = query.lte('creation_datetime', dateTo);
+        if (driverId) query = query.eq('fleet_id', driverId);
+        if (customerId) query = query.eq('vendor_id', customerId);
+        if (status !== undefined && status !== null && status !== '') {
+          query = query.eq('status', parseInt(status));
+        }
+        if (search) {
+          const term = String(search).trim().replace(/,/g, '');
+          if (/^\\d+$/.test(term)) {
+            // numeric prefix search via range
+            const digits = term.length;
+            const maxDigits = 12;
+            const power = Math.pow(10, Math.max(0, maxDigits - digits));
+            const lower = parseInt(term, 10) * power;
+            const upper = (parseInt(term, 10) + 1) * power - 1;
+            query = query.gte('job_id', lower).lte('job_id', upper);
+          } else {
+            const like = `%${term}%`;
+            const ors = [
+              `customer_name.ilike.${like}`,
+              `fleet_name.ilike.${like}`
+            ];
+            query = query.or(ors.join(','));
+          }
+        }
+
+        query = query.order('creation_datetime', { ascending: false }).range(from, to);
+
+        const { data, error, count } = await query;
+        if (error) {
+          console.error('Get cached orders error:', error.message);
+          return res.status(500).json({
+            status: 'error',
+            message: error.message,
+            data: { orders: [], total: 0, page: pageNum, limit: limitNum, hasMore: false }
+          });
+        }
+
+        const orders = (data || []).map(task => ({
+          jobId: task.job_id?.toString() || '',
+          codAmount: parseFloat(task.cod_amount || 0),
+          orderFees: parseFloat(task.order_fees || 0),
+          assignedDriver: task.fleet_id || null,
+          assignedDriverName: task.fleet_name || '',
+          notes: task.notes || '',
+          date: task.creation_datetime || null
+        }));
+
+        const total = count || 0;
+        const hasMore = (pageNum * limitNum) < total;
+
+        return res.json({
+          status: 'success',
+          action: 'fetch_orders_cached',
+          entity: 'order',
+          message: 'Cached orders fetched successfully',
+          data: {
+            orders,
+            total,
+            page: pageNum,
+            limit: limitNum,
+            hasMore,
+            filters: {
+              dateFrom: dateFrom || null,
+              dateTo: dateTo || null,
+              driverId: driverId || null,
+              customerId: customerId || null,
+              status: status || null,
+              search: search || null
+            },
+            source: 'database'
+          }
+        });
+      } catch (error) {
+        console.error('Get cached orders error:', error);
+        return res.status(500).json({
+          status: 'error',
+          message: error.message || 'Network error occurred',
+          data: { orders: [], total: 0, page: 1, limit: 50, hasMore: false }
+        });
+      }
+    });
+
     // Get all fleets (drivers)
     app.get('/api/tookan/fleets', async (req, res) => {
       try {
