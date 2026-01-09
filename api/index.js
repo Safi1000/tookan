@@ -461,6 +461,18 @@ function getApp() {
           return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
         }
 
+        // Check if task is deleted
+        const isDeleted = payload.is_deleted === 1 || payload.is_deleted === '1' || payload.is_deleted === true;
+        
+        if (isDeleted) {
+          // Remove from Supabase if deleted
+          await supabase
+            .from('tasks')
+            .delete()
+            .eq('job_id', parseInt(jobId));
+          return res.status(200).json({ status: 'success', message: 'Task deleted from cache' });
+        }
+
         const record = {
           job_id: parseInt(jobId) || jobId,
           cod_amount: parseFloat(payload.cod_amount || payload.cod || 0),
@@ -469,6 +481,11 @@ function getApp() {
           fleet_name: payload.fleet_name || payload.driver_name || '',
           notes: payload.customer_comments || payload.notes || '',
           status: payload.status || payload.job_status || null,
+          customer_name: payload.customer_name || payload.customer_username || '',
+          customer_phone: payload.customer_phone || '',
+          customer_email: payload.customer_email || '',
+          pickup_address: payload.job_pickup_address || payload.pickup_address || '',
+          delivery_address: payload.customer_address || payload.job_address || payload.delivery_address || '',
           creation_datetime: payload.creation_datetime || payload.job_time || payload.created_at || payload.timestamp || new Date().toISOString(),
           raw_data: payload,
           last_synced_at: new Date().toISOString(),
