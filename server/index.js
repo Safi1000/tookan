@@ -6393,17 +6393,21 @@ app.get('/api/users', authenticate, requireSuperadmin(), async (req, res) => {
     const users = await userModel.getAllUsers(filters);
 
     // Transform to expected format
-    const transformedUsers = users.map(user => ({
-      id: user.id,
-      email: user.email,
-      name: user.name || user.email,
-      role: user.role || 'user',
-      permissions: user.permissions || {},
-      status: 'Active', // TODO: Add status field to users table
-      lastLogin: user.last_login || null,
-      createdAt: user.created_at,
-      updatedAt: user.updated_at
-    }));
+    const transformedUsers = users.map(user => {
+      const rawStatus = (user.status || 'active').toString().toLowerCase();
+
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name || user.email,
+        role: user.role || 'user',
+        permissions: user.permissions || {},
+        status: rawStatus, // keep raw; front-end handles label mapping
+        lastLogin: user.last_login || null,
+        createdAt: user.created_at,
+        updatedAt: user.updated_at
+      };
+    });
 
     res.json({
       status: 'success',

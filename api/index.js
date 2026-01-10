@@ -1656,16 +1656,19 @@ function getApp() {
 
         // Combine and transform
         const allUsers = [
-          ...(users || []).map(u => ({
-            id: u.id,
-            email: u.email,
-            name: u.name || u.email,
-            role: u.role || 'admin',
-            permissions: u.permissions || {},
-            status: 'Active',
-            source: 'supabase',
-            createdAt: u.created_at
-          })),
+          ...(users || []).map(u => {
+            const rawStatus = (u.status || 'active').toString().toLowerCase();
+            return {
+              id: u.id,
+              email: u.email,
+              name: u.name || u.email,
+              role: u.role || 'admin',
+              permissions: u.permissions || {},
+              status: rawStatus, // keep raw; front-end maps labels
+              source: 'supabase',
+              createdAt: u.created_at
+            };
+          }),
           ...(tookanUsers || []).map(u => ({
             id: u.id,
             email: u.email,

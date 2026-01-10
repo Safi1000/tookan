@@ -17,10 +17,19 @@ import {
 
 import { useTheme } from '../contexts/ThemeContext';
 
+interface UserData {
+  id?: string;
+  email?: string;
+  name?: string;
+  role?: string;
+  permissions?: Record<string, boolean>;
+}
+
 interface NavigationProps {
   activeMenu: string;
   setActiveMenu: (menu: string) => void;
   onLogout: () => void;
+  user?: UserData | null;
 }
 
 // Menu items - Per SRS: No fixed roles, permissions are assigned individually
@@ -37,9 +46,19 @@ const menuItems = [
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
-export function Navigation({ activeMenu, setActiveMenu, onLogout }: NavigationProps) {
+export function Navigation({ activeMenu, setActiveMenu, onLogout, user }: NavigationProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  
+  // Get user display info
+  const userName = user?.name || user?.email?.split('@')[0] || 'User';
+  const userEmail = user?.email || 'user@example.com';
+  const userInitials = userName
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'U';
 
   return (
     <nav className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col h-screen transition-colors duration-300">
@@ -103,13 +122,13 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout }: NavigationPr
             className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#223560] transition-all"
           >
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#DE3544] to-[#9B3249] flex items-center justify-center">
-              <span className="text-white">AD</span>
+              <span className="text-white text-sm font-medium">{userInitials}</span>
             </div>
-            <div className="flex-1 text-left">
-              <p className="text-heading dark:text-[#C1EEFA] text-sm">Admin User</p>
-              <p className="text-xs text-muted-light dark:text-[#99BFD1]">admin@tdsystem.com</p>
+            <div className="flex-1 text-left min-w-0">
+              <p className="text-heading dark:text-[#C1EEFA] text-sm truncate">{userName}</p>
+              <p className="text-xs text-muted-light dark:text-[#99BFD1] truncate">{userEmail}</p>
             </div>
-            <ChevronDown className={`w-4 h-4 icon-default dark:text-[#99BFD1] transition-transform ${showUserMenu ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-4 h-4 icon-default dark:text-[#99BFD1] transition-transform flex-shrink-0 ${showUserMenu ? 'rotate-180' : ''}`} />
           </button>
 
           {showUserMenu && (

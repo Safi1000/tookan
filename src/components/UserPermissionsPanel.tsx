@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit, Trash2, Shield, User as UserIcon, CheckCircle, XCircle, Save, X, UserPlus, Lock, X as XIcon, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
@@ -39,9 +39,10 @@ function apiUserToUIUser(apiUser: ApiUserAccount): UserAccount {
   const statusMap: Record<string, 'Active' | 'Inactive' | 'Banned'> = {
     'active': 'Active',
     'disabled': 'Inactive',
-    'banned': 'Banned'
+    'banned': 'Banned',
+    'inactive': 'Inactive' // tolerate legacy UI label
   };
-  const rawStatus = (apiUser.status || 'active').toLowerCase();
+  const rawStatus = (apiUser.status || 'active').toString().toLowerCase();
   const uiStatus = statusMap[rawStatus] || 'Active';
   
   return {
@@ -374,7 +375,8 @@ export function UserPermissionsPanel() {
         headers['Authorization'] = `Bearer ${token}`;
       }
       
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/tookan/customer/add`, {
+      const apiBase = (import.meta as any).env?.VITE_API_BASE_URL || '';
+      const response = await fetch(`${apiBase}/api/tookan/customer/add`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -493,12 +495,12 @@ export function UserPermissionsPanel() {
                       </span>
                     ) : (
                       <select
-                        value={user.status.toLowerCase()}
+                        value={user.status === 'Active' ? 'active' : user.status === 'Inactive' ? 'disabled' : 'banned'}
                         onChange={(e) => handleStatusChange(user.id, e.target.value as 'active' | 'disabled' | 'banned')}
                         className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer border ${
                           user.status === 'Active'
                             ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30'
-                            : user.status === 'Inactive' || user.status.toLowerCase() === 'disabled'
+                            : user.status === 'Inactive'
                             ? 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/30'
                             : 'bg-destructive/10 text-destructive border-destructive/30'
                         }`}
@@ -772,7 +774,7 @@ export function UserPermissionsPanel() {
                 onClick={() => {
                   setShowAddModal(false);
                   setEditingUser(null);
-                  setFormData({ name: '', email: '', status: 'Active' });
+                  setFormData({ name: '', email: '', password: '', status: 'Active' });
                   setSelectedPermissions([]);
                 }}
                 className="px-4 py-2 bg-transparent hover:bg-muted/50 dark:hover:bg-[#2A3C63]/50 text-heading dark:text-[#C1EEFA] rounded-lg transition-all text-xs font-medium border border-border/50 dark:border-[#2A3C63]/50 hover:border-border dark:hover:border-[#2A3C63] active:scale-95"
