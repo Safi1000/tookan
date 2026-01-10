@@ -284,9 +284,9 @@ function transformTaskToRecord(task) {
     started_datetime: normalizeTimestamp(task.started_datetime),
     acknowledged_datetime: normalizeTimestamp(task.acknowledged_datetime),
     
-    // Template fields and notes
+    // Template fields and notes (use Tookan job_description as system note)
     template_fields: task.template_data || task.custom_field || {},
-    notes: task.job_description || task.notes || null,
+    notes: task.job_description || null,
     
     // Sync metadata
     source: 'api_sync',

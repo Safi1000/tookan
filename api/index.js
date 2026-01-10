@@ -657,7 +657,7 @@ function getApp() {
 
         let query = supabase
           .from('tasks')
-          .select('job_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address', { count: 'exact' });
+          .select('job_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status', { count: 'exact' });
 
         if (dateFrom) query = query.gte('creation_datetime', dateFrom);
         if (dateTo) query = query.lte('creation_datetime', dateTo);
@@ -699,7 +699,8 @@ function getApp() {
           customerPhone: task.customer_phone || '',
           customerEmail: task.customer_email || '',
           pickupAddress: task.pickup_address || '',
-          deliveryAddress: task.delivery_address || ''
+          deliveryAddress: task.delivery_address || '',
+          status: task.status ?? null  // 0=Assigned, 1=Started, 2=Successful, 3=Failed
         }));
 
         const total = count || 0;
@@ -892,7 +893,7 @@ function getApp() {
         
         // Fallback to Tookan API if cache miss
         if (orders.length === 0) {
-          const apiKey = getApiKey();
+        const apiKey = getApiKey();
           
           // Fetch with retry logic
           const fetchWithRetry = async (url, options, retries = 3) => {
@@ -918,20 +919,20 @@ function getApp() {
           for (const jobType of jobTypes) {
             try {
               const response = await fetchWithRetry('https://api.tookanapp.com/v2/get_all_tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  api_key: apiKey,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
                   job_type: jobType,
-                  job_status: '0,1,2,3,4,5,6,7,8,9',
+            job_status: '0,1,2,3,4,5,6,7,8,9',
                   start_date: startDate,
                   end_date: endDate,
-                  limit: parseInt(limit),
-                  custom_fields: 1
-                })
-              });
+            limit: parseInt(limit),
+            custom_fields: 1
+          })
+        });
               
-              const data = await response.json();
+        const data = await response.json();
               if (data.status === 200 || data.status === 1) {
                 const tasks = Array.isArray(data.data) ? data.data : [];
                 allTasks.push(...tasks);
@@ -959,9 +960,9 @@ function getApp() {
           source = 'api';
         }
         
-        res.json({
-          status: 'success',
-          message: 'Orders fetched successfully',
+          res.json({
+            status: 'success',
+            message: 'Orders fetched successfully',
           data: { 
             orders: orders, 
             total: orders.length,
@@ -2456,33 +2457,10 @@ function getApp() {
     // Delete order requires permission (SRS: only ongoing orders can be deleted)
     app.delete('/api/tookan/order/:orderId', authenticate, requirePermission(PERMISSIONS.DELETE_ONGOING_ORDERS), async (req, res) => {
       try {
-        const { orderId } = req.params;
-        const apiKey = getApiKey();
-
-        const response = await fetch('https://api.tookanapp.com/v2/delete_task', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            api_key: apiKey,
-            job_id: orderId
-          })
-        });
-
-        const data = await response.json();
-
-        // Log the deletion
-        if (isSupabaseConfigured && supabase) {
-          await supabase.from('audit_logs').insert({
-            action: 'ORDER_DELETED',
-            entity_type: 'order',
-            entity_id: orderId,
-            notes: `Order ${orderId} deleted`
-          });
-        }
-
-        res.json({
-          status: data.status === 200 ? 'success' : 'error',
-          message: data.message || 'Order deleted'
+        return res.status(400).json({
+          status: 'error',
+          message: 'Order deletion and successful-order notes are disabled.',
+          data: {}
         });
       } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
@@ -2532,36 +2510,57 @@ function getApp() {
           notes: effectiveNotes
         };
 
-        if (!orderData.pickupAddress || !orderData.deliveryAddress) {
-          return res.status(400).json({ status: 'error', message: 'Pickup and delivery addresses are required' });
-        }
-
-        // Generate datetime (now for pickup, +3 hours for delivery)
+        // Determine task type from original order:
+        // - Pickup task = same pickup and delivery address
+        // - Delivery task = different pickup and delivery address
+        const originalPickupAddr = (orderData.pickupAddress || '').trim();
+        const originalDeliveryAddr = (orderData.deliveryAddress || '').trim();
+        const isPickupTask = originalPickupAddr === originalDeliveryAddr;
+        
+        // Task time
         const now = new Date();
-        const pickupTime = now;
-        const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+        const taskTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours
         const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
-
-        // Create new task with correct Tookan API fields
-        const createPayload = {
-          api_key: apiKey,
-          customer_username: orderData.customerName,
-          customer_phone: orderData.customerPhone,
-          customer_email: orderData.customerEmail,
-          customer_address: orderData.deliveryAddress,
-          job_pickup_address: orderData.pickupAddress,
-          job_pickup_datetime: formatDateTime(pickupTime),
-          job_delivery_datetime: formatDateTime(deliveryTime),
-          has_pickup: 1,
-          has_delivery: 1,
-          layout_type: 0,
-          timezone: '-180',
-          cod: parseFloat(orderData.codAmount) || 0,
-          order_payment: parseFloat(orderData.orderFees) || 0,
-          customer_comments: orderData.notes,
-          job_description: orderData.notes,
-          auto_assignment: 0
-        };
+        
+        let createPayload;
+        
+        if (isPickupTask) {
+          // Original was PICKUP task → Create new PICKUP task
+          createPayload = {
+            api_key: apiKey,
+            customer_username: orderData.customerName,
+            customer_phone: orderData.customerPhone,
+            customer_email: orderData.customerEmail,
+            job_pickup_address: originalPickupAddr,
+            job_pickup_datetime: formatDateTime(taskTime),
+            has_pickup: 1,
+            has_delivery: 0,
+            layout_type: 0,
+            timezone: '-180',
+            cod: parseFloat(orderData.codAmount) || 0,
+            order_payment: parseFloat(orderData.orderFees) || 0,
+            job_description: orderData.notes,
+            auto_assignment: 0
+          };
+        } else {
+          // Original was DELIVERY task → Create new DELIVERY task
+          createPayload = {
+            api_key: apiKey,
+            customer_username: orderData.customerName,
+            customer_phone: orderData.customerPhone,
+            customer_email: orderData.customerEmail,
+            customer_address: originalDeliveryAddr,
+            job_delivery_datetime: formatDateTime(taskTime),
+            has_pickup: 0,
+            has_delivery: 1,
+            layout_type: 0,
+            timezone: '-180',
+            cod: parseFloat(orderData.codAmount) || 0,
+            order_payment: parseFloat(orderData.orderFees) || 0,
+            job_description: orderData.notes,
+            auto_assignment: 0
+          };
+        }
 
         if (orderData.assignedDriver) {
           createPayload.fleet_id = orderData.assignedDriver;
@@ -2635,15 +2634,15 @@ function getApp() {
         // Only fetch from Tookan if addresses not provided
         if (!orderData.pickupAddress || !orderData.deliveryAddress) {
           const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ api_key: apiKey, job_id: orderIdToUse })
-          });
-          const originalData = await getResponse.json();
+        });
+        const originalData = await getResponse.json();
 
-          if (originalData.status !== 200) {
-            return res.status(404).json({ status: 'error', message: 'Original order not found' });
-          }
+        if (originalData.status !== 200) {
+          return res.status(404).json({ status: 'error', message: 'Original order not found' });
+        }
 
           const original = originalData.data || {};
           orderData.customerName = orderData.customerName || original.customer_name || original.customer_username || 'Customer';
@@ -2654,74 +2653,163 @@ function getApp() {
           orderData.notes = orderData.notes || original.customer_comments || '';
         }
 
-        // For return: REVERSE the addresses
-        const returnPickupAddr = orderData.deliveryAddress;
-        const returnDeliveryAddr = orderData.pickupAddress;
+        // Get original addresses
+        const originalPickupAddr = (orderData.pickupAddress || '').trim();
+        const originalDeliveryAddr = (orderData.deliveryAddress || '').trim();
         
-        // Task time: pickup = now, delivery = now + 3 hours
+        // Determine task type:
+        // - Pickup tasks have SAME pickup and delivery address
+        // - Delivery tasks have DIFFERENT pickup and delivery address
+        const isPickupTask = originalPickupAddr === originalDeliveryAddr;
+        
+        // Return Order is ONLY available for delivery tasks
+        if (isPickupTask || !originalDeliveryAddr) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Return Order is not available for pickup tasks. Pickup tasks already involve collecting items from the customer location - there is nothing to return. Return Order is only available for delivery tasks where items were delivered to a customer and need to be picked up back.'
+          });
+        }
+        
+        // Task time
         const now = new Date();
-        const pickupTime = now;
-        const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+        const pickupTime = new Date(now.getTime() + 1 * 60 * 60 * 1000); // +1 hour for pickup
+        const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours for delivery
         const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
         
-        // Use same pattern as reorder: has_pickup=1, has_delivery=1, both addresses
-        const returnPayload = {
+        // For return:
+        // - PICKUP from customer location (original delivery address)
+        // - DELIVERY to merchant location (original pickup address)
+        const returnPickupAddr = originalDeliveryAddr;
+        const returnDeliveryAddr = originalPickupAddr;
+        
+        // Get assigned driver - MUST be assigned to both tasks
+        const assignedDriver = orderData.assignedDriver || null;
+        
+        // ========== TASK 1: PICKUP from customer ==========
+        const pickupPayload = {
           api_key: apiKey,
           customer_username: orderData.customerName || 'Customer',
           customer_phone: orderData.customerPhone || '',
           customer_email: orderData.customerEmail || '',
           job_pickup_address: returnPickupAddr,
           job_pickup_datetime: formatDateTime(pickupTime),
+          has_pickup: 1,
+          has_delivery: 0,
+          layout_type: 0,
+          timezone: '-180',
+          cod: 0,
+          order_payment: parseFloat(orderData.orderFees) || 0,
+          job_description: orderData.notes || '',
+          auto_assignment: 0
+        };
+        
+        if (assignedDriver) {
+          pickupPayload.fleet_id = assignedDriver;
+        }
+
+        const pickupResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pickupPayload)
+        });
+
+        const pickupData = await pickupResponse.json();
+        const pickupOrderId = pickupData.data?.job_id || null;
+        
+        if (pickupData.status !== 200) {
+          return res.status(500).json({
+            status: 'error',
+            message: pickupData.message || 'Failed to create pickup return task'
+          });
+        }
+        
+        // ========== TASK 2: DELIVERY to merchant ==========
+        const deliveryPayload = {
+          api_key: apiKey,
+          customer_username: orderData.customerName || 'Customer',
+          customer_phone: orderData.customerPhone || '',
+          customer_email: orderData.customerEmail || '',
           customer_address: returnDeliveryAddr,
           job_delivery_datetime: formatDateTime(deliveryTime),
-          has_pickup: 1,
+          has_pickup: 0,
           has_delivery: 1,
           layout_type: 0,
           timezone: '-180',
           cod: 0,
-          order_payment: 0,
-          customer_comments: `Return order for ${orderIdToUse}. ${orderData.notes || ''}`.trim(),
-          job_description: `Return order for ${orderIdToUse}. ${orderData.notes || ''}`.trim(),
+          order_payment: parseFloat(orderData.orderFees) || 0,
+          job_description: orderData.notes || '',
           auto_assignment: 0
         };
+        
+        if (assignedDriver) {
+          deliveryPayload.fleet_id = assignedDriver;
+        }
 
-        const response = await fetch('https://api.tookanapp.com/v2/create_task', {
+        const deliveryResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(returnPayload)
+          body: JSON.stringify(deliveryPayload)
         });
 
-        const data = await response.json();
-        const returnOrderId = data.data?.job_id || null;
+        const deliveryData = await deliveryResponse.json();
+        const deliveryOrderId = deliveryData.data?.job_id || null;
 
-        // Save to Supabase
-        if (returnOrderId && isSupabaseConfigured && supabase) {
+        // Save BOTH tasks to Supabase
+        if (isSupabaseConfigured && supabase) {
           try {
-            await supabase.from('tasks').upsert({
-              job_id: returnOrderId,
-              customer_name: orderData.customerName || 'Customer',
-              customer_phone: orderData.customerPhone || '',
-              customer_email: orderData.customerEmail || null,
-              pickup_address: returnPickupAddr,
-              delivery_address: returnDeliveryAddr,
-              cod_amount: 0,
-              order_fees: 0,
-              notes: `Return order for ${orderIdToUse}. ${orderData.notes || ''}`.trim(),
-              fleet_id: orderData.assignedDriver || null,
-              status: 0,
-              creation_datetime: new Date().toISOString(),
-              source: 'return',
-              last_synced_at: new Date().toISOString()
-            }, { onConflict: 'job_id' });
+            // Save pickup task
+            if (pickupOrderId) {
+              await supabase.from('tasks').upsert({
+                job_id: pickupOrderId,
+                customer_name: orderData.customerName || 'Customer',
+                customer_phone: orderData.customerPhone || '',
+                customer_email: orderData.customerEmail || null,
+                pickup_address: returnPickupAddr,
+                delivery_address: '',
+                cod_amount: 0,
+                order_fees: parseFloat(orderData.orderFees) || 0,
+                notes: orderData.notes || '',
+                fleet_id: assignedDriver,
+                status: 0,
+                creation_datetime: new Date().toISOString(),
+                source: 'return_pickup',
+                last_synced_at: new Date().toISOString()
+              }, { onConflict: 'job_id' });
+            }
+            
+            // Save delivery task
+            if (deliveryOrderId) {
+              await supabase.from('tasks').upsert({
+                job_id: deliveryOrderId,
+                customer_name: orderData.customerName || 'Customer',
+                customer_phone: orderData.customerPhone || '',
+                customer_email: orderData.customerEmail || null,
+                pickup_address: '',
+                delivery_address: returnDeliveryAddr,
+                cod_amount: 0,
+                order_fees: parseFloat(orderData.orderFees) || 0,
+                notes: orderData.notes || '',
+                fleet_id: assignedDriver,
+                status: 0,
+                creation_datetime: new Date().toISOString(),
+                source: 'return_delivery',
+                last_synced_at: new Date().toISOString()
+              }, { onConflict: 'job_id' });
+            }
           } catch (dbErr) {
-            console.error('Failed to save return order to Supabase:', dbErr.message);
+            console.error('Failed to save return tasks to Supabase:', dbErr.message);
           }
         }
 
         res.json({
-          status: data.status === 200 ? 'success' : 'error',
-          message: data.message || 'Return order created successfully',
-          data: { returnOrderId, originalOrderId: orderIdToUse }
+          status: deliveryData.status === 200 ? 'success' : 'error',
+          message: 'Return order created successfully (Pickup + Delivery tasks)',
+          data: { 
+            pickupOrderId, 
+            deliveryOrderId, 
+            originalOrderId: orderIdToUse,
+            assignedDriver
+          }
         });
       } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });

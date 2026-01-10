@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Search, RefreshCw, RotateCcw, Trash2, CornerDownLeft, Save, X, Plus } from 'lucide-react';
+import { Search, RefreshCw, RotateCcw, CornerDownLeft, Save, X, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   fetchCachedOrders,
   reorderOrder,
   returnOrder,
-  deleteOrder,
   updateOrder,
   fetchAgentsFromDB,
 } from '../services/tookanApi';
@@ -23,13 +22,25 @@ type OrderDetails = {
   customerEmail?: string;
   pickupAddress?: string;
   deliveryAddress?: string;
+  status?: number | null; // 0=Assigned, 1=Started, 2=Successful, 3=Failed, etc.
 };
+
+// Helper to determine if order is successful (completed)
+function isOrderSuccessful(status: number | null | undefined): boolean {
+  // Status 2 = Successful/Completed in Tookan
+  return status === 2;
+}
+
+// Helper to determine if order is ongoing (can be deleted)
+function isOrderOngoing(status: number | null | undefined): boolean {
+  // Ongoing = not yet completed (status 0, 1, or null/undefined)
+  return status === 0 || status === 1 || status === null || status === undefined;
+}
 
 export function OrderEditorPanel() {
   const [search, setSearch] = useState('');
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [deleteNote, setDeleteNote] = useState('');
   const [isAction, setIsAction] = useState(false);
   const [editCod, setEditCod] = useState('');
   const [editFees, setEditFees] = useState('');
@@ -91,7 +102,8 @@ export function OrderEditorPanel() {
         customerPhone: first.customerPhone || '',
         customerEmail: first.customerEmail || '',
         pickupAddress: first.pickupAddress || '',
-        deliveryAddress: first.deliveryAddress || ''
+        deliveryAddress: first.deliveryAddress || '',
+        status: typeof first.status === 'number' ? first.status : (typeof first.status === 'string' ? parseInt(first.status, 10) : null)
       });
       setEditCod((first.codAmount || 0).toString());
       setEditFees((first.orderFees || 0).toString());
@@ -178,14 +190,18 @@ export function OrderEditorPanel() {
     if (!order) return;
     setIsAction(true);
     try {
-      // Send order data so backend doesn't need to fetch from Tookan
+      // Send ALL order data - keep everything the same except:
+      // - Addresses are reversed by backend
+      // - COD is removed by backend
       const result = await returnOrder(order.jobId, {
         customerName: order.customerName,
         customerPhone: order.customerPhone,
         customerEmail: order.customerEmail,
         pickupAddress: order.pickupAddress,
         deliveryAddress: order.deliveryAddress,
-        notes: order.notes
+        notes: order.notes,
+        orderFees: order.orderFees, // Keep same fees
+        assignedDriver: order.assignedDriver // Keep same driver
       });
       if (result.status === 'success') {
         toast.success('Return order created');
@@ -195,26 +211,6 @@ export function OrderEditorPanel() {
     } catch (err) {
       console.error('Return order error', err);
       toast.error('Failed to create return order');
-    } finally {
-      setIsAction(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!order) return;
-    setIsAction(true);
-    try {
-      const result = await deleteOrder(order.jobId);
-      if (result.status === 'success') {
-        toast.success('Order deleted (or note added for successful orders)');
-        setOrder(null);
-        setDeleteNote('');
-      } else {
-        toast.error(result.message || 'Failed to delete');
-      }
-    } catch (err) {
-      console.error('Delete error', err);
-      toast.error('Failed to delete');
     } finally {
       setIsAction(false);
     }
@@ -232,25 +228,39 @@ export function OrderEditorPanel() {
         <p className="text-subheading text-sm">Search by Task ID, then Re-Order / Return / Delete</p>
       </div>
 
-      <div className="bg-card dark:bg-[#223560] rounded-xl border border-border dark:border-[#2A3C63] p-4 flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && loadOrder()}
-            placeholder="Enter Task ID (job_id)"
-            className="w-full pl-9 pr-3 py-2 bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg text-heading text-sm"
-          />
+      <div className="bg-card dark:bg-[#223560] rounded-xl border border-border dark:border-[#2A3C63] p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs uppercase text-muted-foreground">Search by Task ID</p>
+            <p className="text-[11px] text-muted-foreground/80">Enter Tookan job_id</p>
+          </div>
+          <button
+            onClick={() => { setSearch(''); setOrder(null); }}
+            className="text-xs text-muted-foreground hover:text-heading transition"
+          >
+            Clear
+          </button>
         </div>
-        <button
-          onClick={loadOrder}
-          disabled={isLoading}
-          className="px-4 py-2 bg-[#C1EEFA] text-[#1A2C53] rounded-lg flex items-center gap-2 hover:shadow-lg transition disabled:opacity-50"
-        >
-          {isLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-          Search
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-input-border dark:border-[#2A3C63] bg-input-bg dark:bg-[#1A2C53] focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400">
+            <Search className="w-4 h-4 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && loadOrder()}
+              placeholder="Enter Task ID (job_id)"
+              className="flex-1 bg-transparent border-0 focus:ring-0 focus:outline-none text-heading text-sm placeholder:text-muted-foreground"
+            />
+          </div>
+          <button
+            onClick={loadOrder}
+            disabled={isLoading}
+            className="px-4 py-2 bg-[#C1EEFA] text-[#1A2C53] rounded-lg flex items-center gap-2 justify-center hover:shadow-lg transition disabled:opacity-50"
+          >
+            {isLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            Search
+          </button>
+        </div>
       </div>
 
       {!isLoading && !order && (
@@ -376,32 +386,13 @@ export function OrderEditorPanel() {
             <button
               onClick={handleReturn}
               disabled={isAction}
-              className="flex-1 px-4 py-3 bg-muted dark:bg-[#2A3C63] text-heading rounded-lg hover:bg-muted/80 transition disabled:opacity-50 flex items-center gap-2 justify-center"
+              className="flex-1 px-4 py-3 bg-muted dark:bg-[#2A3C63] text-heading dark:text-white border border-border dark:border-[#4D6AA5] rounded-lg hover:bg-muted/80 dark:hover:bg-[#324a78] transition disabled:opacity-50 flex items-center gap-2 justify-center"
             >
               <CornerDownLeft className="w-4 h-4" />
               Return Order
             </button>
           </div>
 
-          {/* Delete Section */}
-          <div className="space-y-2">
-            <p className="text-subheading text-xs uppercase">Delete Order (note required for successful orders)</p>
-            <textarea
-              value={deleteNote}
-              onChange={(e) => setDeleteNote(e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2 bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg text-sm text-heading"
-              placeholder="Add a note (required for successful orders)"
-            />
-            <button
-              onClick={handleDelete}
-              disabled={isAction || (!deleteNote.trim())}
-              className="px-4 py-3 bg-[#DE3544] text-white rounded-lg hover:bg-[#c92a38] transition disabled:opacity-50 flex items-center gap-2"
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete / Add Note
-            </button>
-          </div>
         </div>
       )}
 
