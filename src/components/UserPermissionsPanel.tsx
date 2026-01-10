@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, Plus, Edit, Trash2, Shield, User as UserIcon, CheckCircle, XCircle, Save, X, UserPlus, Lock, X as XIcon, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
-import { fetchAllUsers, createUser, updateUser, updateUserPermissions, updateUserRole, deleteUser, changeUserPassword, type UserAccount as ApiUserAccount } from '../services/userApi';
+import { fetchAllUsers, createUser, updateUser, updateUserPermissions, updateUserRole, deleteUser, changeUserPassword, updateUserStatus, type UserAccount as ApiUserAccount } from '../services/userApi';
 
 // Available permissions
 const availablePermissions = [
@@ -35,12 +35,21 @@ function apiUserToUIUser(apiUser: ApiUserAccount): UserAccount {
       ? apiUser.permissions 
       : [];
   
+  // Map status from API to UI format
+  const statusMap: Record<string, 'Active' | 'Inactive' | 'Banned'> = {
+    'active': 'Active',
+    'disabled': 'Inactive',
+    'banned': 'Banned'
+  };
+  const rawStatus = (apiUser.status || 'active').toLowerCase();
+  const uiStatus = statusMap[rawStatus] || 'Active';
+  
   return {
     id: apiUser.id,
     name: apiUser.name || apiUser.email,
     email: apiUser.email,
     permissions: permissionsArray,
-    status: apiUser.status || (apiUser.role === 'admin' ? 'Active' : 'Active'),
+    status: uiStatus,
     lastLogin: apiUser.lastLogin || 'Never',
     role: apiUser.role
   };
@@ -82,6 +91,7 @@ export function UserPermissionsPanel() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    password: '',
     status: 'Active' as 'Active' | 'Inactive' | 'Banned',
   });
 
@@ -127,7 +137,7 @@ export function UserPermissionsPanel() {
 
   // Handle add user
   const handleAddUser = () => {
-    setFormData({ name: '', email: '', status: 'Active' });
+    setFormData({ name: '', email: '', password: '', status: 'Active' });
     setSelectedPermissions([]);
     setEditingUser(null);
     setShowAddModal(true);
@@ -138,6 +148,7 @@ export function UserPermissionsPanel() {
     setFormData({
       name: user.name,
       email: user.email,
+      password: '',
       status: user.status,
     });
     setSelectedPermissions([...user.permissions]);
@@ -167,16 +178,41 @@ export function UserPermissionsPanel() {
           await loadUsers();
           setShowAddModal(false);
           setEditingUser(null);
-          setFormData({ name: '', email: '', status: 'Active' });
+          setFormData({ name: '', email: '', password: '', status: 'Active' });
           setSelectedPermissions([]);
         } else {
           toast.error(response.message || 'Failed to update user');
         }
       } else {
-        // Create new user - need password for creation
-        toast.error('Password is required for new users. Please use a different method to create users.');
-        // Note: User creation via register endpoint requires password
-        // This should be handled by admin separately
+        // Create new user with password
+        if (!formData.password) {
+          toast.error('Password is required for new users');
+          return;
+        }
+
+        if (formData.password.length < 6) {
+          toast.error('Password must be at least 6 characters long');
+          return;
+        }
+
+        const permissionsObj = permissionsArrayToObject(selectedPermissions);
+        const response = await createUser({
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+          role: 'user',
+          permissions: permissionsObj
+        });
+
+        if (response.status === 'success') {
+          toast.success('User created successfully');
+          await loadUsers();
+          setShowAddModal(false);
+          setFormData({ name: '', email: '', password: '', status: 'Active' });
+          setSelectedPermissions([]);
+        } else {
+          toast.error(response.message || 'Failed to create user');
+        }
       }
     } catch (error) {
       console.error('Error saving user:', error);
@@ -277,6 +313,35 @@ export function UserPermissionsPanel() {
     }
   };
 
+  // Handle status change (enable/disable/ban)
+  const handleStatusChange = async (userId: string, newStatus: 'active' | 'disabled' | 'banned') => {
+    const user = users.find(u => u.id === userId);
+    if (!user) {
+      toast.error('User not found');
+      return;
+    }
+
+    // Prevent changing superadmin status
+    if (user.email === 'ahmedhassan123.ah83@gmail.com') {
+      toast.error('Cannot change superadmin status');
+      return;
+    }
+
+    try {
+      const response = await updateUserStatus(userId, newStatus);
+      if (response.status === 'success') {
+        const actionLabel = newStatus === 'active' ? 'enabled' : newStatus === 'banned' ? 'banned' : 'disabled';
+        toast.success(`User ${actionLabel} successfully`);
+        await loadUsers();
+      } else {
+        toast.error(response.message || 'Failed to update user status');
+      }
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      toast.error('Failed to update user status');
+    }
+  };
+
   // Toggle permission
   const togglePermission = (permissionId: string) => {
     if (selectedPermissions.includes(permissionId)) {
@@ -344,22 +409,13 @@ export function UserPermissionsPanel() {
           <p className="text-subheading dark:text-[#99BFD1]">Manage user permissions and access control</p>
         </div>
         <div className="flex gap-3">
-          {/* Add Customer button hidden */}
-          {/* <button
-            onClick={() => setShowAddCustomerModal(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-[#10B981] text-white rounded-xl hover:shadow-lg transition-all font-semibold"
-          >
-            <UserPlus className="w-5 h-5" />
-            Add Customer
-          </button> */}
-          {/* Note: User creation requires password - use /api/auth/register endpoint directly or add password field to modal */}
-          {/* <button
+          <button
             onClick={handleAddUser}
             className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all font-semibold"
           >
             <Plus className="w-5 h-5" />
             Add User
-          </button> */}
+          </button>
         </div>
       </div>
 
@@ -431,15 +487,27 @@ export function UserPermissionsPanel() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-lg text-xs font-medium ${
-                      user.status === 'Active'
-                        ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30'
-                        : user.status === 'Inactive'
-                        ? 'bg-[#F59E0B]/10 text-[#F59E0B] border border-[#F59E0B]/30'
-                        : 'bg-destructive/10 text-destructive border border-destructive/30'
-                    }`}>
-                      {user.status}
-                    </span>
+                    {user.email === 'ahmedhassan123.ah83@gmail.com' ? (
+                      <span className="px-3 py-1 rounded-lg text-xs font-medium bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/30">
+                        👑 Superadmin
+                      </span>
+                    ) : (
+                      <select
+                        value={user.status.toLowerCase()}
+                        onChange={(e) => handleStatusChange(user.id, e.target.value as 'active' | 'disabled' | 'banned')}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer border ${
+                          user.status === 'Active'
+                            ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30'
+                            : user.status === 'Inactive' || user.status.toLowerCase() === 'disabled'
+                            ? 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/30'
+                            : 'bg-destructive/10 text-destructive border-destructive/30'
+                        }`}
+                      >
+                        <option value="active" className="bg-background text-foreground">✓ Active</option>
+                        <option value="disabled" className="bg-background text-foreground">⏸ Disabled</option>
+                        <option value="banned" className="bg-background text-foreground">🚫 Banned</option>
+                      </select>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1] text-sm">
                     {user.lastLogin}
@@ -501,7 +569,7 @@ export function UserPermissionsPanel() {
           onClick={() => {
             setShowAddModal(false);
             setEditingUser(null);
-            setFormData({ name: '', email: '', status: 'Active' });
+            setFormData({ name: '', email: '', password: '', status: 'Active' });
             setSelectedPermissions([]);
           }}
         >
@@ -523,7 +591,7 @@ export function UserPermissionsPanel() {
                 onClick={() => {
                   setShowAddModal(false);
                   setEditingUser(null);
-                  setFormData({ name: '', email: '', status: 'Active' });
+                  setFormData({ name: '', email: '', password: '', status: 'Active' });
                   setSelectedPermissions([]);
                 }}
                 className="p-1 rounded-md hover:bg-muted/50 dark:hover:bg-[#2A3C63]/50 transition-colors"
@@ -561,6 +629,21 @@ export function UserPermissionsPanel() {
                       placeholder="user@example.com"
                     />
                   </div>
+                  {!editingUser && (
+                    <div>
+                      <label className="block text-heading dark:text-[#C1EEFA] text-xs mb-1 font-medium">
+                        Password <span className="text-destructive">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border/50 dark:border-[#2A3C63]/50 rounded-lg px-3 py-1.5 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-1 focus:ring-primary/30 dark:focus:ring-[#C1EEFA]/30 focus:border-primary/50 dark:focus:border-[#C1EEFA]/50 transition-all"
+                        placeholder="Minimum 6 characters"
+                      />
+                      <p className="text-[10px] text-muted-light dark:text-[#99BFD1] mt-0.5">Password must be at least 6 characters</p>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-heading dark:text-[#C1EEFA] text-xs mb-1 font-medium">Status</label>
                     <select

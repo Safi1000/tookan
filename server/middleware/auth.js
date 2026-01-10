@@ -338,13 +338,98 @@ async function getUserFromDB(userId) {
   }
 }
 
+/**
+ * Superadmin email - the only user who can manage other users
+ */
+const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL || 'ahmedhassan123.ah83@gmail.com';
+
+/**
+ * Check if the current user is the superadmin
+ */
+function isSuperadmin(user) {
+  if (!user) return false;
+  return user.email === SUPERADMIN_EMAIL;
+}
+
+/**
+ * Middleware to require superadmin access
+ * Only the superadmin can create/manage users
+ */
+function requireSuperadmin() {
+  return async (req, res, next) => {
+    if (!req.user || !req.userId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required',
+        data: {}
+      });
+    }
+
+    if (!isSuperadmin(req.user)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Access denied. Only the superadmin can perform this action.',
+        data: {}
+      });
+    }
+
+    next();
+  };
+}
+
+/**
+ * Check if user is enabled (not disabled or banned)
+ */
+async function checkUserStatus(req, res, next) {
+  if (!req.user || !req.userId) {
+    return next(); // Let authenticate middleware handle this
+  }
+
+  // Superadmin is always allowed
+  if (isSuperadmin(req.user)) {
+    return next();
+  }
+
+  // For Tookan users, check stored status
+  if (req.user.source === 'tookan' && isConfigured()) {
+    try {
+      const userProfile = await userModel.getUserByEmail(req.user.email);
+      if (userProfile) {
+        if (userProfile.status === 'banned') {
+          return res.status(403).json({
+            status: 'error',
+            message: 'Your account has been banned. Please contact the administrator.',
+            data: {}
+          });
+        }
+        if (userProfile.status === 'disabled' || userProfile.status === 'inactive') {
+          return res.status(403).json({
+            status: 'error',
+            message: 'Your account has been disabled. Please contact the administrator.',
+            data: {}
+          });
+        }
+      }
+    } catch (error) {
+      // If status check fails, allow access (graceful degradation)
+      console.warn('User status check failed:', error.message);
+    }
+  }
+
+  next();
+}
+
 module.exports = {
   authenticate,
   optionalAuth,
   requirePermission,
   requireRole,
+  requireSuperadmin,
+  checkUserStatus,
+  isSuperadmin,
   verifyToken,
-  getUserFromDB
+  getUserFromDB,
+  SUPERADMIN_EMAIL
 };
 
 

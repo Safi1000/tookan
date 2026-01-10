@@ -344,17 +344,105 @@ async function createTookanUser(userData) {
   }
 }
 
+/**
+ * Update user status (enabled/disabled/banned)
+ */
+async function updateUserStatus(id, status) {
+  if (!isConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const validStatuses = ['active', 'disabled', 'banned'];
+  if (!validStatuses.includes(status.toLowerCase())) {
+    throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+  }
+
+  const { data, error } = await supabase
+    .from('users')
+    .update({
+      status: status.toLowerCase(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * Create a new user (for Supabase auth users)
+ */
+async function createUser(userData) {
+  if (!isConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { v4: uuidv4 } = require('uuid');
+  const userId = userData.id || uuidv4();
+
+  const insertData = {
+    id: userId,
+    email: userData.email,
+    name: userData.name || userData.email,
+    role: userData.role || 'user',
+    permissions: userData.permissions || {},
+    status: userData.status || 'active',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  const { data, error } = await supabase
+    .from('users')
+    .insert(insertData)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * Delete a user
+ */
+async function deleteUser(id) {
+  if (!isConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { error } = await supabase
+    .from('users')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    throw error;
+  }
+
+  return true;
+}
+
 module.exports = {
   getUserById,
   getUserByEmail,
   updateUserPermissions,
   updateUserRole,
   updateUser,
+  updateUserStatus,
   getAllUsers,
   hasPermission,
   hasRole,
   getUserByTookanId,
-  createTookanUser
+  createTookanUser,
+  createUser,
+  deleteUser
 };
 
 

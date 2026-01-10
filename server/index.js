@@ -13,7 +13,7 @@ const taskModel = require('./db/models/tasks');
 const userModel = require('./db/models/users');
 const webhookEventsModel = require('./db/models/webhookEvents');
 const { supabase, supabaseAnon, isConfigured } = require('./db/supabase');
-const { authenticate, optionalAuth, requirePermission, requireRole } = require('./middleware/auth');
+const { authenticate, optionalAuth, requirePermission, requireRole, requireSuperadmin, checkUserStatus, isSuperadmin, SUPERADMIN_EMAIL } = require('./middleware/auth');
 const auditLogger = require('./middleware/auditLogger');
 // Order sync service for 6-month caching
 const orderSyncService = require('./services/orderSyncService');
@@ -6099,6 +6099,25 @@ app.post('/api/auth/login', async (req, res) => {
           // Get user profile from database
           const userProfile = await userModel.getUserById(data.user.id);
           
+          // Check if user is disabled or banned
+          if (userProfile && userProfile.status === 'disabled') {
+            console.log('❌ User account is disabled:', data.user.email);
+            return res.status(403).json({
+              status: 'error',
+              message: 'Your account has been disabled. Please contact the administrator.',
+              data: {}
+            });
+          }
+          
+          if (userProfile && userProfile.status === 'banned') {
+            console.log('❌ User account is banned:', data.user.email);
+            return res.status(403).json({
+              status: 'error',
+              message: 'Your account has been banned. Please contact the administrator.',
+              data: {}
+            });
+          }
+          
           console.log('✅ Found user in Supabase (Admin/Internal User)');
           
           return res.json({
@@ -6197,6 +6216,32 @@ app.post('/api/auth/login', async (req, res) => {
         console.log('⚠️  No database configured - allowing login without password verification');
       }
 
+      // Check if user is disabled or banned (check by email in users table)
+      if (isConfigured()) {
+        try {
+          const userProfile = await userModel.getUserByEmail(userEmail);
+          if (userProfile && userProfile.status === 'disabled') {
+            console.log('❌ Tookan user account is disabled:', userEmail);
+            return res.status(403).json({
+              status: 'error',
+              message: 'Your account has been disabled. Please contact the administrator.',
+              data: {}
+            });
+          }
+          if (userProfile && userProfile.status === 'banned') {
+            console.log('❌ Tookan user account is banned:', userEmail);
+            return res.status(403).json({
+              status: 'error',
+              message: 'Your account has been banned. Please contact the administrator.',
+              data: {}
+            });
+          }
+        } catch (statusError) {
+          console.log('⚠️  Could not check user status:', statusError.message);
+          // Continue with login if status check fails
+        }
+      }
+
       // Generate a simple session token (in production, use JWT or similar)
       const sessionToken = Buffer.from(`${userId}:${Date.now()}:${userEmail}`).toString('base64');
       const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
@@ -6248,8 +6293,8 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// POST Register (Admin only - creates user in Supabase Auth)
-app.post('/api/auth/register', authenticate, requireRole('admin'), async (req, res) => {
+// POST Register (Superadmin only - creates user in Supabase Auth)
+app.post('/api/auth/register', authenticate, requireSuperadmin(), async (req, res) => {
   try {
     const { email, password, name, role, permissions } = req.body;
 
@@ -6269,8 +6314,8 @@ app.post('/api/auth/register', authenticate, requireRole('admin'), async (req, r
       });
     }
 
-    // Create user in Supabase Auth
-    const { data, error } = await supabaseAnon.auth.admin.createUser({
+    // Create user in Supabase Auth (must use service role client)
+    const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true, // Auto-confirm email
@@ -6336,8 +6381,8 @@ app.post('/api/auth/register', authenticate, requireRole('admin'), async (req, r
   }
 });
 
-// GET All Users (Admin only)
-app.get('/api/users', authenticate, requireRole('admin'), async (req, res) => {
+// GET All Users (Superadmin only)
+app.get('/api/users', authenticate, requireSuperadmin(), async (req, res) => {
   try {
     const { role, search } = req.query;
 
@@ -6378,8 +6423,8 @@ app.get('/api/users', authenticate, requireRole('admin'), async (req, res) => {
   }
 });
 
-// PUT Update User (Admin only)
-app.put('/api/users/:id', authenticate, requireRole('admin'), async (req, res) => {
+// PUT Update User (Superadmin only)
+app.put('/api/users/:id', authenticate, requireSuperadmin(), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, role, permissions } = req.body;
@@ -6428,8 +6473,8 @@ app.put('/api/users/:id', authenticate, requireRole('admin'), async (req, res) =
   }
 });
 
-// PUT Update User Permissions (Admin only)
-app.put('/api/users/:id/permissions', authenticate, requireRole('admin'), async (req, res) => {
+// PUT Update User Permissions (Superadmin only)
+app.put('/api/users/:id/permissions', authenticate, requireSuperadmin(), async (req, res) => {
   try {
     const { id } = req.params;
     const { permissions } = req.body;
@@ -6478,8 +6523,8 @@ app.put('/api/users/:id/permissions', authenticate, requireRole('admin'), async 
   }
 });
 
-// DELETE User (Admin only)
-app.delete('/api/users/:id', authenticate, requireRole('admin'), async (req, res) => {
+// DELETE User (Superadmin only)
+app.delete('/api/users/:id', authenticate, requireSuperadmin(), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -6557,7 +6602,74 @@ app.delete('/api/users/:id', authenticate, requireRole('admin'), async (req, res
   }
 });
 
-// PUT Update User Password (Admin or self)
+// PUT Update User Status (Superadmin only - enable/disable/ban users)
+app.put('/api/users/:id/status', authenticate, requireSuperadmin(), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Status is required. Valid values: active, disabled, banned',
+        data: {}
+      });
+    }
+
+    // Prevent modifying own status
+    if (req.userId === id) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'You cannot change your own status',
+        data: {}
+      });
+    }
+
+    // Get user info
+    const user = await userModel.getUserById(id);
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+        data: {}
+      });
+    }
+
+    // Update status
+    const updatedUser = await userModel.updateUserStatus(id, status);
+
+    // Audit log
+    await auditLogger.createAuditLog(
+      req,
+      'user_status_update',
+      'user',
+      id,
+      { status: user.status || 'active' },
+      { status: status }
+    );
+
+    res.json({
+      status: 'success',
+      action: 'update_user_status',
+      entity: 'user',
+      message: `User ${status === 'active' ? 'enabled' : status === 'banned' ? 'banned' : 'disabled'} successfully`,
+      data: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        status: updatedUser.status
+      }
+    });
+  } catch (error) {
+    console.error('Update user status error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to update user status',
+      data: {}
+    });
+  }
+});
+
+// PUT Update User Password (Superadmin or self)
 app.put('/api/users/:id/password', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -6730,8 +6842,8 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
-// PUT Update User Role (Admin only)
-app.put('/api/users/:id/role', authenticate, requireRole('admin'), async (req, res) => {
+// PUT Update User Role (Superadmin only)
+app.put('/api/users/:id/role', authenticate, requireSuperadmin(), async (req, res) => {
   try {
     const { id } = req.params;
     const { role } = req.body;

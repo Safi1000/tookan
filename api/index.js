@@ -135,7 +135,29 @@ function getApp() {
       EXPORT_REPORTS: 'export_reports',
       ADD_COD: 'add_cod',
       CONFIRM_COD_PAYMENTS: 'confirm_cod_payments',
-      MANAGE_USERS: 'manage_users' // Admin only
+      MANAGE_USERS: 'manage_users' // Superadmin only
+    };
+    
+    // Superadmin email - the only user who can manage other users
+    const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL || 'ahmedhassan123.ah83@gmail.com';
+    
+    // Check if user is superadmin
+    const isSuperadmin = (user) => {
+      if (!user) return false;
+      return user.email === SUPERADMIN_EMAIL;
+    };
+    
+    // Superadmin middleware
+    const requireSuperadmin = () => {
+      return (req, res, next) => {
+        if (!req.user) {
+          return res.status(401).json({ status: 'error', message: 'Authentication required' });
+        }
+        if (!isSuperadmin(req.user)) {
+          return res.status(403).json({ status: 'error', message: 'Access denied. Only the superadmin can perform this action.' });
+        }
+        next();
+      };
     };
 
     // Authentication middleware
@@ -1360,6 +1382,23 @@ function getApp() {
                 userProfile = profileData;
               }
 
+              // Check if user is disabled or banned
+              if (userProfile && userProfile.status === 'disabled') {
+                return res.status(403).json({
+                  status: 'error',
+                  message: 'Your account has been disabled. Please contact the administrator.',
+                  data: {}
+                });
+              }
+              
+              if (userProfile && userProfile.status === 'banned') {
+                return res.status(403).json({
+                  status: 'error',
+                  message: 'Your account has been banned. Please contact the administrator.',
+                  data: {}
+                });
+              }
+
               const userRole = userProfile?.role || 'admin';
               
               // Admin gets all permissions per SRS
@@ -1492,6 +1531,35 @@ function getApp() {
               perform_return: false,
               delete_ongoing_orders: false
             };
+          }
+
+          // Check if user is disabled or banned (check users table by email)
+          if (isSupabaseConfigured && supabase) {
+            try {
+              const { data: userProfile } = await supabase
+                .from('users')
+                .select('status')
+                .eq('email', userEmail)
+                .single();
+              
+              if (userProfile && userProfile.status === 'disabled') {
+                return res.status(403).json({
+                  status: 'error',
+                  message: 'Your account has been disabled. Please contact the administrator.',
+                  data: {}
+                });
+              }
+              if (userProfile && userProfile.status === 'banned') {
+                return res.status(403).json({
+                  status: 'error',
+                  message: 'Your account has been banned. Please contact the administrator.',
+                  data: {}
+                });
+              }
+            } catch (statusError) {
+              // Continue with login if status check fails
+              console.log('Could not check user status:', statusError.message);
+            }
           }
 
           // Generate JWT-like session token with user data
@@ -1634,8 +1702,8 @@ function getApp() {
     // USER MANAGEMENT ENDPOINTS (Admin only per SRS)
     // ============================================
 
-    // POST Create user - Admin only
-    app.post('/api/users', authenticate, requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res) => {
+    // POST Create user - Superadmin only
+    app.post('/api/users', authenticate, requireSuperadmin(), async (req, res) => {
       try {
         if (!isSupabaseConfigured || !supabase) {
           return res.status(500).json({ status: 'error', message: 'Database not configured' });
@@ -1694,8 +1762,8 @@ function getApp() {
       }
     });
 
-    // PUT Update user permissions - Admin only
-    app.put('/api/users/:userId/permissions', authenticate, requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res) => {
+    // PUT Update user permissions - Superadmin only
+    app.put('/api/users/:userId/permissions', authenticate, requireSuperadmin(), async (req, res) => {
       try {
         if (!isSupabaseConfigured || !supabase) {
           return res.status(500).json({ status: 'error', message: 'Database not configured' });
@@ -1754,8 +1822,8 @@ function getApp() {
       }
     });
 
-    // PUT Update user role - Admin only
-    app.put('/api/users/:userId/role', authenticate, requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res) => {
+    // PUT Update user role - Superadmin only
+    app.put('/api/users/:userId/role', authenticate, requireSuperadmin(), async (req, res) => {
       try {
         if (!isSupabaseConfigured || !supabase) {
           return res.status(500).json({ status: 'error', message: 'Database not configured' });
@@ -1798,8 +1866,8 @@ function getApp() {
       }
     });
 
-    // DELETE user - Admin only (SRS: enable/disable/ban users)
-    app.delete('/api/users/:userId', authenticate, requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res) => {
+    // DELETE user - Superadmin only (SRS: enable/disable/ban users)
+    app.delete('/api/users/:userId', authenticate, requireSuperadmin(), async (req, res) => {
       try {
         if (!isSupabaseConfigured || !supabase) {
           return res.status(500).json({ status: 'error', message: 'Database not configured' });
@@ -1837,6 +1905,74 @@ function getApp() {
         });
 
         res.json({ status: 'success', message: 'User deleted successfully' });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // PUT Update user status - Superadmin only (enable/disable/ban users)
+    app.put('/api/users/:userId/status', authenticate, requireSuperadmin(), async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { userId } = req.params;
+        const { status } = req.body;
+
+        if (!status) {
+          return res.status(400).json({ 
+            status: 'error', 
+            message: 'Status is required. Valid values: active, disabled, banned' 
+          });
+        }
+
+        const validStatuses = ['active', 'disabled', 'banned'];
+        if (!validStatuses.includes(status.toLowerCase())) {
+          return res.status(400).json({ 
+            status: 'error', 
+            message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` 
+          });
+        }
+
+        // Prevent modifying own status
+        if (req.user.id === userId) {
+          return res.status(400).json({ 
+            status: 'error', 
+            message: 'You cannot change your own status' 
+          });
+        }
+
+        // Update user status
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .update({ status: status.toLowerCase(), updated_at: new Date().toISOString() })
+          .eq('id', userId)
+          .select()
+          .single();
+
+        if (userError) {
+          return res.status(500).json({ status: 'error', message: 'Failed to update user status' });
+        }
+
+        // Log the action
+        await supabase.from('audit_logs').insert({
+          user_id: req.user.id,
+          action: 'UPDATE_STATUS',
+          entity_type: 'user',
+          entity_id: userId,
+          notes: `User ${userId} status changed to ${status} by ${req.user.email}`
+        });
+
+        res.json({ 
+          status: 'success', 
+          message: `User ${status === 'active' ? 'enabled' : status === 'banned' ? 'banned' : 'disabled'} successfully`,
+          data: {
+            id: userData.id,
+            email: userData.email,
+            status: userData.status
+          }
+        });
       } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
       }

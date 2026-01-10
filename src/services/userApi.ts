@@ -241,6 +241,36 @@ export async function deleteUser(userId: string): Promise<ApiResponse<{ deletedU
 }
 
 /**
+ * Update user status (enable/disable/ban)
+ */
+export async function updateUserStatus(userId: string, status: 'active' | 'disabled' | 'banned'): Promise<ApiResponse<{ user: UserAccount }>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/users/${userId}/status`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status }),
+    });
+
+    const result = await response.json();
+    
+    if (response.status === 401) {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user');
+      window.location.href = '/';
+      return { status: 'error', message: 'Unauthorized', data: { user: {} as UserAccount } };
+    }
+
+    return result;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { user: {} as UserAccount }
+    };
+  }
+}
+
+/**
  * Change user password
  */
 export async function changeUserPassword(userId: string, newPassword: string): Promise<ApiResponse<{ userId: string }>> {
