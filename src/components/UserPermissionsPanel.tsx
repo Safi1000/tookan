@@ -564,10 +564,10 @@ export function UserPermissionsPanel() {
         ) : null}
       </div>
 
-      {/* Add/Edit User Modal - Ultra Compact & Sleek */}
+      {/* Add/Edit User Modal */}
       {showAddModal && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 animate-in fade-in-0 duration-150" 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in-0 duration-150" 
           onClick={() => {
             setShowAddModal(false);
             setEditingUser(null);
@@ -576,18 +576,23 @@ export function UserPermissionsPanel() {
           }}
         >
           <div 
-            className="relative bg-card dark:bg-[#1A2C53] rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col border border-border/50 dark:border-[#2A3C63]/50 animate-in zoom-in-95 slide-in-from-bottom-1 duration-200"
+            className="relative bg-card dark:bg-[#1A2C53] rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col border border-border dark:border-[#2A3C63] animate-in zoom-in-95 slide-in-from-bottom-1 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Minimal Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 dark:border-[#2A3C63]/50">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-primary/10 dark:bg-[#C1EEFA]/20 flex items-center justify-center">
-                  <UserIcon className="w-3.5 h-3.5 text-primary dark:text-[#C1EEFA]" />
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border dark:border-[#2A3C63]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#DE3544] to-[#9B3249] flex items-center justify-center">
+                  <UserIcon className="w-5 h-5 text-white" />
                 </div>
-                <h2 className="text-base font-semibold text-heading dark:text-[#C1EEFA]">
-                  {editingUser ? 'Edit User' : 'Add User'}
-                </h2>
+                <div>
+                  <h2 className="text-lg font-semibold text-heading dark:text-[#C1EEFA]">
+                    {editingUser ? 'Edit User' : 'Add User'}
+                  </h2>
+                  <p className="text-xs text-muted-light dark:text-[#99BFD1]">
+                    {editingUser ? 'Update details and permissions' : 'Create a new user account'}
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => {
@@ -596,180 +601,133 @@ export function UserPermissionsPanel() {
                   setFormData({ name: '', email: '', password: '', status: 'Active' });
                   setSelectedPermissions([]);
                 }}
-                className="p-1 rounded-md hover:bg-muted/50 dark:hover:bg-[#2A3C63]/50 transition-colors"
+                className="p-2 rounded-lg hover:bg-muted/50 dark:hover:bg-[#2A3C63]/50 transition-colors"
               >
-                <X className="w-3.5 h-3.5 text-muted-light dark:text-[#99BFD1]" />
+                <X className="w-5 h-5 text-muted-light dark:text-[#99BFD1]" />
               </button>
             </div>
 
-            {/* Compact Split View */}
-            <div className="flex-1 overflow-hidden flex flex-col md:flex-row min-h-0">
-              {/* Left - User Info */}
-              <div className="flex-1 md:w-[52%] p-3 border-r-0 md:border-r border-border/50 dark:border-[#2A3C63]/50 overflow-y-auto">
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-heading dark:text-[#C1EEFA] text-xs mb-1 font-medium">
-                      Name <span className="text-destructive">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border/50 dark:border-[#2A3C63]/50 rounded-lg px-3 py-1.5 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-1 focus:ring-primary/30 dark:focus:ring-[#C1EEFA]/30 focus:border-primary/50 dark:focus:border-[#C1EEFA]/50 transition-all"
-                      placeholder="Enter name"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-heading dark:text-[#C1EEFA] text-xs mb-1 font-medium">
-                      Email <span className="text-destructive">*</span>
-                    </label>
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border/50 dark:border-[#2A3C63]/50 rounded-lg px-3 py-1.5 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-1 focus:ring-primary/30 dark:focus:ring-[#C1EEFA]/30 focus:border-primary/50 dark:focus:border-[#C1EEFA]/50 transition-all"
-                      placeholder="user@example.com"
-                    />
-                  </div>
-                  {!editingUser && (
-                    <div>
-                      <label className="block text-heading dark:text-[#C1EEFA] text-xs mb-1 font-medium">
-                        Password <span className="text-destructive">*</span>
-                      </label>
-                      <input
-                        type="password"
-                        value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border/50 dark:border-[#2A3C63]/50 rounded-lg px-3 py-1.5 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-1 focus:ring-primary/30 dark:focus:ring-[#C1EEFA]/30 focus:border-primary/50 dark:focus:border-[#C1EEFA]/50 transition-all"
-                        placeholder="Minimum 6 characters"
-                      />
-                      <p className="text-[10px] text-muted-light dark:text-[#99BFD1] mt-0.5">Password must be at least 6 characters</p>
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-heading dark:text-[#C1EEFA] text-xs mb-1 font-medium">Status</label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Active' | 'Inactive' | 'Banned' })}
-                      className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border/50 dark:border-[#2A3C63]/50 rounded-lg px-3 py-1.5 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-1 focus:ring-primary/30 dark:focus:ring-[#C1EEFA]/30 focus:border-primary/50 dark:focus:border-[#C1EEFA]/50 transition-all"
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                      <option value="Banned">Banned</option>
-                    </select>
-                  </div>
-                </div>
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* Name Field */}
+              <div>
+                <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">
+                  Name <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
+                  placeholder="Enter full name"
+                />
               </div>
 
-              {/* Right - Permissions */}
-              <div className="flex-1 md:w-[48%] p-3 overflow-y-auto">
-                <div className="h-full flex flex-col">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1.5">
-                      <Shield className="w-3.5 h-3.5 text-primary dark:text-[#C1EEFA]" />
-                      <h3 className="text-sm font-semibold text-heading dark:text-[#C1EEFA]">Permissions</h3>
-                      {selectedPermissions.length > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full bg-primary/20 dark:bg-[#C1EEFA]/20 text-primary dark:text-[#C1EEFA] text-[10px] font-medium">
-                          {selectedPermissions.length}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+              {/* Email Field */}
+              <div>
+                <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">
+                  Email <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
+                  placeholder="user@example.com"
+                />
+              </div>
 
-                  <div className="flex-1 overflow-y-auto pr-1">
-                    <Collapsible open={permissionsOpen} onOpenChange={setPermissionsOpen}>
-                      <CollapsibleTrigger className="w-full group mb-2">
-                        <div className="flex items-center justify-between w-full px-2 py-1.5 rounded-md hover:bg-muted/30 dark:hover:bg-[#1A2C53]/50 transition-colors cursor-pointer border border-border/30 dark:border-[#2A3C63]/30">
-                          <span className="text-[11px] font-medium text-heading dark:text-[#C1EEFA]">
-                            {permissionsOpen ? 'Hide' : 'Show'}
-                          </span>
-                          {permissionsOpen ? (
-                            <ChevronDown className="w-3 h-3 text-muted-light dark:text-[#99BFD1]" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3 text-muted-light dark:text-[#99BFD1]" />
-                          )}
+              {/* Password Field - Only for new users */}
+              {!editingUser && (
+                <div>
+                  <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">
+                    Password <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
+                    placeholder="Minimum 6 characters"
+                  />
+                  <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1.5">Password must be at least 6 characters</p>
+                </div>
+              )}
+
+              {/* Status Field */}
+              <div>
+                <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">
+                  Status
+                </label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Active' | 'Inactive' | 'Banned' })}
+                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
+                >
+                  <option value="Active">✓ Active</option>
+                  <option value="Inactive">⏸ Inactive</option>
+                  <option value="Banned">🚫 Banned</option>
+                </select>
+              </div>
+
+              {/* Permissions Section */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="flex items-center gap-2 text-heading dark:text-[#C1EEFA] text-sm font-medium">
+                    <Shield className="w-4 h-4" />
+                    Permissions
+                    {selectedPermissions.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-[#C1EEFA]/20 text-[#1A2C53] dark:text-[#C1EEFA] text-xs font-bold">
+                        {selectedPermissions.length}
+                      </span>
+                    )}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedPermissions.length === availablePermissions.length) {
+                        setSelectedPermissions([]);
+                      } else {
+                        setSelectedPermissions(availablePermissions.map(p => p.id));
+                      }
+                    }}
+                    className="text-xs text-[#C1EEFA] hover:text-[#8FD0E0] font-medium transition-colors"
+                  >
+                    {selectedPermissions.length === availablePermissions.length ? 'Clear All' : 'Select All'}
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {availablePermissions.map(permission => {
+                    const isSelected = selectedPermissions.includes(permission.id);
+                    return (
+                      <button
+                        key={permission.id}
+                        type="button"
+                        onClick={() => togglePermission(permission.id)}
+                        className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg border transition-all ${
+                          isSelected
+                            ? 'bg-[#10B981]/10 border-[#10B981]/30 dark:bg-[#10B981]/20'
+                            : 'bg-muted/10 dark:bg-[#223560]/30 border-transparent hover:bg-muted/20 dark:hover:bg-[#223560]/50'
+                        }`}
+                      >
+                        <span className={`text-sm ${isSelected ? 'text-[#10B981] font-medium' : 'text-heading dark:text-[#C1EEFA]'}`}>
+                          {permission.label}
+                        </span>
+                        <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+                          isSelected ? 'bg-[#10B981] text-white' : 'bg-muted/30 dark:bg-[#2A3C63]'
+                        }`}>
+                          {isSelected && <CheckCircle className="w-3.5 h-3.5" />}
                         </div>
-                      </CollapsibleTrigger>
-                      
-                      <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-top-1 data-[state=open]:slide-in-from-top-1 duration-150">
-                        <div className="space-y-1.5">
-                          {permissionCategories.map(category => (
-                            <Collapsible
-                              key={category}
-                              open={openCategories[category]}
-                              onOpenChange={() => toggleCategory(category)}
-                            >
-                              <div className="bg-muted/10 dark:bg-[#223560]/30 rounded-md border border-border/30 dark:border-[#2A3C63]/30 overflow-hidden">
-                                <CollapsibleTrigger className="w-full group">
-                                  <div className="flex items-center justify-between w-full px-2 py-1.5 hover:bg-muted/20 dark:hover:bg-[#1A2C53]/30 transition-colors cursor-pointer">
-                                    <h4 className="text-heading dark:text-[#C1EEFA] font-medium text-[10px] uppercase tracking-wider">
-                                      {category}
-                                    </h4>
-                                    {openCategories[category] ? (
-                                      <ChevronDown className="w-3 h-3 text-muted-light dark:text-[#99BFD1]" />
-                                    ) : (
-                                      <ChevronRight className="w-3 h-3 text-muted-light dark:text-[#99BFD1]" />
-                                    )}
-                                  </div>
-                                </CollapsibleTrigger>
-                                
-                                <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-top-1 data-[state=open]:slide-in-from-top-1 duration-100">
-                                  <div className="px-2 pb-2 space-y-1">
-                                    {availablePermissions
-                                      .filter(p => p.category === category)
-                                      .map(permission => {
-                                        const isSelected = selectedPermissions.includes(permission.id);
-                                        return (
-                                          <div
-                                            key={permission.id}
-                                            className={`flex items-center justify-between gap-1.5 px-2 py-1 rounded-md transition-all ${
-                                              isSelected
-                                                ? 'bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/20 dark:border-[#C1EEFA]/20'
-                                                : 'hover:bg-muted/10 dark:hover:bg-[#223560]/20 border border-transparent'
-                                            }`}
-                                          >
-                                            <span className={`flex-1 text-[11px] truncate ${isSelected ? 'text-primary dark:text-[#C1EEFA] font-medium' : 'text-heading dark:text-[#C1EEFA]'}`}>
-                                              {permission.label}
-                                            </span>
-                                            {!isSelected ? (
-                                              <button
-                                                type="button"
-                                                onClick={() => togglePermission(permission.id)}
-                                                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-primary/10 dark:bg-[#C1EEFA]/20 text-primary dark:text-[#C1EEFA] hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/30 transition-all border border-primary/20 dark:border-[#C1EEFA]/20 text-[10px] font-medium"
-                                                title="Allow"
-                                              >
-                                                <Plus className="w-2.5 h-2.5" />
-                                                <span>Allow</span>
-                                              </button>
-                                            ) : (
-                                              <button
-                                                type="button"
-                                                onClick={() => togglePermission(permission.id)}
-                                                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-destructive/10 dark:bg-destructive/20 text-destructive hover:bg-destructive/20 dark:hover:bg-destructive/30 transition-all border border-destructive/20 text-[10px] font-medium"
-                                                title="Deny"
-                                              >
-                                                <XIcon className="w-2.5 h-2.5" />
-                                                <span>Deny</span>
-                                              </button>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                  </div>
-                                </CollapsibleContent>
-                              </div>
-                            </Collapsible>
-                          ))}
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
-            {/* Enhanced Footer */}
-            <div className="flex justify-end gap-3 px-4 py-3 border-t border-border/50 dark:border-[#2A3C63]/50 bg-muted/10 dark:bg-[#223560]/20">
+            {/* Footer */}
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-border dark:border-[#2A3C63]">
               <button
                 onClick={() => {
                   setShowAddModal(false);
@@ -777,13 +735,13 @@ export function UserPermissionsPanel() {
                   setFormData({ name: '', email: '', password: '', status: 'Active' });
                   setSelectedPermissions([]);
                 }}
-                className="px-4 py-2 bg-transparent hover:bg-muted/50 dark:hover:bg-[#2A3C63]/50 text-heading dark:text-[#C1EEFA] rounded-lg transition-all text-xs font-medium border border-border/50 dark:border-[#2A3C63]/50 hover:border-border dark:hover:border-[#2A3C63] active:scale-95"
+                className="px-5 py-2.5 bg-muted/30 dark:bg-[#2A3C63]/50 hover:bg-muted/50 dark:hover:bg-[#2A3C63]/70 text-heading dark:text-[#C1EEFA] rounded-xl transition-all text-sm font-medium"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveUser}
-                className="px-4 py-2 bg-[#C1EEFA] dark:bg-[#C1EEFA] hover:bg-[#A8E0F0] dark:hover:bg-[#8FD0E0] text-[#1A2C53] dark:text-[#1A2C53] rounded-lg transition-all text-xs font-medium border border-[#C1EEFA]/30 dark:border-[#C1EEFA]/50 hover:border-[#A8E0F0] dark:hover:border-[#8FD0E0] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md hover:shadow-[#C1EEFA]/20 dark:hover:shadow-[#C1EEFA]/30"
+                className="px-5 py-2.5 bg-[#C1EEFA] hover:bg-[#A8E0F0] text-[#1A2C53] rounded-xl transition-all text-sm font-semibold"
               >
                 {editingUser ? 'Save Changes' : 'Add User'}
               </button>

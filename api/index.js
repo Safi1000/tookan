@@ -556,6 +556,23 @@ function getApp() {
           return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
         }
 
+        // Check if agent is deleted
+        const isDeleted = payload.is_deleted === 1 || payload.is_deleted === '1' || payload.is_deleted === true;
+        
+        if (isDeleted) {
+          // Remove agent from Supabase if deleted
+          console.log('Webhook: Agent deleted in Tookan, removing from DB:', fleetId);
+          const { error: deleteError } = await supabase
+            .from('agents')
+            .delete()
+            .eq('fleet_id', fleetId);
+          
+          if (deleteError) {
+            console.error('Supabase agent delete error:', deleteError.message);
+          }
+          return res.status(200).json({ status: 'success', message: 'Agent deleted from DB' });
+        }
+
         const agentRecord = transformFleetToAgent(payload);
         const { error } = await supabase
           .from('agents')

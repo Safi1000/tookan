@@ -4278,6 +4278,21 @@ app.post('/api/webhooks/tookan/agent', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'fleet_id is required' });
     }
 
+    // Check if agent is deleted
+    const isDeleted = payload.is_deleted === 1 || payload.is_deleted === '1' || payload.is_deleted === true;
+    
+    if (isDeleted) {
+      // Remove agent from Supabase if deleted
+      console.log('🗑️  Webhook: Agent deleted in Tookan, removing from DB:', fleetId);
+      if (isConfigured()) {
+        await supabase
+          .from('agents')
+          .delete()
+          .eq('fleet_id', fleetId);
+      }
+      return res.status(200).json({ status: 'success', message: 'Agent deleted from DB' });
+    }
+
     const agentRecord = agentModel.transformFleetToAgent(payload);
     await agentModel.upsertAgent(agentRecord.fleet_id, agentRecord);
 
