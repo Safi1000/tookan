@@ -567,7 +567,7 @@ export function UserPermissionsPanel() {
       {/* Add/Edit User Modal */}
       {showAddModal && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in-0 duration-150" 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4 md:p-6 lg:p-8 animate-in fade-in-0 duration-150" 
           onClick={() => {
             setShowAddModal(false);
             setEditingUser(null);
@@ -576,20 +576,20 @@ export function UserPermissionsPanel() {
           }}
         >
           <div 
-            className="relative bg-card dark:bg-[#1A2C53] rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col border border-border dark:border-[#2A3C63] animate-in zoom-in-95 slide-in-from-bottom-1 duration-200"
+            className="relative bg-card dark:bg-[#1A2C53] rounded-xl sm:rounded-2xl shadow-xl w-full max-w-sm sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] sm:max-h-[85vh] mx-auto flex flex-col border border-border dark:border-[#2A3C63] animate-in zoom-in-95 slide-in-from-bottom-1 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border dark:border-[#2A3C63]">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#DE3544] to-[#9B3249] flex items-center justify-center">
-                  <UserIcon className="w-5 h-5 text-white" />
+            <div className="flex items-start sm:items-center justify-between gap-3 px-4 sm:px-6 md:px-8 lg:px-10 py-3 sm:py-4 md:py-5 border-b border-border dark:border-[#2A3C63]">
+              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-lg sm:rounded-xl md:rounded-xl bg-gradient-to-br from-[#DE3544] to-[#9B3249] flex items-center justify-center flex-shrink-0">
+                  <UserIcon className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
                 </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-heading dark:text-[#C1EEFA]">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base sm:text-lg md:text-xl font-semibold text-heading dark:text-[#C1EEFA] truncate">
                     {editingUser ? 'Edit User' : 'Add User'}
                   </h2>
-                  <p className="text-xs text-muted-light dark:text-[#99BFD1]">
+                  <p className="text-[10px] sm:text-xs md:text-sm text-muted-light dark:text-[#99BFD1] line-clamp-1">
                     {editingUser ? 'Update details and permissions' : 'Create a new user account'}
                   </p>
                 </div>
@@ -601,38 +601,38 @@ export function UserPermissionsPanel() {
                   setFormData({ name: '', email: '', password: '', status: 'Active' });
                   setSelectedPermissions([]);
                 }}
-                className="p-2 rounded-lg hover:bg-muted/50 dark:hover:bg-[#2A3C63]/50 transition-colors"
+                className="p-1.5 sm:p-2 rounded-lg hover:bg-muted/50 dark:hover:bg-[#2A3C63]/50 transition-colors flex-shrink-0"
               >
-                <X className="w-5 h-5 text-muted-light dark:text-[#99BFD1]" />
+                <X className="w-4 h-4 sm:w-5 sm:h-5 text-muted-light dark:text-[#99BFD1]" />
               </button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-10 space-y-4 sm:space-y-5 md:space-y-6">
               {/* Name Field */}
               <div>
-                <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">
+                <label className="block text-heading dark:text-[#C1EEFA] text-xs sm:text-sm md:text-base mb-1.5 sm:mb-2 md:mb-2.5 font-medium">
                   Name <span className="text-destructive">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
+                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-lg sm:rounded-xl md:rounded-xl px-3 sm:px-4 md:px-5 py-2 sm:py-3 md:py-3 text-sm md:text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
                   placeholder="Enter full name"
                 />
               </div>
 
               {/* Email Field */}
               <div>
-                <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">
+                <label className="block text-heading dark:text-[#C1EEFA] text-xs sm:text-sm md:text-base mb-1.5 sm:mb-2 md:mb-2.5 font-medium">
                   Email <span className="text-destructive">*</span>
                 </label>
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
+                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-lg sm:rounded-xl md:rounded-xl px-3 sm:px-4 md:px-5 py-2 sm:py-3 md:py-3 text-sm md:text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
                   placeholder="user@example.com"
                 />
               </div>
@@ -640,29 +640,29 @@ export function UserPermissionsPanel() {
               {/* Password Field - Only for new users */}
               {!editingUser && (
                 <div>
-                  <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">
+                  <label className="block text-heading dark:text-[#C1EEFA] text-xs sm:text-sm md:text-base mb-1.5 sm:mb-2 md:mb-2.5 font-medium">
                     Password <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="password"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
+                    className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-lg sm:rounded-xl md:rounded-xl px-3 sm:px-4 md:px-5 py-2 sm:py-3 md:py-3 text-sm md:text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
                     placeholder="Minimum 6 characters"
                   />
-                  <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1.5">Password must be at least 6 characters</p>
+                  <p className="text-[10px] sm:text-xs md:text-sm text-muted-light dark:text-[#99BFD1] mt-1 sm:mt-1.5 md:mt-2">Password must be at least 6 characters</p>
                 </div>
               )}
 
               {/* Status Field */}
               <div>
-                <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">
+                <label className="block text-heading dark:text-[#C1EEFA] text-xs sm:text-sm md:text-base mb-1.5 sm:mb-2 md:mb-2.5 font-medium">
                   Status
                 </label>
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Active' | 'Inactive' | 'Banned' })}
-                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
+                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-lg sm:rounded-xl md:rounded-xl px-3 sm:px-4 md:px-5 py-2 sm:py-3 md:py-3 text-sm md:text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
                 >
                   <option value="Active">✓ Active</option>
                   <option value="Inactive">⏸ Inactive</option>
@@ -672,12 +672,12 @@ export function UserPermissionsPanel() {
 
               {/* Permissions Section */}
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="flex items-center gap-2 text-heading dark:text-[#C1EEFA] text-sm font-medium">
-                    <Shield className="w-4 h-4" />
-                    Permissions
+                <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+                  <label className="flex items-center gap-1.5 sm:gap-2 md:gap-2.5 text-heading dark:text-[#C1EEFA] text-xs sm:text-sm md:text-base font-medium flex-1 min-w-0">
+                    <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 flex-shrink-0" />
+                    <span className="truncate">Permissions</span>
                     {selectedPermissions.length > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-[#C1EEFA]/20 text-[#1A2C53] dark:text-[#C1EEFA] text-xs font-bold">
+                      <span className="px-1.5 sm:px-2 md:px-2.5 py-0.5 md:py-1 rounded-full bg-[#C1EEFA]/20 text-[#1A2C53] dark:text-[#C1EEFA] text-[10px] sm:text-xs md:text-sm font-bold flex-shrink-0">
                         {selectedPermissions.length}
                       </span>
                     )}
@@ -691,13 +691,13 @@ export function UserPermissionsPanel() {
                         setSelectedPermissions(availablePermissions.map(p => p.id));
                       }
                     }}
-                    className="text-xs text-[#C1EEFA] hover:text-[#8FD0E0] font-medium transition-colors"
+                    className="text-[10px] sm:text-xs md:text-sm text-[#C1EEFA] hover:text-[#8FD0E0] font-medium transition-colors whitespace-nowrap flex-shrink-0"
                   >
                     {selectedPermissions.length === availablePermissions.length ? 'Clear All' : 'Select All'}
                   </button>
                 </div>
 
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                <div className="space-y-1.5 sm:space-y-2 md:space-y-2.5 max-h-40 sm:max-h-48 md:max-h-56 lg:max-h-64 overflow-y-auto pr-1 -mr-1">
                   {availablePermissions.map(permission => {
                     const isSelected = selectedPermissions.includes(permission.id);
                     return (
@@ -705,19 +705,19 @@ export function UserPermissionsPanel() {
                         key={permission.id}
                         type="button"
                         onClick={() => togglePermission(permission.id)}
-                        className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg border transition-all ${
+                        className={`w-full flex items-center justify-between gap-2 sm:gap-3 md:gap-4 px-3 sm:px-4 md:px-5 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-lg border transition-all ${
                           isSelected
                             ? 'bg-[#10B981]/10 border-[#10B981]/30 dark:bg-[#10B981]/20'
                             : 'bg-muted/10 dark:bg-[#223560]/30 border-transparent hover:bg-muted/20 dark:hover:bg-[#223560]/50'
                         }`}
                       >
-                        <span className={`text-sm ${isSelected ? 'text-[#10B981] font-medium' : 'text-heading dark:text-[#C1EEFA]'}`}>
+                        <span className={`text-xs sm:text-sm md:text-base ${isSelected ? 'text-[#10B981] font-medium' : 'text-heading dark:text-[#C1EEFA]'} truncate flex-1 text-left`}>
                           {permission.label}
                         </span>
-                        <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+                        <div className={`w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 rounded-md flex items-center justify-center transition-all flex-shrink-0 ${
                           isSelected ? 'bg-[#10B981] text-white' : 'bg-muted/30 dark:bg-[#2A3C63]'
                         }`}>
-                          {isSelected && <CheckCircle className="w-3.5 h-3.5" />}
+                          {isSelected && <CheckCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />}
                         </div>
                       </button>
                     );
@@ -727,7 +727,7 @@ export function UserPermissionsPanel() {
             </div>
 
             {/* Footer */}
-            <div className="flex justify-end gap-3 px-6 py-4 border-t border-border dark:border-[#2A3C63]">
+            <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 md:gap-4 px-4 sm:px-6 md:px-8 lg:px-10 py-3 sm:py-4 md:py-5 border-t border-border dark:border-[#2A3C63]">
               <button
                 onClick={() => {
                   setShowAddModal(false);
@@ -735,13 +735,13 @@ export function UserPermissionsPanel() {
                   setFormData({ name: '', email: '', password: '', status: 'Active' });
                   setSelectedPermissions([]);
                 }}
-                className="px-5 py-2.5 bg-muted/30 dark:bg-[#2A3C63]/50 hover:bg-muted/50 dark:hover:bg-[#2A3C63]/70 text-heading dark:text-[#C1EEFA] rounded-xl transition-all text-sm font-medium"
+                className="w-full sm:w-auto px-4 sm:px-5 md:px-6 lg:px-7 py-2.5 md:py-3 bg-muted/30 dark:bg-[#2A3C63]/50 hover:bg-muted/50 dark:hover:bg-[#2A3C63]/70 text-heading dark:text-[#C1EEFA] rounded-lg sm:rounded-xl md:rounded-xl transition-all text-sm md:text-base font-medium order-2 sm:order-1"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveUser}
-                className="px-5 py-2.5 bg-[#C1EEFA] hover:bg-[#A8E0F0] text-[#1A2C53] rounded-xl transition-all text-sm font-semibold"
+                className="w-full sm:w-auto px-4 sm:px-5 md:px-6 lg:px-7 py-2.5 md:py-3 bg-[#C1EEFA] hover:bg-[#A8E0F0] text-[#1A2C53] rounded-lg sm:rounded-xl md:rounded-xl transition-all text-sm md:text-base font-semibold order-1 sm:order-2"
               >
                 {editingUser ? 'Save Changes' : 'Add User'}
               </button>
