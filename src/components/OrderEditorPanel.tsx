@@ -192,7 +192,7 @@ export function OrderEditorPanel() {
     try {
       // If reorder notes are blank, use original order's notes (system note)
       const effectiveNotes = reorderNotes.trim() || order.notes || '';
-      
+
       const result = await reorderOrder(order.jobId, {
         customerName: order.customerName,
         customerEmail: order.customerEmail,
@@ -226,7 +226,7 @@ export function OrderEditorPanel() {
     try {
       // If return notes are blank, use original order's notes
       const effectiveNotes = returnNotes.trim() || order.notes || '';
-      
+
       // Determine assigned driver:
       // - Empty string: keep original driver
       // - "unassigned": set to null
@@ -237,7 +237,7 @@ export function OrderEditorPanel() {
       } else if (returnDriver && returnDriver !== '') {
         assignedDriverValue = parseInt(returnDriver, 10);
       }
-      
+
       // Send ALL order data - keep everything the same except:
       // - Addresses are reversed by backend
       // - COD is removed by backend
@@ -460,7 +460,7 @@ export function OrderEditorPanel() {
                 <X className="w-5 h-5 text-muted-foreground" />
               </button>
             </div>
-            
+
             <div className="p-4 space-y-4">
               <p className="text-sm text-muted-foreground">
                 This will create a new task with the same details as the original order.
@@ -604,7 +604,7 @@ export function OrderEditorPanel() {
                 <X className="w-5 h-5 text-muted-foreground" />
               </button>
             </div>
-            
+
             <div className="p-4 space-y-4">
               <p className="text-sm text-muted-foreground">
                 This will create a return order with pickup from the original delivery address and delivery to the original pickup address. COD will be removed.

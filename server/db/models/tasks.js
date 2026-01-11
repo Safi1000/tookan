@@ -60,8 +60,17 @@ async function getAllTasks(filters = {}) {
   }
 
   if (filters.search) {
-    const searchTerm = `%${filters.search}%`;
-    query = query.or(`job_id::text.ilike.${searchTerm},customer_name.ilike.${searchTerm},fleet_name.ilike.${searchTerm}`);
+    const searchTerm = String(filters.search).trim();
+    const isNumeric = /^\d+$/.test(searchTerm);
+
+    if (isNumeric) {
+      const numericVal = parseInt(searchTerm, 10);
+      // STRICT MATCH: Job ID OR Fleet ID OR resolve phone to Fleet ID
+      query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal},fleet_id.in.(SELECT fleet_id FROM agents WHERE phone = '${searchTerm}')`);
+    } else {
+      // STRICT MATCH: Fleet Name OR Customer Name
+      query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+    }
   }
 
   if (filters.limit) {
@@ -99,7 +108,7 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
 
   let query = supabase
     .from('tasks')
-    .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status', { count: 'exact' });
+    .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' });
 
   if (filters.dateFrom) {
     query = query.gte('creation_datetime', filters.dateFrom);
@@ -118,17 +127,42 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
   }
   if (filters.search) {
     const searchTerm = String(filters.search).trim();
-    console.log('🔍 Search filter received:', searchTerm);
-    // Exact Job ID match only (must be numeric)
-    const numericJobId = parseInt(searchTerm, 10);
-    console.log('🔍 Parsed numeric ID:', numericJobId, 'isValid:', !isNaN(numericJobId) && String(numericJobId) === searchTerm);
-    if (!isNaN(numericJobId) && String(numericJobId) === searchTerm) {
-      query = query.eq('job_id', numericJobId);
-      console.log('🔍 Searching for exact job_id:', numericJobId);
+    const normalizedSearch = searchTerm.replace(/\D/g, '');
+    const searchLower = searchTerm.toLowerCase();
+
+    // Resolve agents first
+    const { data: allAgents } = await supabase.from('agents').select('fleet_id, name, phone');
+
+    if (allAgents && allAgents.length > 0) {
+      const resolvedIds = new Set();
+      for (const agent of allAgents) {
+        const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
+        const agentNameLower = String(agent.name || '').toLowerCase();
+        const agentIdStr = String(agent.fleet_id);
+
+        if (agentNameLower === searchLower ||
+          agentIdStr === searchTerm ||
+          (normalizedSearch && agentPhoneDigits === normalizedSearch)) {
+          resolvedIds.add(agent.fleet_id);
+        }
+      }
+
+      if (resolvedIds.size > 0) {
+        const idList = Array.from(resolvedIds).join(',');
+        query = query.or(`fleet_id.in.(${idList})`);
+      } else if (/^\d+$/.test(searchTerm)) {
+        const numericVal = parseInt(searchTerm, 10);
+        query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal}`);
+      } else {
+        query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+      }
     } else {
-      // Non-numeric search returns no results (exact match required)
-      query = query.eq('job_id', -1); // Impossible match
-      console.log('🔍 Non-numeric search, returning no results');
+      if (/^\d+$/.test(searchTerm)) {
+        const numericVal = parseInt(searchTerm, 10);
+        query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal}`);
+      } else {
+        query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+      }
     }
   }
 

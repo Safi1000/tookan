@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { KPICard } from './KPICard';
-import { 
-  ShoppingCart, 
-  Car, 
-  Store, 
-  DollarSign, 
-  AlertTriangle, 
+import {
+  ShoppingCart,
+  Car,
+  Store,
+  DollarSign,
+  AlertTriangle,
   CheckCircle,
   Download,
   RefreshCw,
@@ -30,10 +30,10 @@ export function Dashboard() {
   const loadAnalytics = async () => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const result = await fetchAnalytics();
-      
+
       if (result.status === 'success' && result.data) {
         setAnalytics(result.data);
         setLastUpdated(new Date());
@@ -66,40 +66,40 @@ export function Dashboard() {
   // - Merchants: registered businesses with vendor_id
   // - Agents (Drivers): delivery personnel
   const kpiData = analytics ? [
-    { 
-      id: 'orders', 
-      label: 'Total Orders', 
-      value: formatNumber(analytics.kpis.totalOrders), 
-      icon: ShoppingCart, 
-      trend: analytics.trends.orders 
+    {
+      id: 'orders',
+      label: 'Total Orders',
+      value: formatNumber(analytics.kpis.totalOrders),
+      icon: ShoppingCart,
+      trend: analytics.trends.orders
     },
-    { 
-      id: 'agents', 
-      label: 'Agents (Drivers)', 
-      value: formatNumber(analytics.kpis.totalDrivers), 
-      icon: Car, 
-      trend: analytics.trends.drivers 
+    {
+      id: 'agents',
+      label: 'Total Drivers',
+      value: formatNumber(analytics.kpis.totalDrivers),
+      icon: Car,
+      trend: analytics.trends.drivers
     },
-    { 
-      id: 'merchants', 
-      label: 'Customers', 
-      value: formatNumber(analytics.kpis.totalMerchants), 
-      icon: Store, 
-      trend: analytics.trends.merchants 
+    {
+      id: 'merchants',
+      label: 'Total Customers',
+      value: formatNumber(analytics.kpis.totalMerchants),
+      icon: Store,
+      trend: analytics.trends.merchants
     },
-    { 
-      id: 'pending-cod', 
-      label: 'Total Pending COD', 
-      value: formatCurrency(analytics.kpis.pendingCOD), 
-      icon: DollarSign, 
-      trend: analytics.trends.pendingCOD 
+    {
+      id: 'pending-cod',
+      label: 'Total Pending COD',
+      value: formatCurrency(analytics.kpis.pendingCOD),
+      icon: DollarSign,
+      trend: analytics.trends.pendingCOD
     },
-    { 
-      id: 'completed', 
-      label: 'Completed Deliveries', 
-      value: formatNumber(analytics.kpis.completedDeliveries), 
-      icon: CheckCircle, 
-      trend: analytics.trends.completed 
+    {
+      id: 'completed',
+      label: 'Completed Deliveries',
+      value: formatNumber(analytics.kpis.completedDeliveries),
+      icon: CheckCircle,
+      trend: analytics.trends.completed
     },
   ] : [];
 
@@ -110,10 +110,10 @@ export function Dashboard() {
 
   // Format last updated time
   const formatLastUpdated = (date: Date): string => {
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
@@ -121,7 +121,7 @@ export function Dashboard() {
   };
 
   // Calculate max deliveries for progress bar
-  const maxDeliveries = driverPerformanceData.length > 0 
+  const maxDeliveries = driverPerformanceData.length > 0
     ? Math.max(...driverPerformanceData.map(d => d.deliveries), 1)
     : 1;
 
@@ -209,8 +209,8 @@ export function Dashboard() {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip 
-                  contentStyle={{ 
+                <Tooltip
+                  contentStyle={{
                     backgroundColor: 'var(--card)',
                     border: '1px solid var(--border)',
                     borderRadius: '12px',
@@ -242,21 +242,21 @@ export function Dashboard() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={orderVolumeData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" className="dark:stroke-[#2A3C63]" />
-                <XAxis 
-                  dataKey="day" 
-                  stroke="var(--caption-text)" 
+                <XAxis
+                  dataKey="day"
+                  stroke="var(--caption-text)"
                   tick={{ fill: 'var(--caption-text)', fontSize: 12, fontWeight: 500 }}
                   className="dark:stroke-[#99BFD1]"
                   style={{ fontSize: '12px' }}
                 />
-                <YAxis 
-                  stroke="var(--caption-text)" 
+                <YAxis
+                  stroke="var(--caption-text)"
                   tick={{ fill: 'var(--caption-text)', fontSize: 12, fontWeight: 500 }}
                   className="dark:stroke-[#99BFD1]"
                   style={{ fontSize: '12px' }}
                 />
-                <Tooltip 
-                  contentStyle={{ 
+                <Tooltip
+                  contentStyle={{
                     backgroundColor: 'var(--card)',
                     border: '1px solid var(--border)',
                     borderRadius: '12px',
@@ -266,8 +266,7 @@ export function Dashboard() {
                     fontWeight: 500
                   }}
                   labelStyle={{ color: 'var(--heading-color)', fontWeight: 600 }}
-                  cursor={{ fill: 'rgba(26, 44, 83, 0.08)' }}
-                  className="dark:cursor-[rgba(193,238,250,0.1)]"
+                  cursor={{ fill: 'var(--chart-cursor, rgba(26, 44, 83, 0.08))' }}
                 />
                 <Bar dataKey="orders" fill="var(--chart-1)" radius={[8, 8, 0, 0]} />
               </BarChart>
@@ -292,10 +291,10 @@ export function Dashboard() {
                 <div key={driver.name} className="flex items-center gap-4 p-2 rounded-lg hover:bg-[var(--bg-hover)] dark:hover:bg-[#2A3C63]/50 transition-colors">
                   <div className={`
                     w-8 h-8 rounded-lg flex items-center justify-center font-semibold text-sm
-                    ${index === 0 ? 'bg-gradient-to-br from-[#FFD700] to-[#FFA500] text-white shadow-md' : 
+                    ${index === 0 ? 'bg-gradient-to-br from-[#FFD700] to-[#FFA500] text-white shadow-md' :
                       index === 1 ? 'bg-gradient-to-br from-[#C0C0C0] to-[#808080] text-white shadow-md' :
-                      index === 2 ? 'bg-gradient-to-br from-[#CD7F32] to-[#8B4513] text-white shadow-md' :
-                      'bg-muted dark:bg-[#2A3C63] text-muted-light dark:text-[#99BFD1]'}
+                        index === 2 ? 'bg-gradient-to-br from-[#CD7F32] to-[#8B4513] text-white shadow-md' :
+                          'bg-muted dark:bg-[#2A3C63] text-muted-light dark:text-[#99BFD1]'}
                   `}>
                     {index + 1}
                   </div>
@@ -304,7 +303,7 @@ export function Dashboard() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-32 h-2 bg-muted dark:bg-[#2A3C63] rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className="h-full bg-gradient-to-r from-[#DE3544] to-[#1A2C53] dark:from-[#DE3544] dark:to-[#C1EEFA] transition-all duration-300"
                         style={{ width: `${(driver.deliveries / maxDeliveries) * 100}%` }}
                       />
@@ -325,7 +324,7 @@ export function Dashboard() {
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
           <h3 className="text-heading dark:text-foreground mb-6 font-semibold">Quick Actions</h3>
           <div className="space-y-4">
-            <button 
+            <button
               onClick={async () => {
                 try {
                   const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/reports/daily?format=excel`);
@@ -353,7 +352,7 @@ export function Dashboard() {
               </div>
             </button>
 
-            <button 
+            <button
               onClick={async () => {
                 try {
                   const month = new Date().toISOString().slice(0, 7);

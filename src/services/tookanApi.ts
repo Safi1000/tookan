@@ -109,9 +109,14 @@ export interface CODConfirmation {
   id: string;
   orderId: string;
   driverId: string;
+  driverName?: string;
+  merchant?: string;
+  customer?: string;
   amount: number;
   confirmed: boolean;
+  status: string;
   date: string;
+  notes?: string;
 }
 
 /**
@@ -129,9 +134,13 @@ export interface CODCalendarEntry {
  */
 export interface CustomerWallet {
   id: string;
+  vendor_id?: number | string;
   name: string;
-  wallet_balance: number;
-  credit_used: number;
+  phone?: string;
+  balance?: number;
+  pending?: number;
+  wallet_balance?: number;
+  credit_used?: number;
 }
 
 /**
@@ -381,8 +390,11 @@ export async function fetchAnalytics(
  * Fetch customer wallet
  */
 export async function fetchCustomerWallet(
-  customerId: number | string
-): Promise<TookanApiResponse<CustomerWalletResponse>> {
+  customerId: number | string,
+  includeHistory: number = 0,
+  offset: number = 0,
+  limit: number = 50
+): Promise<TookanApiResponse<any>> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/tookan/customer-wallet/details`, {
       method: 'POST',
@@ -481,7 +493,7 @@ export async function fetchCustomerWallets(): Promise<TookanApiResponse<Array<{ 
 export async function createFleetWalletTransaction(
   fleetId: string | number,
   amount: number,
-  description: string,
+  description?: string,
   transactionType: 'credit' | 'debit' = 'credit'
 ): Promise<TookanApiResponse<any>> {
   try {
@@ -529,7 +541,7 @@ export async function fetchFleetWalletBalance(fleetId: string | number): Promise
 export async function addCustomerWalletPayment(
   customerId: string | number,
   amount: number,
-  description: string
+  description?: string
 ): Promise<TookanApiResponse<any>> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/tookan/customer-wallet/payment`, {
@@ -596,7 +608,9 @@ export async function getOldestPendingCOD(): Promise<TookanApiResponse<CODEntry 
 
 export async function settleCODTransaction(
   entryId: string,
-  amount: number
+  amount: number | string,
+  paymentMethod?: string,
+  userId?: string
 ): Promise<TookanApiResponse<any>> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/tookan/cod-queue/settle`, {
@@ -605,6 +619,8 @@ export async function settleCODTransaction(
       body: JSON.stringify({
         entry_id: entryId,
         amount,
+        payment_method: paymentMethod,
+        user_id: userId
       }),
     });
 
@@ -672,9 +688,11 @@ export async function fetchCODQueue(): Promise<TookanApiResponse<CODEntry[]>> {
 
 export async function settleCOD(
   entryId: string,
-  amount: number
+  amount: number | string,
+  paymentMethod?: string,
+  userId?: string
 ): Promise<TookanApiResponse<any>> {
-  return settleCODTransaction(entryId, amount);
+  return settleCODTransaction(entryId, amount, paymentMethod, userId);
 }
 
 /**
@@ -1674,6 +1692,56 @@ export async function syncAgents(): Promise<TookanApiResponse<{ synced: number; 
       entity: 'agent',
       message: error instanceof Error ? error.message : 'Network error occurred',
       data: { synced: 0, errors: 0 },
+    };
+  }
+}
+
+/**
+ * Fetch driver performance statistics via RPC
+ */
+export async function fetchDriverPerformance(
+  search: string,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<TookanApiResponse<Array<{ fleet_id: number; name: string; total_orders: number; avg_delivery_time: number }>>> {
+  try {
+    const params = new URLSearchParams();
+    params.append('search', search);
+    if (dateFrom) params.append('dateFrom', dateFrom);
+    if (dateTo) params.append('dateTo', dateTo);
+
+    const response = await fetch(`${API_BASE_URL}/api/reports/driver-performance?${params.toString()}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_driver_performance',
+        entity: 'report',
+        message: data.message || 'Failed to fetch driver performance',
+        data: [],
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_driver_performance',
+      entity: 'report',
+      message: 'Driver performance fetched successfully',
+      data: data.data || [],
+    };
+  } catch (error) {
+    console.error('Fetch driver performance error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_driver_performance',
+      entity: 'report',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: [],
     };
   }
 }

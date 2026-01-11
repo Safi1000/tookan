@@ -1862,6 +1862,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
           status: 0, // New/Assigned
           creation_datetime: new Date().toISOString(),
           source: 'reorder',
+          tags: tags || null,
           last_synced_at: new Date().toISOString()
         };
 
@@ -2168,6 +2169,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
             status: 0,
             creation_datetime: new Date().toISOString(),
             source: 'return_pickup',
+            tags: tags || null,
             last_synced_at: new Date().toISOString()
           };
           await taskModel.upsertTask(pickupOrderId, pickupTaskRecord);
@@ -2191,6 +2193,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
             status: 0,
             creation_datetime: new Date().toISOString(),
             source: 'return_delivery',
+            tags: tags || null,
             last_synced_at: new Date().toISOString()
           };
           await taskModel.upsertTask(deliveryOrderId, deliveryTaskRecord);
@@ -4141,6 +4144,15 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
 
     const result = await taskModel.getAllTasksPaginated(filters, page, limit);
 
+    // Resolve driver phones for the results
+    const { data: allAgents } = await supabase.from('agents').select('fleet_id, phone');
+    const agentPhoneMap = {};
+    if (allAgents) {
+      allAgents.forEach(a => {
+        agentPhoneMap[a.fleet_id] = a.phone || '';
+      });
+    }
+
     const orders = (result.tasks || []).map(task => {
       const codAmount = parseFloat(task.cod_amount || 0);
       const orderFees = parseFloat(task.order_fees || 0);
@@ -4157,6 +4169,8 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
         assignedDriver: task.fleet_id || null,
         fleet_name: task.fleet_name || '',
         assignedDriverName: task.fleet_name || '',
+        driver_phone: agentPhoneMap[task.fleet_id] || task.raw_data?.fleet_phone || '',
+        driverPhone: agentPhoneMap[task.fleet_id] || task.raw_data?.fleet_phone || '',
         notes: task.notes || '',
         date: task.creation_datetime || null,
         creation_datetime: task.creation_datetime || null,
@@ -4169,7 +4183,8 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
         pickupAddress: task.pickup_address || '',
         delivery_address: task.delivery_address || '',
         deliveryAddress: task.delivery_address || '',
-        status: task.status ?? null  // 0=Assigned, 1=Started, 2=Successful, 3=Failed
+        status: task.status ?? null,  // 0=Assigned, 1=Started, 2=Successful, 3=Failed
+        tags: task.tags || ''
       };
     });
 
@@ -4273,6 +4288,92 @@ app.post('/api/webhooks/tookan/task', async (req, res) => {
   }
 });
 
+// GET Driver Performance statistics via RPC
+app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
+  try {
+    const { search, dateFrom, dateTo } = req.query;
+    console.log('\n=== GET DRIVER PERFORMANCE (LOCAL) ===');
+    console.log('Search:', search, 'From:', dateFrom, 'To:', dateTo);
+
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+    }
+
+    const { supabase } = require('./db/supabase');
+
+    if (!search) {
+      return res.json({ status: 'success', data: [] });
+    }
+
+    let driverIds = [];
+    const searchTerm = search.toString().trim();
+    const normalizedSearch = searchTerm.replace(/\D/g, '');
+    const searchLower = searchTerm.toLowerCase();
+
+    // Fetch all agents to perform robust matching in JS
+    const { data: allAgents, error: agentsError } = await supabase
+      .from('agents')
+      .select('fleet_id, name, phone');
+
+    if (agentsError) throw agentsError;
+
+    if (allAgents && allAgents.length > 0) {
+      const matchedAgents = allAgents.filter(agent => {
+        const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
+        const agentNameLower = String(agent.name || '').toLowerCase();
+        const agentIdStr = String(agent.fleet_id);
+
+        return agentNameLower === searchLower ||
+          agentIdStr === searchTerm ||
+          (normalizedSearch && agentPhoneDigits === normalizedSearch);
+      });
+
+      if (matchedAgents.length > 0) {
+        driverIds = matchedAgents.map(a => ({ id: a.fleet_id, name: a.name }));
+      } else if (/^\d+$/.test(searchTerm)) {
+        // Fallback for numeric ID if not found in table
+        driverIds = [{ id: parseInt(searchTerm, 10), name: 'Driver #' + searchTerm }];
+      }
+    }
+
+    if (driverIds.length === 0) {
+      return res.json({ status: 'success', data: [] });
+    }
+
+    // Call RPC for each driver
+    const results = await Promise.all(driverIds.map(async (driver) => {
+      const { data, error } = await supabase.rpc('get_driver_statistics', {
+        p_fleet_id: driver.id,
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null
+      });
+
+      if (error) {
+        console.error(`RPC error for driver ${driver.id}:`, error);
+        return {
+          fleet_id: driver.id,
+          name: driver.name,
+          total_orders: 0,
+          avg_delivery_time: 0
+        };
+      }
+
+      const stats = data && data[0] ? data[0] : { total_orders: 0, avg_delivery_time_status2_minutes: 0 };
+      return {
+        fleet_id: driver.id,
+        name: driver.name,
+        total_orders: parseInt(stats.total_orders || 0),
+        avg_delivery_time: parseFloat(stats.avg_delivery_time_status2_minutes || 0)
+      };
+    }));
+
+    res.json({ status: 'success', data: results });
+  } catch (error) {
+    console.error('Driver performance error:', error);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 // AGENT webhook (if enabled on Tookan side)
 app.post('/api/webhooks/tookan/agent', async (req, res) => {
   try {
@@ -4340,66 +4441,57 @@ function getStatusText(status) {
 // GET Agents from Database
 app.get('/api/agents', authenticate, async (req, res) => {
   try {
-    console.log('\n=== GET AGENTS FROM DATABASE ===');
-    console.log('Request received at:', new Date().toISOString());
-
+    const apiKey = getApiKey();
     const { isActive, teamId, search } = req.query;
 
-    if (!isConfigured()) {
-      // Fallback to Tookan API if database not configured
-      console.log('⚠️  Database not configured, fetching from Tookan API');
-      const apiKey = getApiKey();
+    const response = await fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey }),
+    });
 
-      const response = await fetch('https://api.tookanapp.com/v2/get_all_fleets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: apiKey }),
-      });
-
-      const data = await response.json();
-      const fleets = data.data || [];
-
-      return res.json({
-        status: 'success',
-        message: 'Agents fetched from Tookan API (database not configured)',
-        data: {
-          agents: fleets.map(f => ({
-            fleet_id: f.fleet_id || f.id,
-            name: f.fleet_name || f.name || f.username,
-            email: f.email,
-            phone: f.phone,
-            is_active: f.status !== 0
-          })),
-          total: fleets.length,
-          source: 'tookan_api'
-        }
-      });
+    const result = await response.json();
+    if (result.status !== 200) {
+      return res.status(500).json({ status: 'error', message: result.message || 'Tookan API Error', data: { agents: [], total: 0 } });
     }
 
-    const filters = {
-      isActive: isActive !== undefined ? isActive === 'true' : undefined,
-      teamId: teamId || undefined,
-      search: search || undefined
-    };
+    const fleets = result.data || [];
 
-    const agents = await agentModel.getAllAgents(filters);
-    console.log(`✅ Found ${agents.length} agents from database`);
+    let filteredFleets = fleets;
 
-    res.json({
+    if (isActive !== undefined) {
+      const is_active_bool = isActive === 'true';
+      filteredFleets = filteredFleets.filter(f => f.status === (is_active_bool ? 1 : 0));
+    }
+
+    if (teamId) {
+      filteredFleets = filteredFleets.filter(f => f.team_id?.toString() === teamId.toString());
+    }
+
+    if (search) {
+      const term = search.toLowerCase();
+      filteredFleets = filteredFleets.filter(f =>
+        (f.name && f.name.toLowerCase().includes(term)) ||
+        (f.email && f.email.toLowerCase().includes(term)) ||
+        (f.phone && f.phone.includes(term))
+      );
+    }
+
+    return res.json({
       status: 'success',
       message: 'Agents fetched successfully',
       data: {
-        agents: agents,
-        total: agents.length,
-        source: 'database'
+        agents: filteredFleets,
+        total: filteredFleets.length,
+        source: 'tookan_api'
       }
     });
   } catch (error) {
-    console.error('❌ Get agents error:', error);
+    console.error('Get agents error:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message || 'Failed to fetch agents',
-      data: { agents: [] }
+      message: error.message || 'Internal error',
+      data: { agents: [], total: 0 }
     });
   }
 });
@@ -5068,7 +5160,7 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
     const authHeader = req.headers.authorization || '';
 
     const [ordersResult, driversResult, customersResult] = await Promise.all([
-      fetch(`${baseUrl}/api/tookan/orders?dateFrom=${startDate}&dateTo=${endDate}&limit=10000`, {
+      fetch(`${baseUrl}/api/tookan/orders?dateFrom=${startDate}&dateTo=${endDate}&limit=500`, {
         headers: authHeader ? { Authorization: authHeader } : {}
       }).then(r => r.json()).catch(err => {
         console.error('Error fetching orders for analytics:', err);
@@ -5099,26 +5191,20 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
       console.log('⚠️  No orders found, but drivers/customers exist. This may indicate a Tookan API issue with order fetching.');
     }
 
-    // Calculate KPIs
+    // Calculate KPIs - Match Reports Panel (Total Orders, Drivers, Customers, Deliveries)
     const totalOrders = orders.length;
     const totalDrivers = drivers.length;
-    const totalMerchants = customers.length;
+    const totalMerchants = customers.length; // Use all customers to match Reports Panel "Total Customers"
+    const totalCustomers = customers.length;
 
     // Calculate COD metrics
     const pendingCOD = orders
-      .filter(o => [0, 1, 2, 3, 4, 5].includes(parseInt(o.status))) // Ongoing orders
+      .filter(o => [0, 1, 3, 4, 6, 7].includes(parseInt(o.status))) // Ongoing orders (exclude Successful=2 and Canceled=8,9)
       .reduce((sum, o) => sum + (parseFloat(o.cod) || 0), 0);
 
     const collectedCOD = orders
       .filter(o => [2].includes(parseInt(o.status))) // Tookan status 2 = Successful/Completed
       .reduce((sum, o) => sum + (parseFloat(o.cod) || 0), 0);
-
-    const driversWithPending = new Set(
-      orders
-        .filter(o => [0, 1, 2, 3, 4, 5].includes(parseInt(o.status)) && parseFloat(o.cod) > 0)
-        .map(o => o.driverId)
-        .filter(id => id)
-    ).size;
 
     const completedDeliveries = orders.filter(o => [2].includes(parseInt(o.status))).length;
 
@@ -5211,7 +5297,7 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
           totalDrivers: totalDrivers,
           totalMerchants: totalMerchants,
           pendingCOD: pendingCOD,
-          driversWithPending: driversWithPending,
+          driversWithPending: 0,
           completedDeliveries: completedDeliveries
         },
         codStatus: codStatus,
@@ -5234,57 +5320,6 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
   }
 });
 
-// GET Reports Summary (Aggregated Data - Wrapper around Totals for now)
-app.get('/api/reports/summary', authenticate, async (req, res) => {
-  try {
-    // Reuse the fast totals logic or just call it internally if refactored
-    // For now, we will do a simplified fetch to support the client-side calculation fallback
-
-    // 1. Get Totals via RPC
-    const { data: orderStats, error } = isConfigured()
-      ? await supabase.rpc('get_order_stats')
-      : { data: null, error: null };
-
-    // 2. Get Counts from Tookan (Approximation for fast load)
-    // We won't fetch full lists here to keep it fast
-
-    const totals = {
-      orders: 0,
-      drivers: 0,
-      customers: 0,
-      deliveries: 0
-    };
-
-    if (orderStats && orderStats.length > 0) {
-      totals.orders = orderStats[0].total_orders || 0;
-      totals.deliveries = orderStats[0].completed_deliveries || 0;
-    }
-
-    // Fetch counts from Tookan API in parallel if needed, or just return 0 and let client update
-    // Client ReportsPanel fetches totals via fetchReportsTotals separately anyway?
-    // User code calls fetchReportsSummary AND fetchReportsTotals (via fetchAll*).
-    // Actually ReportsPanel calls fetchAllOrders, fetchAllDrivers, fetchAllCustomers. 
-    // AND fetchReportsSummary.
-
-    // We'll return just the totals we validly have fast access to. 
-    // Client handles empty summaries by calculating from orders.
-
-    res.json({
-      status: 'success',
-      data: {
-        orders: [],
-        drivers: [],
-        customers: [],
-        driverSummaries: [],
-        merchantSummaries: [],
-        totals: totals
-      }
-    });
-  } catch (error) {
-    console.error('Reports summary error:', error);
-    res.status(500).json({ status: 'error', message: error.message });
-  }
-});
 
 // GET Reports Totals (FAST - Only counts, no full data)
 app.get('/api/reports/totals', authenticate, async (req, res) => {
@@ -5368,7 +5403,7 @@ app.get('/api/search/order/:jobId', authenticate, async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Database not configured' });
     }
 
-    const { data, error } = await supabase
+    const { data: task, error } = await supabase
       .from('tasks')
       .select('*')
       .eq('job_id', parseInt(jobId))
@@ -5381,7 +5416,52 @@ app.get('/api/search/order/:jobId', authenticate, async (req, res) => {
       throw error;
     }
 
-    res.json({ status: 'success', data });
+    // Resolve driver phone
+    let driverPhone = task.raw_data?.fleet_phone || '';
+    if (task.fleet_id) {
+      const { data: agent } = await supabase
+        .from('agents')
+        .select('phone')
+        .eq('fleet_id', task.fleet_id)
+        .single();
+      if (agent) driverPhone = agent.phone || driverPhone;
+    }
+
+    const codAmount = parseFloat(task.cod_amount || 0);
+    const orderFees = parseFloat(task.order_fees || 0);
+
+    const mappedOrder = {
+      jobId: task.job_id?.toString() || '',
+      job_id: task.job_id,
+      order_id: task.order_id || '',
+      completed_datetime: task.completed_datetime || '',
+      codAmount,
+      cod_amount: codAmount,
+      orderFees,
+      order_fees: orderFees,
+      fleet_id: task.fleet_id || null,
+      assignedDriver: task.fleet_id || null,
+      fleet_name: task.fleet_name || '',
+      assignedDriverName: task.fleet_name || '',
+      driver_phone: driverPhone,
+      driverPhone: driverPhone,
+      notes: task.notes || '',
+      date: task.creation_datetime || null,
+      creation_datetime: task.creation_datetime || null,
+      customer_name: task.customer_name || '',
+      customerName: task.customer_name || '',
+      customer_phone: task.customer_phone || '',
+      customerPhone: task.customer_phone || '',
+      customerEmail: task.customer_email || '',
+      pickup_address: task.pickup_address || '',
+      pickupAddress: task.pickup_address || '',
+      delivery_address: task.delivery_address || '',
+      deliveryAddress: task.delivery_address || '',
+      status: task.status ?? null,
+      tags: task.tags || ''
+    };
+
+    res.json({ status: 'success', data: mappedOrder });
   } catch (error) {
     console.error('Search order error:', error);
     res.status(500).json({ status: 'error', message: error.message });
@@ -5520,18 +5600,23 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
     const baseUrl = `http://localhost:${process.env.PORT || 3001}`;
     const authHeader = req.headers.authorization || '';
 
+    // FAST PATH: Use RPC for totals, skip heavy order fetching
+    // The RPC provides accurate all-time totals instantly
     let orders = [];
     let drivers = [];
     let customers = [];
+    let rpcTotals = null;
 
-    try {
-      const ordersResponse = await fetch(`${baseUrl}/api/tookan/orders?dateFrom=${startDate}&dateTo=${endDate}&limit=10000`, {
-        headers: authHeader ? { Authorization: authHeader } : {}
-      });
-      const ordersData = await ordersResponse.json();
-      orders = ordersData.status === 'success' ? (ordersData.data?.orders || []) : [];
-    } catch (err) {
-      console.error('Error fetching orders for summary:', err);
+    // Get totals from RPC (fast)
+    if (isConfigured()) {
+      try {
+        const { data: stats } = await supabase.rpc('get_order_stats');
+        if (stats && stats.length > 0) {
+          rpcTotals = stats[0];
+        }
+      } catch (e) {
+        console.log('RPC unavailable, will use empty orders:', e.message);
+      }
     }
 
     try {
@@ -5663,32 +5748,16 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
         : '0'
     }));
 
-    // Calculate totals - Use Tookan API for drivers/customers, Supabase RPC for orders/deliveries
+    // Calculate totals - Use RPC for orders/deliveries (already fetched above), API for drivers/customers
     let totals = {
-      orders: orders.length,
+      orders: rpcTotals?.total_orders || orders.length,
       drivers: drivers.length,
       customers: customers.length,
       merchants: customers.length,
-      deliveries: orders.filter(o => [2].includes(parseInt(o.status))).length
+      deliveries: rpcTotals?.completed_deliveries || orders.filter(o => [2].includes(parseInt(o.status))).length
     };
 
-    // Use Supabase RPC for fast order stats (orders count + completed deliveries)
-    if (isConfigured()) {
-      try {
-        const { data: orderStats, error: rpcError } = await supabase.rpc('get_order_stats');
-
-        if (!rpcError && orderStats && orderStats.length > 0) {
-          totals.orders = orderStats[0].total_orders || totals.orders;
-          totals.deliveries = orderStats[0].completed_deliveries || 0;
-          console.log('📊 Supabase RPC stats: orders=%d, deliveries=%d',
-            totals.orders, totals.deliveries);
-        } else if (rpcError) {
-          console.log('⚠️ RPC not available yet, using API fallback:', rpcError.message);
-        }
-      } catch (rpcErr) {
-        console.log('⚠️ RPC error, using API fallback:', rpcErr.message);
-      }
-    }
+    console.log('📊 Supabase RPC stats: orders=%d, deliveries=%d', totals.orders, totals.deliveries);
 
     console.log('✅ Reports summary calculated successfully');
     console.log(`   - Total drivers in summary: ${driverSummaries.length}`);

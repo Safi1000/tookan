@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Calendar, Search, Filter, Download, ArrowUpDown, ChevronDown, CheckCircle, XCircle, RefreshCw, AlertCircle, Settings2, X } from 'lucide-react';
 import { DatePicker } from './ui/date-picker';
 import { toast } from 'sonner';
-import { fetchAllOrders, fetchAllDrivers, fetchAllCustomers, fetchReportsSummary, type OrderFilters, type DriverSummary, type MerchantSummary } from '../services/tookanApi';
+import { fetchAllOrders, fetchAllDrivers, fetchAllCustomers, fetchReportsSummary, fetchDriverPerformance, type OrderFilters } from '../services/tookanApi';
 
 const columnDefinitions = [
   { key: 'taskId', label: 'Task ID' },
@@ -29,9 +29,8 @@ export function ReportsPanel() {
   const [orders, setOrders] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
-  const [driverSummaries, setDriverSummaries] = useState<DriverSummary[]>([]);
-  const [merchantSummaries, setMerchantSummaries] = useState<MerchantSummary[]>([]);
   const [totals, setTotals] = useState({ orders: 0, drivers: 0, merchants: 0, deliveries: 0 });
+  const [driverPerformanceData, setDriverPerformanceData] = useState<any[]>([]);
 
   // Loading and error states
   const [isLoading, setIsLoading] = useState(false);
@@ -110,36 +109,26 @@ export function ReportsPanel() {
         setCustomers(customersResult.data.customers || []);
       }
 
+      // Fetch Driver Performance if search is active
+      if (unifiedDriverSearch.trim()) {
+        const perfResult = await fetchDriverPerformance(
+          unifiedDriverSearch.trim(),
+          dateFrom || undefined,
+          dateTo || undefined
+        );
+        if (perfResult.status === 'success') {
+          setDriverPerformanceData(perfResult.data);
+        }
+      } else {
+        setDriverPerformanceData([]);
+      }
+
       // Fetch reports summary (now returns real data from backend)
       const summaryResult = await fetchReportsSummary({
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined
       });
       if (summaryResult.status === 'success' && summaryResult.data) {
-        // Use API summaries if available
-        if (summaryResult.data.driverSummaries && summaryResult.data.driverSummaries.length > 0) {
-          setDriverSummaries(summaryResult.data.driverSummaries.map(d => ({
-            driverId: d.driverId,
-            driverName: d.driverName,
-            orderCount: d.orderCount || d.totalOrders || 0, // Handle property mismatch
-            codTotal: d.codTotal,
-            orderFees: d.orderFees || d.feesTotal || 0,
-            totalValue: (d.codTotal || 0) + (d.orderFees || d.feesTotal || 0),
-            avgDeliveryTime: d.avgDeliveryTime || d.averageDeliveryTime || 0
-          })));
-        }
-
-        if (summaryResult.data.merchantSummaries && summaryResult.data.merchantSummaries.length > 0) {
-          setMerchantSummaries(summaryResult.data.merchantSummaries.map(m => ({
-            merchantId: m.merchantId,
-            merchantName: m.merchantName,
-            orderCount: m.orderCount || m.totalOrders || 0,
-            codReceived: m.codReceived || m.codTotal || 0,
-            orderFees: m.orderFees || m.feesTotal || 0,
-            revenue: (m.codReceived || m.codTotal || 0) + (m.orderFees || m.feesTotal || 0)
-          })));
-        }
-
         if (summaryResult.data.totals) {
           setTotals({
             ...summaryResult.data.totals,
@@ -149,18 +138,8 @@ export function ReportsPanel() {
         }
       }
 
-      // Also calculate summaries from orders as fallback/enhancement
-      const fetchedOrders = ordersResult.status === 'success' && ordersResult.data ? ordersResult.data.orders || [] : [];
-      if (fetchedOrders.length > 0) {
-        // Only calculate if API didn't provide summaries, or enhance existing data
-        if (!summaryResult.data?.driverSummaries || summaryResult.data.driverSummaries.length === 0) {
-          calculateSummaries(fetchedOrders);
-        }
-
-
-        // Update totals from actual fetched data - REMOVED TO PREVENT OVERWRITING RPC DATA
-        // if (fetchedOrders.length > 0) { ... }
-      }
+      // Update totals from actual fetched data - REMOVED TO PREVENT OVERWRITING RPC DATA
+      // if (fetchedOrders.length > 0) { ... }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load data';
       setError(errorMessage);
@@ -170,108 +149,24 @@ export function ReportsPanel() {
     }
   };
 
-  // Calculate driver and merchant summaries from order data
-  const calculateSummaries = (orderData: any[]) => {
-    // Driver summaries
-    const driverMap = new Map<string, {
-      driverId: string;
-      driverName: string;
-      orders: any[];
-      codTotal: number;
-      feesTotal: number;
-      deliveryTimes: number[];
-    }>();
-
-    orderData.forEach((order: any) => {
-      const driverId = order.driverId || order.fleet_id || 'unknown';
-      const driverName = order.driver || order.driverName || 'Unknown Driver';
-
-      if (!driverMap.has(driverId)) {
-        driverMap.set(driverId, {
-          driverId,
-          driverName,
-          orders: [],
-          codTotal: 0,
-          feesTotal: 0,
-          deliveryTimes: []
-        });
-      }
-
-      const driverData = driverMap.get(driverId)!;
-      driverData.orders.push(order);
-
-      const cod = parseFloat(order.cod?.replace('$', '') || order.codAmount || 0);
-      const fee = parseFloat(order.fee?.replace('$', '') || order.orderFees || 0);
-
-      driverData.codTotal += cod;
-      driverData.feesTotal += fee;
-
-      if (order.deliveryTime && order.deliveryTime !== '-') {
-        const timeMatch = order.deliveryTime.match(/(\d+)/);
-        if (timeMatch) {
-          driverData.deliveryTimes.push(parseInt(timeMatch[1]));
-        }
-      }
-    });
-
-    const driverSummariesData: DriverSummary[] = Array.from(driverMap.values()).map(driver => ({
-      driverId: driver.driverId,
-      driverName: driver.driverName,
-      orderCount: driver.orders.length,
-      codTotal: driver.codTotal,
-      orderFees: driver.feesTotal,
-      totalValue: driver.codTotal + driver.feesTotal,
-      avgDeliveryTime: driver.deliveryTimes.length > 0
-        ? driver.deliveryTimes.reduce((a, b) => a + b, 0) / driver.deliveryTimes.length
-        : 0
-    }));
-
-    setDriverSummaries(driverSummariesData);
-
-    // Merchant summaries
-    const merchantMap = new Map<string, {
-      merchantId: string;
-      merchantName: string;
-      orders: any[];
-      codReceived: number;
-      feesTotal: number;
-    }>();
-
-    orderData.forEach((order: any) => {
-      const merchantId = order.merchantId || order.merchant || 'unknown';
-      const merchantName = order.merchant || 'Unknown Merchant';
-
-      if (!merchantMap.has(merchantId)) {
-        merchantMap.set(merchantId, {
-          merchantId,
-          merchantName,
-          orders: [],
-          codReceived: 0,
-          feesTotal: 0
-        });
-      }
-
-      const merchantData = merchantMap.get(merchantId)!;
-      merchantData.orders.push(order);
-
-      const cod = parseFloat(order.cod?.replace('$', '') || order.codAmount || 0);
-      const fee = parseFloat(order.fee?.replace('$', '') || order.orderFees || 0);
-
-      merchantData.codReceived += cod;
-      merchantData.feesTotal += fee;
-    });
-
-    const merchantSummariesData: MerchantSummary[] = Array.from(merchantMap.values()).map(merchant => ({
-      merchantId: merchant.merchantId,
-      merchantName: merchant.merchantName,
-      orderCount: merchant.orders.length,
-      codReceived: merchant.codReceived,
-      orderFees: merchant.feesTotal,
-      revenue: merchant.codReceived + merchant.feesTotal
-    }));
-
-    setMerchantSummaries(merchantSummariesData);
+  const mapStatus = (status: number | string | null | undefined) => {
+    if (status === null || status === undefined) return 'N/A';
+    const s = Number(status);
+    switch (s) {
+      case 0: return 'Assigned';
+      case 1: return 'Started';
+      case 2: return 'Successful';
+      case 3: return 'Failed';
+      case 4: return 'InProgress/Arrived';
+      case 6: return 'Unassigned';
+      case 7: return 'Accepted/Acknowledged';
+      case 8: return 'Decline';
+      case 9: return 'Cancel';
+      case 10: return 'Deleted';
+      default: return `Status ${s}`;
+    }
   };
+
 
   // Filter orders based on search criteria
   const filteredOrders = useMemo(() => {
@@ -298,16 +193,23 @@ export function ReportsPanel() {
     // Filter by merchant (ID, name, or phone)
 
 
-    // Filter by driver (ID, name, or phone)
+    // Filter by driver (ID, name, or phone) - STRICT MATCH
     if (unifiedDriverSearch.trim()) {
-      const searchLower = unifiedDriverSearch.toLowerCase();
-      filtered = filtered.filter(order =>
-        (order.driver || order.driverName || '').toLowerCase().includes(searchLower) ||
-        (order.driverId || order.fleet_id || '').toLowerCase().includes(searchLower)
-      );
+      const searchTerm = unifiedDriverSearch.trim();
+      const normalizedSearch = searchTerm.replace(/\D/g, '');
+      const searchLower = searchTerm.toLowerCase();
+
+      filtered = filtered.filter(order => {
+        const orderDriverName = (order.driver || order.driverName || order.fleet_name || '').toLowerCase().trim();
+        const orderDriverId = String(order.driverId || order.fleet_id || '').trim();
+        const orderDriverPhone = String(order.driverPhone || order.driver_phone || '').replace(/\D/g, '');
+
+        return orderDriverName === searchLower ||
+          orderDriverId === searchTerm ||
+          (normalizedSearch && orderDriverPhone === normalizedSearch);
+      });
     }
 
-    return filtered;
     return filtered;
   }, [orders, orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch]);
 
@@ -479,69 +381,6 @@ export function ReportsPanel() {
         </div>
       </div>
 
-      {/* Driver Summaries */}
-      {driverSummaries.length > 0 && (
-        <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
-          <h3 className="text-foreground text-xl mb-4">Driver Summaries</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                <tr>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver</th>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Orders</th>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD Total</th>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Total Value</th>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Avg Delivery Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {driverSummaries.map((driver, index) => (
-                  <tr key={driver.driverId} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{driver.driverName}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{driver.orderCount}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${driver.codTotal.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${driver.orderFees.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${driver.totalValue.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{driver.avgDeliveryTime > 0 ? `${driver.avgDeliveryTime.toFixed(1)} min` : '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Merchant Summaries */}
-      {merchantSummaries.length > 0 && (
-        <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
-          <h3 className="text-foreground text-xl mb-4">Merchant Summaries</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                <tr>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant</th>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Orders</th>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD Received</th>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
-                  <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Revenue</th>
-                </tr>
-              </thead>
-              <tbody>
-                {merchantSummaries.map((merchant, index) => (
-                  <tr key={merchant.merchantId} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{merchant.merchantName}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{merchant.orderCount}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${merchant.codReceived.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">${merchant.orderFees.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${merchant.revenue.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* Column Manager Modal */}
       {showColumnManager && (
@@ -670,6 +509,45 @@ export function ReportsPanel() {
         </div>
       </div>
 
+      {/* Driver Performance Table */}
+      {driverPerformanceData.length > 0 && (
+        <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
+          <div className="px-6 py-4 border-b border-border dark:border-[#2A3C63] bg-muted/10 dark:bg-[#1A2C53]/30">
+            <h3 className="text-heading dark:text-[#C1EEFA] font-semibold">Driver Summary</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                <tr>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Name</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Number of Orders</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD Totals</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Total Order Value</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Avg Delivery Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {driverPerformanceData.map((perf, idx) => (
+                  <tr key={perf.fleet_id || idx} className="border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors">
+                    <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">{perf.fleet_id}</td>
+                    <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{perf.name}</td>
+                    <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{perf.total_orders}</td>
+                    <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
+                    <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
+                    <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
+                    <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
+                      {perf.avg_delivery_time > 0 ? `${perf.avg_delivery_time.toFixed(1)} mins` : 'N/A'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Orders Table */}
       <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
         {isLoading ? (
@@ -693,6 +571,7 @@ export function ReportsPanel() {
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date/Time Delivered</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Phone</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Name</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Phone</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pickup Address</th>
@@ -700,6 +579,10 @@ export function ReportsPanel() {
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order ID</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tags</th>
+
+
                 </tr>
               </thead>
               <tbody>
@@ -736,6 +619,16 @@ export function ReportsPanel() {
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof cod === 'number' ? cod.toFixed(2) : cod}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{typeof orderFees === 'number' ? orderFees.toFixed(2) : orderFees}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">{orderId}</td>
+                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm italic">{order.tags || order.tag || ''}</td>
+                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{order.driver_phone || order.driverPhone || ''}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
+                        <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${order.status === 2 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                          order.status === 3 || order.status === 9 || order.status === 8 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                            'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                          }`}>
+                          {mapStatus(order.status)}
+                        </span>
+                      </td>
                     </tr>
                   );
                 })}

@@ -515,6 +515,7 @@ function getApp() {
           pickup_address: payload.job_pickup_address || payload.pickup_address || '',
           delivery_address: payload.customer_address || payload.job_address || payload.delivery_address || '',
           creation_datetime: payload.creation_datetime || payload.job_time || payload.created_at || payload.timestamp || new Date().toISOString(),
+          tags: payload.tags || null,
           raw_data: payload,
           last_synced_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -590,42 +591,60 @@ function getApp() {
       }
     });
 
-    // GET Agents from database (serverless)
-    app.get('/api/agents', async (req, res) => {
+    // GET Agents from database (serverless) - UPDATED TO PROXY TOOKAN API
+    app.get('/api/agents', authenticate, async (req, res) => {
       try {
-        if (!isSupabaseConfigured || !supabase) {
-          return res.status(500).json({
+        const apiKey = getApiKey();
+        if (!apiKey) {
+          return res.status(500).json({ status: 'error', message: 'Tookan API Key not configured' });
+        }
+
+        const response = await fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.status !== 200) {
+          return res.status(result.status === 401 ? 401 : 500).json({
             status: 'error',
-            message: 'Supabase not configured',
+            message: result.message || 'Tookan API Error',
             data: { agents: [], total: 0 }
           });
         }
 
+        const fleets = result.data || [];
+
+        // Apply basic filtering if requested (isActive, teamId, search)
+        let filteredFleets = fleets;
         const { isActive, teamId, search } = req.query;
-        let query = supabase.from('agents').select('*');
 
         if (isActive !== undefined) {
-          query = query.eq('is_active', isActive === 'true');
-        }
-        if (teamId) {
-          query = query.eq('team_id', teamId);
-        }
-        if (search) {
-          const term = `%${search}%`;
-          query = query.or(`name.ilike.${term},email.ilike.${term},phone.ilike.${term}`);
+          const is_active_bool = isActive === 'true';
+          filteredFleets = filteredFleets.filter(f => f.status === (is_active_bool ? 1 : 0));
         }
 
-        query = query.order('name', { ascending: true });
-        const { data, error } = await query;
-        if (error) {
-          console.error('Get agents error:', error.message);
-          return res.status(500).json({ status: 'error', message: error.message, data: { agents: [], total: 0 } });
+        if (teamId) {
+          filteredFleets = filteredFleets.filter(f => f.team_id?.toString() === teamId.toString());
+        }
+
+        if (search) {
+          const term = search.toLowerCase();
+          filteredFleets = filteredFleets.filter(f =>
+            (f.name && f.name.toLowerCase().includes(term)) ||
+            (f.email && f.email.toLowerCase().includes(term)) ||
+            (f.phone && f.phone.includes(term))
+          );
         }
 
         return res.json({
           status: 'success',
           message: 'Agents fetched successfully',
-          data: { agents: data || [], total: (data || []).length }
+          data: { agents: filteredFleets, total: filteredFleets.length }
         });
       } catch (error) {
         console.error('Get agents error:', error);
@@ -694,9 +713,18 @@ function getApp() {
         const from = (pageNum - 1) * limitNum;
         const to = from + limitNum - 1;
 
+        // Fetch all agents once to resolve driver phones efficiently
+        const { data: allAgents } = await supabase.from('agents').select('fleet_id, name, phone');
+        const agentMap = {};
+        if (allAgents) {
+          allAgents.forEach(a => {
+            agentMap[a.fleet_id] = a.phone || a.fleet_phone || '';
+          });
+        }
+
         let query = supabase
           .from('tasks')
-          .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status', { count: 'exact' });
+          .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' });
 
         if (dateFrom) query = query.gte('creation_datetime', dateFrom);
         if (dateTo) query = query.lte('creation_datetime', dateTo);
@@ -707,13 +735,41 @@ function getApp() {
         }
         if (search) {
           const searchTerm = String(search).trim();
-          // Exact Job ID match only (must be numeric)
-          const numericJobId = parseInt(searchTerm, 10);
-          if (!isNaN(numericJobId) && String(numericJobId) === searchTerm) {
-            query = query.eq('job_id', numericJobId);
+          const normalizedSearch = searchTerm.replace(/\D/g, '');
+          const searchLower = searchTerm.toLowerCase();
+
+          if (allAgents && allAgents.length > 0) {
+            const resolvedIds = new Set();
+
+            for (const agent of allAgents) {
+              const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
+              const agentNameLower = String(agent.name || '').toLowerCase();
+              const agentIdStr = String(agent.fleet_id);
+
+              // Match by name, id, or normalized phone
+              if (agentNameLower === searchLower ||
+                agentIdStr === searchTerm ||
+                (normalizedSearch && agentPhoneDigits === normalizedSearch)) {
+                resolvedIds.add(agent.fleet_id);
+              }
+            }
+
+            if (resolvedIds.size > 0) {
+              const idList = Array.from(resolvedIds).join(',');
+              query = query.or(`fleet_id.in.(${idList})`);
+            } else if (/^\d+$/.test(searchTerm)) {
+              const numericVal = parseInt(searchTerm, 10);
+              query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal}`);
+            } else {
+              query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+            }
           } else {
-            // Non-numeric search returns no results (exact match required)
-            query = query.eq('job_id', -1); // Impossible match
+            if (/^\d+$/.test(searchTerm)) {
+              const numericVal = parseInt(searchTerm, 10);
+              query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal}`);
+            } else {
+              query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+            }
           }
         }
 
@@ -745,6 +801,8 @@ function getApp() {
             assignedDriver: task.fleet_id || null,
             fleet_name: task.fleet_name || '',
             assignedDriverName: task.fleet_name || '',
+            driver_phone: agentMap[task.fleet_id] || task.raw_data?.fleet_phone || '',
+            driverPhone: agentMap[task.fleet_id] || task.raw_data?.fleet_phone || '',
             notes: task.notes || '',
             date: task.creation_datetime || null,
             creation_datetime: task.creation_datetime || null,
@@ -757,7 +815,9 @@ function getApp() {
             pickupAddress: task.pickup_address || '',
             delivery_address: task.delivery_address || '',
             deliveryAddress: task.delivery_address || '',
-            status: task.status ?? null
+            status: task.status ?? null,
+            tags: task.tags || '',
+            raw_data: task.raw_data || {}
           };
         });
 
@@ -1043,6 +1103,8 @@ function getApp() {
         const apiKey = getApiKey();
 
         // Fetch data from Tookan - always use get_all_customers for consistency
+        // NOTE: We use small task limits here because RPC provides accurate totals
+        // Tasks are only used for charts/trends which only need recent data
         const [fleetsRes, customersRes, tasksRes] = await Promise.all([
           fetch('https://api.tookanapp.com/v2/get_all_fleets', {
             method: 'POST',
@@ -1059,9 +1121,9 @@ function getApp() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               api_key: apiKey,
-              job_type: 1,
+              job_type: 1, // Delivery only for charts
               job_status: '0,1,2,3,4,5,6,7,8,9',
-              limit: 100,
+              limit: 100, // Small limit - RPC provides accurate totals
               custom_fields: 1
             })
           })
@@ -1080,35 +1142,49 @@ function getApp() {
         const customers = Array.isArray(customersData.data) ? customersData.data :
           Array.isArray(customersData.customers) ? customersData.customers :
             Array.isArray(customersData) ? customersData : [];
+
         const tasks = Array.isArray(tasksData.data) ? tasksData.data :
           Array.isArray(tasksData.tasks) ? tasksData.tasks :
             Array.isArray(tasksData) ? tasksData : [];
 
+        // Shared totals from Supabase if configured (for faster/more accurate counts)
+        let rpcTotals = null;
+        if (isSupabaseConfigured && supabase) {
+          try {
+            const { data: stats } = await supabase.rpc('get_order_stats');
+            if (stats && stats.length > 0) {
+              rpcTotals = stats[0];
+            }
+          } catch (e) {
+            console.log('RPC check failed in analytics:', e.message);
+          }
+        }
+
         // Calculate analytics
-        const completedTasks = tasks.filter(t => t.job_status === 2);
+        const completedTasks = tasks.filter(t => parseInt(t.job_status) === 2);
         const pendingCOD = tasks
-          .filter(t => t.order_payment && t.job_status === 2)
-          .reduce((sum, t) => sum + (parseFloat(t.order_payment) || 0), 0);
+          .filter(t => (t.order_payment || t.total_amount) && parseInt(t.job_status) === 2)
+          .reduce((sum, t) => sum + (parseFloat(t.order_payment || t.total_amount) || 0), 0);
 
         // Tookan terminology:
         // - Customers: delivery recipients (all entries from get_all_customers)
         // - Merchants: registered businesses with vendor_id (subset of customers)
         // - Agents/Drivers: delivery personnel (from get_all_fleets)
         const totalCustomers = customers.length;
-        const totalMerchants = customers.filter(c => c.vendor_id != null).length;
+        const totalMerchants = customers.length; // Per user request, match Reports Panel which uses all customers
 
         res.json({
           status: 'success',
           message: 'Analytics fetched successfully',
           data: {
             kpis: {
-              totalOrders: tasks.length,
+              totalOrders: rpcTotals?.total_orders || tasks.length,
               totalDrivers: fleets.length,  // Tookan calls these "Agents"
               totalMerchants: totalMerchants,  // Only those with vendor_id
               totalCustomers: totalCustomers,  // All delivery recipients
               pendingCOD: pendingCOD,
               driversWithPending: 0,
-              completedDeliveries: completedTasks.length
+              completedDeliveries: rpcTotals?.completed_deliveries || completedTasks.length
             },
             trends: {
               orders: '+0%',
@@ -3372,6 +3448,97 @@ function getApp() {
       }
     });
 
+    // GET Driver Performance statistics via RPC
+    app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
+      try {
+        const { search, dateFrom, dateTo } = req.query;
+        console.log('\n=== GET DRIVER PERFORMANCE ===');
+        console.log('Search:', search, 'From:', dateFrom, 'To:', dateTo);
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(400).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        if (!search) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        let driverIds = [];
+        const isNumeric = /^\d+$/.test(search.toString().trim());
+
+        if (isNumeric) {
+          // 1. Try exact match on fleet_id
+          let { data: agent, error: agentError } = await supabase
+            .from('agents')
+            .select('fleet_id, name')
+            .eq('fleet_id', parseInt(search))
+            .maybeSingle();
+
+          // 2. If no fleet_id match, try exact match on phone
+          if (!agent) {
+            const { data: phoneAgent, error: phoneError } = await supabase
+              .from('agents')
+              .select('fleet_id, name')
+              .eq('phone', search.trim())
+              .maybeSingle();
+            agent = phoneAgent;
+          }
+
+          if (agent) {
+            driverIds = [{ id: agent.fleet_id, name: agent.name }];
+          } else {
+            driverIds = [{ id: parseInt(search), name: 'Driver #' + search }];
+          }
+        } else {
+          // Search agents table for names - STRICT MATCH
+          const { data: agents, error: agentsError } = await supabase
+            .from('agents')
+            .select('fleet_id, name')
+            .ilike('name', search.trim()) // Removed % wildcards for strict match
+            .limit(10);
+
+          if (agentsError) throw agentsError;
+          driverIds = (agents || []).map(a => ({ id: a.fleet_id, name: a.name }));
+        }
+
+        if (driverIds.length === 0) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        // Call RPC for each driver
+        const results = await Promise.all(driverIds.map(async (driver) => {
+          const { data, error } = await supabase.rpc('get_driver_statistics', {
+            p_fleet_id: driver.id,
+            p_date_from: dateFrom || null,
+            p_date_to: dateTo || null
+          });
+
+          if (error) {
+            console.error(`RPC error for driver ${driver.id}:`, error);
+            return {
+              fleet_id: driver.id,
+              name: driver.name,
+              total_orders: 0,
+              avg_delivery_time: 0
+            };
+          }
+
+          const stats = data && data[0] ? data[0] : { total_orders: 0, avg_delivery_time_status2_minutes: 0 };
+          return {
+            fleet_id: driver.id,
+            name: driver.name,
+            total_orders: parseInt(stats.total_orders || 0),
+            avg_delivery_time: parseFloat(stats.avg_delivery_time_status2_minutes || 0)
+          };
+        }));
+
+        res.json({ status: 'success', data: results });
+      } catch (error) {
+        console.error('Driver performance error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
     // GET Search Order by job_id (from Supabase, bypasses RLS)
     app.get('/api/search/order/:jobId', authenticate, async (req, res) => {
       try {
@@ -3383,7 +3550,7 @@ function getApp() {
           return res.status(400).json({ status: 'error', message: 'Database not configured' });
         }
 
-        const { data, error } = await supabase
+        const { data: task, error } = await supabase
           .from('tasks')
           .select('*')
           .eq('job_id', parseInt(jobId))
@@ -3396,7 +3563,52 @@ function getApp() {
           throw error;
         }
 
-        res.json({ status: 'success', data });
+        // Resolve driver phone
+        let driverPhone = task.raw_data?.fleet_phone || '';
+        if (task.fleet_id) {
+          const { data: agent } = await supabase
+            .from('agents')
+            .select('phone')
+            .eq('fleet_id', task.fleet_id)
+            .single();
+          if (agent) driverPhone = agent.phone || driverPhone;
+        }
+
+        const codAmount = parseFloat(task.cod_amount || 0);
+        const orderFees = parseFloat(task.order_fees || 0);
+
+        const mappedOrder = {
+          jobId: task.job_id?.toString() || '',
+          job_id: task.job_id,
+          order_id: task.order_id || '',
+          completed_datetime: task.completed_datetime || '',
+          codAmount,
+          cod_amount: codAmount,
+          orderFees,
+          order_fees: orderFees,
+          fleet_id: task.fleet_id || null,
+          assignedDriver: task.fleet_id || null,
+          fleet_name: task.fleet_name || '',
+          assignedDriverName: task.fleet_name || '',
+          driver_phone: driverPhone,
+          driverPhone: driverPhone,
+          notes: task.notes || '',
+          date: task.creation_datetime || null,
+          creation_datetime: task.creation_datetime || null,
+          customer_name: task.customer_name || '',
+          customerName: task.customer_name || '',
+          customer_phone: task.customer_phone || '',
+          customerPhone: task.customer_phone || '',
+          customerEmail: task.customer_email || '',
+          pickup_address: task.pickup_address || '',
+          pickupAddress: task.pickup_address || '',
+          delivery_address: task.delivery_address || '',
+          deliveryAddress: task.delivery_address || '',
+          status: task.status ?? null,
+          tags: task.tags || ''
+        };
+
+        res.json({ status: 'success', data: mappedOrder });
       } catch (error) {
         console.error('Search order error:', error);
         res.status(500).json({ status: 'error', message: error.message });

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DollarSign, Wallet, CheckCircle, X, Search, Calendar, Save, Check, XCircle, Eye, Download, Loader2, AlertCircle } from 'lucide-react';
-import { 
-  createFleetWalletTransaction, 
+import {
+  createFleetWalletTransaction,
   fetchFleetWalletBalance,
   addCustomerWalletPayment,
   fetchCustomerWallet,
@@ -59,13 +59,13 @@ export function FinancialPanel() {
   // Read settings from localStorage with state to trigger re-renders
   // COD Confirmation is hidden from UI but code remains intact
   const getShowCODSection = () => false; // Always return false - COD section hidden
-  const getShowDriverWalletSection = () => localStorage.getItem('showDriverWalletSection') !== 'false';
-  const getShowMerchantWalletSection = () => localStorage.getItem('showMerchantWalletSection') !== 'false';
-  
+  const getShowDriverWalletSection = () => false; // Always return false - Driver Wallet section hidden
+  const getShowMerchantWalletSection = () => false; // Always return false - Merchant Wallet section hidden
+
   const [showCODSection, setShowCODSection] = useState(false); // Always false - COD section hidden
   const [showDriverWalletSection, setShowDriverWalletSection] = useState(getShowDriverWalletSection());
   const [showMerchantWalletSection, setShowMerchantWalletSection] = useState(getShowMerchantWalletSection());
-  
+
   // Listen for storage changes to update state
   useEffect(() => {
     const handleStorageChange = () => {
@@ -73,26 +73,26 @@ export function FinancialPanel() {
       setShowDriverWalletSection(getShowDriverWalletSection());
       setShowMerchantWalletSection(getShowMerchantWalletSection());
     };
-    
+
     window.addEventListener('storage', handleStorageChange);
     // Also listen for custom event for same-tab updates
     window.addEventListener('settingsUpdated', handleStorageChange);
-    
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('settingsUpdated', handleStorageChange);
     };
   }, []);
-  
+
   // Determine available tabs
   // COD Confirmation tab is hidden but code remains
   const availableTabs: Array<'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets'> = [
     'reconciliation',
     // ...(showCODSection ? (['cod'] as const) : []), // COD tab hidden
-    ...(showDriverWalletSection ? (['driver-wallets'] as const) : []),
-    ...(showMerchantWalletSection ? (['merchant-wallets'] as const) : [])
+    // ...(showDriverWalletSection ? (['driver-wallets'] as const) : []), // Driver wallet tab hidden
+    // ...(showMerchantWalletSection ? (['merchant-wallets'] as const) : []) // Merchant wallet tab hidden
   ];
-  
+
   // Ensure activeTab is valid, default to reconciliation if current tab is hidden
   const getInitialTab = (): 'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets' => {
     const saved = localStorage.getItem('financialPanelActiveTab');
@@ -101,9 +101,9 @@ export function FinancialPanel() {
     }
     return 'reconciliation';
   };
-  
+
   const [activeTab, setActiveTab] = useState<'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets'>(getInitialTab());
-  
+
   // Update activeTab if current tab becomes hidden
   useEffect(() => {
     if (!availableTabs.includes(activeTab)) {
@@ -111,13 +111,13 @@ export function FinancialPanel() {
       localStorage.setItem('financialPanelActiveTab', 'reconciliation');
     }
   }, [showCODSection, showDriverWalletSection, showMerchantWalletSection, activeTab, availableTabs]);
-  
+
   // Save active tab to localStorage when it changes
   const handleTabChange = (tab: 'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets') => {
     setActiveTab(tab);
     localStorage.setItem('financialPanelActiveTab', tab);
   };
-  
+
   // Reconciliation state
   const [unifiedDriverSearch, setUnifiedDriverSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -151,17 +151,17 @@ export function FinancialPanel() {
   const [isLoadingCODConfirmations, setIsLoadingCODConfirmations] = useState(false);
   const [selectedCod, setSelectedCod] = useState<string | null>(null);
   const [codNote, setCodNote] = useState('');
-  
+
   // Merchant wallets state
   const [merchantWallets, setMerchantWallets] = useState<CustomerWallet[]>([]);
   const [isLoadingMerchantWallets, setIsLoadingMerchantWallets] = useState(false);
-  
+
   // Real data state
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [isLoadingDrivers, setIsLoadingDrivers] = useState(false);
   const [isLoadingMerchants, setIsLoadingMerchants] = useState(false);
-  
+
   // Fetch drivers on mount
   useEffect(() => {
     const loadDrivers = async () => {
@@ -191,7 +191,7 @@ export function FinancialPanel() {
     };
     loadDrivers();
   }, []);
-  
+
   // Fetch merchants on mount
   useEffect(() => {
     const loadMerchants = async () => {
@@ -221,7 +221,7 @@ export function FinancialPanel() {
     };
     loadMerchants();
   }, []);
-  
+
   // Load COD confirmations on mount
   useEffect(() => {
     const loadCODConfirmations = async () => {
@@ -239,7 +239,7 @@ export function FinancialPanel() {
     };
     loadCODConfirmations();
   }, []);
-  
+
   // Load calendar data on mount and when date range changes
   useEffect(() => {
     const loadCalendarData = async () => {
@@ -247,17 +247,17 @@ export function FinancialPanel() {
       try {
         const response = await fetchCODCalendar(dateFrom || undefined, dateTo || undefined);
         if (response.status === 'success' && response.data) {
-          const calendarEntries: CalendarEntry[] = Array.isArray(response.data) 
+          const calendarEntries: CalendarEntry[] = Array.isArray(response.data)
             ? response.data.map((entry: any) => ({
-                date: entry.date || entry.codDate || '',
-                codReceived: parseFloat(entry.codReceived || entry.cod_received || 0),
-                codPending: parseFloat(entry.codPending || entry.cod_pending || 0),
-                balancePaid: parseFloat(entry.balancePaid || entry.balance_paid || 0),
-                note: entry.note || entry.notes || '',
-                codStatus: entry.codStatus || entry.cod_status || 'PENDING',
-                codId: entry.codId || entry.cod_id,
-                merchantVendorId: entry.merchantVendorId || entry.merchant_vendor_id
-              }))
+              date: entry.date || entry.codDate || '',
+              codReceived: parseFloat(entry.codReceived || entry.cod_received || 0),
+              codPending: parseFloat(entry.codPending || entry.cod_pending || 0),
+              balancePaid: parseFloat(entry.balancePaid || entry.balance_paid || 0),
+              note: entry.note || entry.notes || '',
+              codStatus: entry.codStatus || entry.cod_status || 'PENDING',
+              codId: entry.codId || entry.cod_id,
+              merchantVendorId: entry.merchantVendorId || entry.merchant_vendor_id
+            }))
             : [];
           setCalendarData(calendarEntries);
         }
@@ -278,9 +278,9 @@ export function FinancialPanel() {
       return;
     }
     const foundDriver = drivers.find(
-      d => d.name.toLowerCase().includes(unifiedDriverSearch.toLowerCase()) || 
-           d.id.toLowerCase().includes(unifiedDriverSearch.toLowerCase()) ||
-           (d.phone && d.phone.includes(unifiedDriverSearch))
+      d => d.name.toLowerCase().includes(unifiedDriverSearch.toLowerCase()) ||
+        d.id.toLowerCase().includes(unifiedDriverSearch.toLowerCase()) ||
+        (d.phone && d.phone.includes(unifiedDriverSearch))
     );
     if (foundDriver) {
       setSearchValidation('valid');
@@ -299,22 +299,22 @@ export function FinancialPanel() {
 
     // Find driver in fetched drivers list
     const found = drivers.find(
-      d => d.name.toLowerCase().includes(driverWalletSearch.toLowerCase()) || 
-           d.id.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
-           (d.phone && d.phone.includes(driverWalletSearch))
+      d => d.name.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
+        d.id.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
+        (d.phone && d.phone.includes(driverWalletSearch))
     );
 
     if (found) {
       setDriverWalletValidation('valid');
-      
+
       // If driver has a fleet_id, fetch real balance from Tookan
       if (found.fleet_id) {
         try {
           const response = await fetchFleetWalletBalance(found.fleet_id);
           if (response.status === 'success' && response.data.balance !== undefined) {
             // Update the driver's balance with real data
-            setDrivers(prev => prev.map(d => 
-              d.id === found.id 
+            setDrivers(prev => prev.map(d =>
+              d.id === found.id
                 ? { ...d, balance: response.data.balance || 0 }
                 : d
             ));
@@ -339,21 +339,21 @@ export function FinancialPanel() {
     // Try to find in merchant wallets first, then in merchants list
     // Search by: name, id, vendor_id, phone
     let found = merchantWallets.find(
-      m => m.name.toLowerCase().includes(searchTerm) || 
-           m.id.toLowerCase().includes(searchTerm) ||
-           m.vendor_id?.toString().includes(searchTerm) ||
-           m.phone.includes(merchantWalletSearch)
+      m => m.name.toLowerCase().includes(searchTerm) ||
+        m.id.toLowerCase().includes(searchTerm) ||
+        (m.vendor_id && m.vendor_id.toString().includes(searchTerm)) ||
+        (m.phone && m.phone.includes(merchantWalletSearch))
     );
 
     // If not found in merchantWallets, search in merchants list
     if (!found) {
       const merchantMatch = merchants.find(
-        m => m.name.toLowerCase().includes(searchTerm) || 
-             m.id.toLowerCase().includes(searchTerm) ||
-             m.vendor_id?.toString().includes(searchTerm) ||
-             (m.phone && m.phone.includes(merchantWalletSearch))
+        m => m.name.toLowerCase().includes(searchTerm) ||
+          m.id.toLowerCase().includes(searchTerm) ||
+          m.vendor_id?.toString().includes(searchTerm) ||
+          (m.phone && m.phone.includes(merchantWalletSearch))
       );
-      
+
       if (merchantMatch) {
         // Convert merchant to CustomerWallet format for display
         found = {
@@ -369,16 +369,16 @@ export function FinancialPanel() {
 
     if (found) {
       setMerchantWalletValidation('valid');
-      
+
       // If merchant has a vendor_id, fetch real balance from Tookan
       if (found.vendor_id) {
         try {
           const response = await fetchCustomerWallet(found.vendor_id, 1, 0, 50);
-          if (response.status === 'success' && response.data?.data) {
-            const walletData = Array.isArray(response.data.data) 
-              ? response.data.data.find((w: any) => w.vendor_id === found.vendor_id)
-              : response.data.data;
-            
+          if (response.status === 'success' && response.data) {
+            const walletData = Array.isArray(response.data)
+              ? response.data.find((w: any) => w.vendor_id === found?.vendor_id)
+              : response.data;
+
             if (walletData?.wallet_balance !== undefined) {
               // Update the merchant's balance with real data
               console.log('Merchant wallet balance:', walletData.wallet_balance);
@@ -394,8 +394,8 @@ export function FinancialPanel() {
   };
 
   const handleConfirmCOD = (codId: string) => {
-    setCodConfirmations(prev => prev.map(cod => 
-      cod.id === codId ? { ...cod, status: 'Confirmed', notes: codNote || cod.notes } : cod
+    setCodConfirmations(prev => prev.map(cod =>
+      cod.id === codId ? { ...cod, status: 'Confirmed', notes: codNote || (cod as any).notes } : cod
     ));
     setSelectedCod(null);
     setCodNote('');
@@ -403,7 +403,7 @@ export function FinancialPanel() {
 
   const handleRejectCOD = (codId: string) => {
     if (codNote.trim()) {
-      setCodConfirmations(prev => prev.map(cod => 
+      setCodConfirmations(prev => prev.map(cod =>
         cod.id === codId ? { ...cod, status: 'Rejected', notes: codNote } : cod
       ));
       setSelectedCod(null);
@@ -412,18 +412,18 @@ export function FinancialPanel() {
   };
 
   const filteredCODConfirmations = (codConfirmations || []).filter(cod => {
-    const matchesSearch = !codSearch || 
+    const matchesSearch = !codSearch ||
       cod.id.toLowerCase().includes(codSearch.toLowerCase()) ||
       cod.orderId.toLowerCase().includes(codSearch.toLowerCase()) ||
-      cod.driverName.toLowerCase().includes(codSearch.toLowerCase()) ||
-      cod.merchant.toLowerCase().includes(codSearch.toLowerCase()) ||
-      cod.customer.toLowerCase().includes(codSearch.toLowerCase());
-    
+      (cod.driverName || '').toLowerCase().includes(codSearch.toLowerCase()) ||
+      (cod.merchant || '').toLowerCase().includes(codSearch.toLowerCase()) ||
+      (cod.customer || '').toLowerCase().includes(codSearch.toLowerCase());
+
     const matchesStatus = codStatusFilter === 'all' || cod.status === codStatusFilter;
-    
-    const matchesDate = (!codDateFrom || cod.date >= codDateFrom) && 
-                       (!codDateTo || cod.date <= codDateTo);
-    
+
+    const matchesDate = (!codDateFrom || cod.date >= codDateFrom) &&
+      (!codDateTo || cod.date <= codDateTo);
+
     return matchesSearch && matchesStatus && matchesDate;
   });
 
@@ -459,24 +459,25 @@ export function FinancialPanel() {
         // Call COD settlement API (new endpoint with wallet update)
         const settlementResult = await settleCOD(
           codId,
+          value,
           'cash', // Default payment method, can be made configurable
           'system' // User ID, should come from auth context
         );
 
         if (settlementResult.status === 'success') {
           // Update calendar entry with COMPLETED status
-          setCalendarData(prev => prev.map(item => 
-            item.date === date 
-              ? { 
-                  ...item, 
-                  balancePaid: value, 
-                  note: note || item.note || '', 
-                  codStatus: 'COMPLETED',
-                  codId: settlementResult.data?.cod?.codId || item.codId
-                } 
+          setCalendarData(prev => prev.map(item =>
+            item.date === date
+              ? {
+                ...item,
+                balancePaid: value,
+                note: note || item.note || '',
+                codStatus: 'COMPLETED',
+                codId: settlementResult.data?.cod?.codId || item.codId
+              }
               : item
           ));
-          
+
           // Refresh merchant wallets to show updated balance
           if (activeTab === 'merchant-wallets') {
             const walletsResult = await fetchCustomerWallets();
@@ -484,7 +485,7 @@ export function FinancialPanel() {
               setMerchantWallets(walletsResult.data);
             }
           }
-          
+
           toast.success(`COD settled successfully. Wallet updated.`);
           setEditingDate(null);
           setEditingCODStatus(null);
@@ -501,14 +502,14 @@ export function FinancialPanel() {
       }
     } else {
       // Just update the calendar data without settlement
-      setCalendarData(prev => prev.map(item => 
-        item.date === date 
-          ? { 
-              ...item, 
-              balancePaid: value, 
-              note: note || item.note || '', 
-              codStatus: status 
-            } 
+      setCalendarData(prev => prev.map(item =>
+        item.date === date
+          ? {
+            ...item,
+            balancePaid: value,
+            note: note || item.note || '',
+            codStatus: status
+          }
           : item
       ));
       setEditingDate(null);
@@ -517,7 +518,7 @@ export function FinancialPanel() {
   };
 
   const updateNote = (date: string, note: string) => {
-    setCalendarData(prev => prev.map(item => 
+    setCalendarData(prev => prev.map(item =>
       item.date === date ? { ...item, note } : item
     ));
   };
@@ -559,30 +560,30 @@ export function FinancialPanel() {
         balance: 0
       };
     }
-    
+
     // Get filtered calendar data for this driver (in real app, this would filter by driver)
     const dataToUse = applyDateFilter ? filteredCalendarData : calendarData;
-    
+
     // Calculate totals from filtered calendar data
     const calculatedTotals = dataToUse.reduce((acc, item) => ({
       codReceived: acc.codReceived + item.codReceived,
       codPending: acc.codPending + item.codPending,
       balancePaid: acc.balancePaid + item.balancePaid,
     }), { codReceived: 0, codPending: 0, balancePaid: 0 });
-    
+
     // For single driver, use a portion of totals (in real app, this would be driver-specific)
     const driverPortion = selectedDriver === driverId ? 0.25 : 0.25; // 25% per driver (4 drivers)
-    const received = calculatedTotals.codReceived * driverPortion + driver.balance;
-    const paid = driver.balance;
+    const received = calculatedTotals.codReceived * driverPortion + (driver.balance || 0);
+    const paid = driver.balance || 0;
     const manual = calculatedTotals.balancePaid * driverPortion * 0.2; // 20% manual
     const normal = calculatedTotals.balancePaid * driverPortion * 0.8; // 80% normal
-    
+
     return {
       manual: manual,
       normal: normal,
       received: received,
       paid: paid,
-      balance: driver.pending
+      balance: driver.pending || 0
     };
   };
 
@@ -590,14 +591,14 @@ export function FinancialPanel() {
   const exportToCSV = () => {
     const currency = localStorage.getItem('currency') || 'BHD';
     const currencySymbol = currency === 'BHD' ? 'BHD' : '$';
-    
+
     let csvContent = '';
-    
+
     if (selectedDriver) {
       // Single driver export
       const driver = drivers.find(d => d.id === selectedDriver);
       const driverTotals = getDriverTotals(selectedDriver, true);
-      
+
       csvContent = `Total COD Balance - ${driver?.name || 'Driver'}\n`;
       if (dateFrom || dateTo) {
         csvContent += `Date Range: ${dateFrom || 'All'} to ${dateTo || 'All'}\n`;
@@ -617,13 +618,13 @@ export function FinancialPanel() {
       }
       csvContent += `\n`;
       csvContent += `Driver,Manual,Normal,Received,Paid,Balance\n`;
-      
+
       drivers.forEach(driver => {
         const driverTotals = getDriverTotals(driver.id, true);
         csvContent += `${driver.name},${currencySymbol} ${driverTotals.manual.toFixed(2)},${currencySymbol} ${driverTotals.normal.toFixed(2)},${currencySymbol} ${driverTotals.received.toFixed(2)},${currencySymbol} ${driverTotals.paid.toFixed(2)},${currencySymbol} ${driverTotals.balance.toFixed(2)}\n`;
       });
     }
-    
+
     // Create and download file
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -648,11 +649,10 @@ export function FinancialPanel() {
       <div className="flex gap-2 border-b border-border dark:border-[#2A3C63]">
         <button
           onClick={() => handleTabChange('reconciliation')}
-          className={`px-6 py-3 rounded-t-xl transition-all ${
-            activeTab === 'reconciliation'
-              ? 'bg-hover-bg-light dark:bg-[#223560] text-[#DE3544] dark:text-[#C1EEFA] border-b-2 border-[#DE3544]'
-              : 'text-muted-light dark:text-[#99BFD1] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
-          }`}
+          className={`px-6 py-3 rounded-t-xl transition-all ${activeTab === 'reconciliation'
+            ? 'bg-hover-bg-light dark:bg-[#223560] text-[#DE3544] dark:text-[#C1EEFA] border-b-2 border-[#DE3544]'
+            : 'text-muted-light dark:text-[#99BFD1] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
+            }`}
         >
           Reconciliation
         </button>
@@ -669,30 +669,7 @@ export function FinancialPanel() {
             COD Confirmation
           </button>
         )} */}
-        {showDriverWalletSection && (
-          <button
-            onClick={() => handleTabChange('driver-wallets')}
-            className={`px-6 py-3 rounded-t-xl transition-all ${
-              activeTab === 'driver-wallets'
-                ? 'bg-hover-bg-light dark:bg-[#223560] text-[#DE3544] dark:text-[#C1EEFA] border-b-2 border-[#DE3544]'
-                : 'text-muted-light dark:text-[#99BFD1] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
-            }`}
-          >
-            Driver Wallets
-          </button>
-        )}
-        {showMerchantWalletSection && (
-          <button
-            onClick={() => handleTabChange('merchant-wallets')}
-            className={`px-6 py-3 rounded-t-xl transition-all ${
-              activeTab === 'merchant-wallets'
-                ? 'bg-hover-bg-light dark:bg-[#223560] text-[#DE3544] dark:text-[#C1EEFA] border-b-2 border-[#DE3544]'
-                : 'text-muted-light dark:text-[#99BFD1] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
-            }`}
-          >
-            Merchant Wallets
-          </button>
-        )}
+        {/* Driver and Merchant Wallets Tabs - Permanently Hidden */}
       </div>
 
       {/* Reconciliation Tab */}
@@ -718,11 +695,10 @@ export function FinancialPanel() {
                         setSelectedDriver(null);
                       }
                     }}
-                    className={`w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 pr-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${
-                      searchValidation === 'valid' ? 'border-2 border-green-500' :
+                    className={`w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 pr-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${searchValidation === 'valid' ? 'border-2 border-green-500' :
                       searchValidation === 'invalid' ? 'border-2 border-[#DE3544]' :
-                      'border border-input-border dark:border-[#2A3C63] focus:border-[#DE3544] dark:focus:border-[#C1EEFA]'
-                    }`}
+                        'border border-input-border dark:border-[#2A3C63] focus:border-[#DE3544] dark:focus:border-[#C1EEFA]'
+                      }`}
                   />
                   {searchValidation === 'valid' && (
                     <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
@@ -790,7 +766,7 @@ export function FinancialPanel() {
           <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6 shadow-sm relative">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-heading text-xl">
-                {selectedDriver 
+                {selectedDriver
                   ? `Total COD Balance – ${drivers.find(d => d.id === selectedDriver)?.name || 'Driver'}`
                   : 'Total COD Balance – All Drivers'}
               </h3>
@@ -802,7 +778,7 @@ export function FinancialPanel() {
                 Export CSV
               </button>
             </div>
-            
+
             {!selectedDriver ? (
               // Show all drivers table when no filter
               <div className="overflow-x-auto">
@@ -884,11 +860,10 @@ export function FinancialPanel() {
                 return (
                   <div
                     key={item.date}
-                    className={`bg-muted/30 dark:bg-[#1A2C53] rounded-xl p-4 border border-border dark:border-border transition-all ${
-                      isEditing 
-                        ? 'border-primary dark:border-[#C1EEFA] shadow-[0_0_16px_rgba(26,44,83,0.2)] dark:shadow-[0_0_16px_rgba(193,238,250,0.3)]' 
-                        : 'border-border dark:border-[#2A3C63]'
-                    }`}
+                    className={`bg-muted/30 dark:bg-[#1A2C53] rounded-xl p-4 border border-border dark:border-border transition-all ${isEditing
+                      ? 'border-primary dark:border-[#C1EEFA] shadow-[0_0_16px_rgba(26,44,83,0.2)] dark:shadow-[0_0_16px_rgba(193,238,250,0.3)]'
+                      : 'border-border dark:border-[#2A3C63]'
+                      }`}
                   >
                     <div className="text-center mb-3 pb-3 border-b border-border dark:border-[#2A3C63]">
                       <p className="text-muted-light dark:text-[#99BFD1] text-xs">{dayName}</p>
@@ -945,13 +920,12 @@ export function FinancialPanel() {
                           </div>
                         ) : (
                           <div>
-                          <p className="text-green-600 dark:text-green-400 font-semibold">${(item.balancePaid || 0).toFixed(2)}</p>
+                            <p className="text-green-600 dark:text-green-400 font-semibold">${(item.balancePaid || 0).toFixed(2)}</p>
                             {item.codStatus && (
-                              <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                item.codStatus === 'COMPLETED' 
-                                  ? 'bg-green-500/20 text-green-600 dark:text-green-400' 
-                                  : 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
-                              }`}>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${item.codStatus === 'COMPLETED'
+                                ? 'bg-green-500/20 text-green-600 dark:text-green-400'
+                                : 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
+                                }`}>
                                 {item.codStatus}
                               </span>
                             )}
@@ -976,29 +950,28 @@ export function FinancialPanel() {
                             const balanceInput = document.getElementById(`balance-${item.date}`) as HTMLInputElement;
                             const noteInput = document.getElementById(`note-${item.date}`) as HTMLTextAreaElement;
                             const statusSelect = document.getElementById(`status-${item.date}`) as HTMLSelectElement;
-                            
+
                             const newBalance = parseFloat(balanceInput?.value || String(item.balancePaid));
                             const newNote = noteInput?.value || item.note || '';
                             const newStatus = (statusSelect?.value || editingCODStatus || item.codStatus || 'PENDING') as 'PENDING' | 'COMPLETED';
-                            
+
                             await updateBalancePaid(item.date, newBalance, newNote, newStatus);
                           } else {
                             // Enter edit mode
                             setEditingDate(item.date);
                             // Auto-detect status: if balancePaid matches codPending, suggest COMPLETED
-                            const suggestedStatus = (item.balancePaid > 0 && Math.abs(item.balancePaid - item.codPending) < 0.01) 
-                              ? 'COMPLETED' 
+                            const suggestedStatus = (item.balancePaid > 0 && Math.abs(item.balancePaid - item.codPending) < 0.01)
+                              ? 'COMPLETED'
                               : (item.codStatus || 'PENDING');
                             setEditingCODStatus(suggestedStatus);
                             setCodError(null);
                           }
                         }}
                         disabled={isProcessingCOD}
-                        className={`w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
-                          isEditing
-                            ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] hover:shadow-md dark:hover:shadow-[0_0_12px_rgba(193,238,250,0.4)]'
-                            : 'bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30 hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20'
-                        }`}
+                        className={`w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed ${isEditing
+                          ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] hover:shadow-md dark:hover:shadow-[0_0_12px_rgba(193,238,250,0.4)]'
+                          : 'bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30 hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20'
+                          }`}
                       >
                         {isProcessingCOD ? (
                           <>
@@ -1027,7 +1000,7 @@ export function FinancialPanel() {
           {/* Search and Filters */}
           <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
             <h3 className="text-heading text-xl mb-4">COD Confirmation</h3>
-            
+
             {/* Search Bar */}
             <div className="mb-4">
               <label className="block text-heading text-sm mb-2">Search COD Records</label>
@@ -1104,8 +1077,8 @@ export function FinancialPanel() {
                 </thead>
                 <tbody>
                   {filteredCODConfirmations.map((cod, index) => (
-                    <tr 
-                      key={cod.id} 
+                    <tr
+                      key={cod.id}
                       className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}
                     >
                       <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{cod.id}</td>
@@ -1121,13 +1094,12 @@ export function FinancialPanel() {
                       <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${(cod.amount || 0).toFixed(2)}</td>
                       <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{cod.date}</td>
                       <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-lg text-xs font-medium ${
-                          cod.status === 'Confirmed' 
-                            ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                            : cod.status === 'Pending'
+                        <span className={`px-3 py-1 rounded-lg text-xs font-medium ${cod.status === 'Confirmed'
+                          ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                          : cod.status === 'Pending'
                             ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                             : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                        }`}>
+                          }`}>
                           {cod.status}
                         </span>
                       </td>
@@ -1165,7 +1137,7 @@ export function FinancialPanel() {
                             <button
                               onClick={() => {
                                 setSelectedCod(cod.id);
-                                setCodNote(cod.notes);
+                                setCodNote(cod.notes || '');
                               }}
                               className="p-2 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-lg hover:bg-[#C1EEFA]/20 transition-all group"
                               title="View Notes"
@@ -1180,7 +1152,7 @@ export function FinancialPanel() {
                 </tbody>
               </table>
             </div>
-            
+
             {filteredCODConfirmations.length === 0 && (
               <div className="p-8 text-center">
                 <p className="text-muted-light dark:text-[#99BFD1]">No COD confirmations found matching your filters.</p>
@@ -1222,8 +1194,8 @@ export function FinancialPanel() {
           <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6 max-w-md w-full shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-heading text-xl">
-                {codConfirmations.find(c => c.id === selectedCod)?.status === 'Pending' 
-                  ? 'Confirm/Reject COD' 
+                {codConfirmations.find(c => c.id === selectedCod)?.status === 'Pending'
+                  ? 'Confirm/Reject COD'
                   : 'COD Details'}
               </h3>
               <button
@@ -1236,11 +1208,11 @@ export function FinancialPanel() {
                 <X className="w-5 h-5 text-heading dark:text-[#C1EEFA]" />
               </button>
             </div>
-            
+
             {selectedCod && (() => {
               const cod = codConfirmations.find(c => c.id === selectedCod);
               if (!cod) return null;
-              
+
               return (
                 <>
                   <div className="space-y-3 mb-4">
@@ -1262,13 +1234,12 @@ export function FinancialPanel() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-light dark:text-[#99BFD1]">Status:</span>
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        cod.status === 'Confirmed' 
-                          ? 'bg-green-500/20 text-green-400' 
-                          : cod.status === 'Pending'
+                      <span className={`px-2 py-1 rounded text-xs ${cod.status === 'Confirmed'
+                        ? 'bg-green-500/20 text-green-400'
+                        : cod.status === 'Pending'
                           ? 'bg-yellow-500/20 text-yellow-400'
                           : 'bg-red-500/20 text-red-400'
-                      }`}>
+                        }`}>
                         {cod.status}
                       </span>
                     </div>
@@ -1360,11 +1331,10 @@ export function FinancialPanel() {
                       setDriverWalletSearch(e.target.value);
                       setDriverWalletValidation(null);
                     }}
-                    className={`w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 pr-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${
-                      driverWalletValidation === 'valid' ? 'border-2 border-green-500' :
+                    className={`w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 pr-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${driverWalletValidation === 'valid' ? 'border-2 border-green-500' :
                       driverWalletValidation === 'invalid' ? 'border-2 border-[#DE3544]' :
-                      'border border-input-border dark:border-[#2A3C63] focus:border-[#DE3544] dark:focus:border-[#C1EEFA]'
-                    }`}
+                        'border border-input-border dark:border-[#2A3C63] focus:border-[#DE3544] dark:focus:border-[#C1EEFA]'
+                      }`}
                   />
                   {driverWalletValidation === 'valid' && (
                     <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
@@ -1400,24 +1370,23 @@ export function FinancialPanel() {
                 </thead>
                 <tbody>
                   {drivers.map((driver, index) => (
-                    <tr 
-                      key={driver.id} 
-                      className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${
-                        driverWalletValidation === 'valid' && 
+                    <tr
+                      key={driver.id}
+                      className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${driverWalletValidation === 'valid' &&
                         (driver.name.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
-                         driver.id.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
-                         driver.phone.includes(driverWalletSearch))
-                          ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)]'
-                          : ''
-                      }`}
+                          driver.id.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
+                          (driver.phone && driver.phone.includes(driverWalletSearch)))
+                        ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)]'
+                        : ''
+                        }`}
                     >
                       <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.id}</td>
                       <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
                       <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(driver.balance || 0).toFixed(2)}</td>
                       <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${(driver.pending || 0).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{driver.phone}</td>
+                      <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{driver.phone || ''}</td>
                       <td className="px-4 py-3">
-                        <button 
+                        <button
                           onClick={() => {
                             setEditingBalance({ type: 'driver', id: driver.id });
                             setNewBalance((driver.balance || 0).toFixed(2));
@@ -1465,11 +1434,10 @@ export function FinancialPanel() {
                       setMerchantWalletSearch(e.target.value);
                       setMerchantWalletValidation(null);
                     }}
-                    className={`w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 pr-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${
-                      merchantWalletValidation === 'valid' ? 'border-2 border-green-500' :
+                    className={`w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 pr-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${merchantWalletValidation === 'valid' ? 'border-2 border-green-500' :
                       merchantWalletValidation === 'invalid' ? 'border-2 border-[#DE3544]' :
-                      'border border-input-border dark:border-[#2A3C63] focus:border-[#DE3544] dark:focus:border-[#C1EEFA]'
-                    }`}
+                        'border border-input-border dark:border-[#2A3C63] focus:border-[#DE3544] dark:focus:border-[#C1EEFA]'
+                      }`}
                   />
                   {merchantWalletValidation === 'valid' && (
                     <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
@@ -1518,28 +1486,27 @@ export function FinancialPanel() {
                     const isHighlighted = merchantWalletValidation === 'valid' && (
                       merchant.name.toLowerCase().includes(searchTerm) ||
                       merchant.id.toLowerCase().includes(searchTerm) ||
-                      merchant.vendor_id?.toString().includes(searchTerm) ||
-                      merchant.phone.includes(merchantWalletSearch)
+                      ((merchant as any).vendor_id && (merchant as any).vendor_id.toString().includes(searchTerm)) ||
+                      ((merchant as any).phone && (merchant as any).phone.includes(merchantWalletSearch))
                     );
-                    
+
                     return (
-                      <tr 
-                        key={merchant.id} 
-                        className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${
-                          isHighlighted ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)] bg-[#C1EEFA]/10' : ''
-                        }`}
+                      <tr
+                        key={merchant.id}
+                        className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${isHighlighted ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)] bg-[#C1EEFA]/10' : ''
+                          }`}
                       >
                         <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.id}</td>
-                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] font-mono text-sm">{merchant.vendor_id || '-'}</td>
+                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] font-mono text-sm">{(merchant as any).vendor_id || '-'}</td>
                         <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.name}</td>
-                        <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(merchant.balance || 0).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${(merchant.pending || 0).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{merchant.phone}</td>
+                        <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${((merchant as any).balance || 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${((merchant as any).pending || 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{(merchant as any).phone || ''}</td>
                         <td className="px-4 py-3">
-                          <button 
+                          <button
                             onClick={() => {
                               setEditingBalance({ type: 'merchant', id: merchant.id });
-                              setNewBalance((merchant.balance || 0).toFixed(2));
+                              setNewBalance(((merchant as any).balance || 0).toFixed(2));
                               setBalanceNote('');
                             }}
                             className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
@@ -1552,11 +1519,11 @@ export function FinancialPanel() {
                   })}
                 </tbody>
               </table>
-              
+
               {/* Note about API limitation */}
               <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
                 <p className="text-yellow-600 dark:text-yellow-400 text-sm">
-                  <strong>Note:</strong> Due to Tookan API limitations, only the first 100 merchants are displayed. 
+                  <strong>Note:</strong> Due to Tookan API limitations, only the first 100 merchants are displayed.
                   Use the search box above to find specific merchants by their Merchant ID.
                 </p>
               </div>
@@ -1582,18 +1549,18 @@ export function FinancialPanel() {
                 <X className="w-5 h-5 text-heading dark:text-[#C1EEFA]" />
               </button>
             </div>
-            
+
             {editingBalance && (() => {
-              const entity = editingBalance.type === 'driver' 
+              const entity = editingBalance.type === 'driver'
                 ? drivers.find(d => d.id === editingBalance.id)
                 : merchantWallets.find(m => m.id === editingBalance.id);
-              
+
               if (!entity) return null;
-              
-              const currentBalance = editingBalance.type === 'driver' 
+
+              const currentBalance = editingBalance.type === 'driver'
                 ? (entity as Driver).balance || 0
                 : (entity as CustomerWallet).balance;
-              
+
               return (
                 <div className="space-y-4">
                   <div>
@@ -1602,12 +1569,12 @@ export function FinancialPanel() {
                     </label>
                     <input
                       type="text"
-                      value={`$${currentBalance.toFixed(2)}`}
+                      value={`$${(currentBalance || 0).toFixed(2)}`}
                       disabled
                       className="w-full bg-muted dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] opacity-60 cursor-not-allowed"
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
                       New Balance
@@ -1620,7 +1587,7 @@ export function FinancialPanel() {
                       className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all"
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
                       Description {editingBalance.type === 'driver' && <span className="text-[#DE3544]">*</span>}
@@ -1631,7 +1598,7 @@ export function FinancialPanel() {
                         setBalanceNote(e.target.value);
                         setWalletError(null);
                       }}
-                      placeholder={editingBalance.type === 'driver' 
+                      placeholder={editingBalance.type === 'driver'
                         ? "Add description for this transaction (e.g., 'Earnings credit', 'Penalty adjustment')..."
                         : "Add description for this transaction (optional, e.g., 'COD credit', 'Wallet top-up')..."
                       }
@@ -1656,7 +1623,7 @@ export function FinancialPanel() {
                       <p className="text-[#DE3544] text-sm">{walletError}</p>
                     </div>
                   )}
-                  
+
                   <div className="flex gap-3 pt-2">
                     <button
                       onClick={() => {
@@ -1673,7 +1640,7 @@ export function FinancialPanel() {
                     <button
                       onClick={async () => {
                         if (!editingBalance) return;
-                        
+
                         const amount = parseFloat(newBalance);
                         if (isNaN(amount) || amount <= 0) {
                           setWalletError('Please enter a valid amount greater than 0');
@@ -1699,9 +1666,9 @@ export function FinancialPanel() {
                             }
 
                             // Determine transaction type based on whether new balance is higher or lower
-                            const currentBalance = driver.balance;
+                            const currentBalance = driver.balance || 0;
                             const difference = amount - currentBalance;
-                            
+
                             if (difference > 0) {
                               // Credit driver wallet
                               response = await createFleetWalletTransaction(
@@ -1734,16 +1701,16 @@ export function FinancialPanel() {
                               throw new Error('Merchant not found');
                             }
 
-                            const currentBalance = merchant.balance;
+                            const currentBalance = (merchant as any).balance || 0;
                             const difference = amount - currentBalance;
-                            
+
                             if (difference > 0) {
                               // Add money to merchant wallet (only addition is supported by Tookan Custom Wallet API)
                               const vendorId = merchant.vendor_id;
                               if (!vendorId) {
                                 throw new Error('Merchant vendor ID not found. Cannot process wallet transaction.');
                               }
-                              
+
                               // Description is optional for merchant wallet operations (per API documentation)
                               response = await addCustomerWalletPayment(
                                 vendorId,

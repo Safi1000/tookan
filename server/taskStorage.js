@@ -34,7 +34,7 @@ function loadTasks() {
   } catch (error) {
     console.error('Error loading tasks:', error);
   }
-  
+
   // Return default structure
   return {
     tasks: {},
@@ -68,7 +68,7 @@ function loadTaskHistory() {
   } catch (error) {
     console.error('Error loading task history:', error);
   }
-  
+
   // Return default structure
   return {
     history: [],
@@ -108,7 +108,7 @@ async function getTask(jobId) {
       console.warn('Database getTask failed, falling back to file:', error.message);
     }
   }
-  
+
   // Fallback to file-based storage
   const tasksData = loadTasks();
   return tasksData.tasks[jobId] || null;
@@ -148,7 +148,8 @@ function transformTaskToDB(taskData) {
     notes: taskData.notes,
     creation_datetime: taskData.creation_datetime || taskData.job_time || taskData.created_at,
     webhook_received_at: taskData.webhook_received_at,
-    event_type: taskData.event_type
+    event_type: taskData.event_type,
+    tags: taskData.tags || null
   };
 }
 
@@ -169,21 +170,21 @@ async function updateTask(jobId, taskData) {
       console.warn('Database updateTask failed, falling back to file:', error.message);
     }
   }
-  
+
   // Fallback to file-based storage
   const tasksData = loadTasks();
   const existingTask = tasksData.tasks[jobId] || {};
-  
+
   const updatedTask = {
     ...existingTask,
     job_id: jobId,
     ...taskData,
     last_updated: new Date().toISOString()
   };
-  
+
   tasksData.tasks[jobId] = updatedTask;
   saveTasks(tasksData);
-  
+
   return updatedTask;
 }
 
@@ -199,21 +200,21 @@ function extractCODData(templateFields) {
       cod_collected: false
     };
   }
-  
+
   // Handle different possible structures
-  const codAmount = templateFields[TEMPLATE_FIELDS.COD_AMOUNT] || 
-                    templateFields.cod_amount || 
-                    templateFields.codAmount ||
-                    null;
-  
+  const codAmount = templateFields[TEMPLATE_FIELDS.COD_AMOUNT] ||
+    templateFields.cod_amount ||
+    templateFields.codAmount ||
+    null;
+
   const codCollected = templateFields[TEMPLATE_FIELDS.COD_COLLECTED] !== undefined ?
-                       (templateFields[TEMPLATE_FIELDS.COD_COLLECTED] === true || 
-                        templateFields[TEMPLATE_FIELDS.COD_COLLECTED] === 'true' ||
-                        templateFields[TEMPLATE_FIELDS.COD_COLLECTED] === 1) :
-                       (templateFields.cod_collected === true || 
-                        templateFields.cod_collected === 'true' ||
-                        templateFields.codCollected === true) || false;
-  
+    (templateFields[TEMPLATE_FIELDS.COD_COLLECTED] === true ||
+      templateFields[TEMPLATE_FIELDS.COD_COLLECTED] === 'true' ||
+      templateFields[TEMPLATE_FIELDS.COD_COLLECTED] === 1) :
+    (templateFields.cod_collected === true ||
+      templateFields.cod_collected === 'true' ||
+      templateFields.codCollected === true) || false;
+
   return {
     cod_amount: codAmount ? parseFloat(codAmount) : null,
     cod_collected: codCollected
@@ -227,27 +228,27 @@ function extractCODData(templateFields) {
  */
 async function updateTaskFromWebhook(webhookData) {
   const jobId = webhookData.job_id || webhookData.order_id || webhookData.task_id;
-  
+
   if (!jobId) {
     console.warn('Webhook missing job_id, cannot update task');
     return null;
   }
-  
+
   // Extract template fields from various possible locations
-  const templateFields = webhookData.template_fields || 
-                        webhookData.templateFields ||
-                        webhookData.custom_fields ||
-                        webhookData.customFields ||
-                        {};
-  
+  const templateFields = webhookData.template_fields ||
+    webhookData.templateFields ||
+    webhookData.custom_fields ||
+    webhookData.customFields ||
+    {};
+
   // Extract COD data
   const codData = extractCODData(templateFields);
-  
+
   // Get existing task to compare changes
   const existingTask = await getTask(jobId);
   const oldCodAmount = existingTask?.cod_amount;
   const oldCodCollected = existingTask?.cod_collected;
-  
+
   // Extract complete order information for Reports Panel
   // Store all relevant order data from webhook
   const orderData = {
@@ -256,22 +257,22 @@ async function updateTaskFromWebhook(webhookData) {
     order_id: jobId, // Alias for compatibility
     creation_datetime: webhookData.creation_datetime || webhookData.created_at || webhookData.job_time || existingTask?.creation_datetime,
     job_time: webhookData.job_time || webhookData.creation_datetime || existingTask?.job_time,
-    
+
     // Status
     status: webhookData.job_status || webhookData.status || existingTask?.status,
     job_status: webhookData.job_status || webhookData.status || existingTask?.job_status,
-    
+
     // Customer/Merchant info
     customer_name: webhookData.customer_name || webhookData.customerName || existingTask?.customer_name,
     customer_phone: webhookData.customer_phone || webhookData.customerPhone || existingTask?.customer_phone,
     customer_email: webhookData.customer_email || webhookData.customerEmail || existingTask?.customer_email,
     customer_id: webhookData.customer_id || webhookData.customerId || existingTask?.customer_id,
     vendor_id: webhookData.vendor_id || webhookData.vendorId || existingTask?.vendor_id,
-    
+
     // Driver/Fleet info
     fleet_id: webhookData.fleet_id || webhookData.fleetId || existingTask?.fleet_id,
     fleet_name: webhookData.fleet_name || webhookData.fleetName || existingTask?.fleet_name,
-    
+
     // Addresses
     pickup_address: webhookData.pickup_address || webhookData.pickupAddress || existingTask?.pickup_address,
     delivery_address: webhookData.delivery_address || webhookData.deliveryAddress || existingTask?.delivery_address,
@@ -279,33 +280,34 @@ async function updateTaskFromWebhook(webhookData) {
     pickup_longitude: webhookData.pickup_longitude || webhookData.pickupLongitude || existingTask?.pickup_longitude,
     delivery_latitude: webhookData.delivery_latitude || webhookData.deliveryLatitude || existingTask?.delivery_latitude,
     delivery_longitude: webhookData.delivery_longitude || webhookData.deliveryLongitude || existingTask?.delivery_longitude,
-    
+
     // Financial info
     cod: webhookData.cod || webhookData.cod_amount || codData.cod_amount || existingTask?.cod,
     order_payment: webhookData.order_payment || webhookData.orderPayment || webhookData.order_fees || existingTask?.order_payment,
     order_fees: webhookData.order_fees || webhookData.orderFees || webhookData.order_payment || existingTask?.order_fees,
-    
+    tags: webhookData.tags || existingTask?.tags || null,
+
     // COD data from template fields
     cod_amount: codData.cod_amount,
     cod_collected: codData.cod_collected,
     template_fields: templateFields,
-    
+
     // Additional metadata
     notes: webhookData.notes || webhookData.description || existingTask?.notes,
     job_type: webhookData.job_type || webhookData.jobType || existingTask?.job_type,
     distance: webhookData.distance || existingTask?.distance,
-    
+
     // Webhook metadata
     webhook_received_at: new Date().toISOString(),
     event_type: webhookData.event_type || webhookData.type || 'unknown',
-    
+
     // Preserve existing internal metadata
     internal_metadata: existingTask?.internal_metadata || {}
   };
-  
+
   // Update task with complete order data
   const updatedTask = await updateTask(jobId, orderData);
-  
+
   // Log to history if COD changed
   if (oldCodAmount !== codData.cod_amount || oldCodCollected !== codData.cod_collected) {
     await addHistoryEntry(jobId, {
@@ -322,7 +324,7 @@ async function updateTaskFromWebhook(webhookData) {
       source: 'webhook'
     });
   }
-  
+
   return updatedTask;
 }
 
@@ -345,21 +347,21 @@ async function getTaskHistory(jobId = null, limit = null) {
       console.warn('Database getTaskHistory failed, falling back to file:', error.message);
     }
   }
-  
+
   // Fallback to file-based storage
   const historyData = loadTaskHistory();
   let history = historyData.history || [];
-  
+
   if (jobId) {
     history = history.filter(entry => entry.job_id === jobId);
   }
-  
+
   history.sort((a, b) => new Date(b.changed_at) - new Date(a.changed_at));
-  
+
   if (limit && limit > 0) {
     history = history.slice(0, limit);
   }
-  
+
   return history;
 }
 
@@ -377,7 +379,7 @@ async function addHistoryEntry(jobId, entryData) {
       console.warn('Database addHistoryEntry failed, falling back to file:', error.message);
     }
   }
-  
+
   // Fallback to file-based storage
   const historyData = loadTaskHistory();
   const entry = {
@@ -386,14 +388,14 @@ async function addHistoryEntry(jobId, entryData) {
     ...entryData,
     created_at: new Date().toISOString()
   };
-  
+
   if (!historyData.history) {
     historyData.history = [];
   }
-  
+
   historyData.history.push(entry);
   saveTaskHistory(historyData);
-  
+
   return entry;
 }
 
@@ -412,7 +414,7 @@ async function setTaskMetadata(jobId, metadata) {
       console.warn('Database setTaskMetadata failed, falling back to file:', error.message);
     }
   }
-  
+
   // Fallback to file-based storage
   const task = await getTask(jobId) || {};
   await updateTask(jobId, {
@@ -440,7 +442,7 @@ async function getTaskMetadata(jobId) {
       console.warn('Database getTaskMetadata failed, falling back to file:', error.message);
     }
   }
-  
+
   // Fallback to file-based storage
   const task = await getTask(jobId);
   return task?.internal_metadata || {};

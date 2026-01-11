@@ -176,6 +176,47 @@ async function fetchTasksBatch(startDate, endDate, jobType, offset = 0) {
 }
 
 /**
+ * Fetch tags for a batch of job IDs
+ * Uses get_job_details with job_additional_info: 1
+ */
+async function fetchTagsForJobIds(jobIds) {
+  if (!jobIds || jobIds.length === 0) return {};
+
+  const apiKey = getApiKey();
+  try {
+    const response = await fetchWithRetry(`${TOOKAN_API_BASE}/get_job_details`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        job_ids: jobIds, // Array of job IDs
+        job_additional_info: 1
+      }),
+      timeout: 30000
+    });
+
+    const data = await response.json();
+    const tagsMap = {};
+
+    if (data.status === 200 && Array.isArray(data.data)) {
+      data.data.forEach(job => {
+        if (job.job_id) {
+          tagsMap[job.job_id] = job.tags || null;
+        }
+      });
+    } else if (data.status === 200 && data.data && data.data.job_id) {
+      // Handle single result return case (though unlikely with job_ids array)
+      tagsMap[data.data.job_id] = data.data.tags || null;
+    }
+
+    return tagsMap;
+  } catch (error) {
+    console.error(`❌ Error fetching tags for batch: ${error.message}`);
+    return {};
+  }
+}
+
+/**
  * Fetch all tasks for a date range (handles pagination and all job types)
  */
 async function fetchAllTasksForDateRange(startDate, endDate) {
@@ -291,6 +332,7 @@ function transformTaskToRecord(task) {
     // Sync metadata
     source: 'api_sync',
     last_synced_at: new Date().toISOString(),
+    tags: task.tags || null,
     raw_data: task
   };
 }
@@ -626,9 +668,77 @@ async function incrementalSync() {
   }
 }
 
+/**
+ * Sync only tags for a specific date range
+ * Updates ONLY the tags column to minimize database impact
+ */
+async function syncTaskTags(options = {}) {
+  const { dateFrom, dateTo } = options;
+  const startDate = dateFrom || formatDate(getSixMonthsAgo());
+  const endDate = dateTo || formatDate(new Date());
+
+  console.log(`\n🏷️  STARTING TAG SYNC: ${startDate} to ${endDate}`);
+
+  try {
+    const batches = generateDateBatches(startDate, endDate);
+    let totalUpdated = 0;
+    let totalErrors = 0;
+
+    for (const batch of batches) {
+      console.log(`\n📅 Processing tags for batch: ${batch.startDate} to ${batch.endDate}`);
+      const tasks = await fetchAllTasksForDateRange(batch.startDate, batch.endDate);
+
+      if (tasks.length === 0) continue;
+
+      console.log(`   📋 Found ${tasks.length} tasks, fetching tags in sub-batches...`);
+
+      // Enrich tasks with tags in sub-batches of 50 (get_job_details limit)
+      const SUB_BATCH_SIZE = 50;
+      for (let i = 0; i < tasks.length; i += SUB_BATCH_SIZE) {
+        const subBatchTasks = tasks.slice(i, i + SUB_BATCH_SIZE);
+        const jobIds = subBatchTasks.map(t => parseInt(t.job_id));
+
+        console.log(`      🔗 Fetching tags for ${jobIds.length} tasks...`);
+        const tagsMap = await fetchTagsForJobIds(jobIds);
+
+        const tagUpdates = subBatchTasks.map(task => ({
+          job_id: parseInt(task.job_id),
+          tags: tagsMap[task.job_id] || null,
+          updated_at: new Date().toISOString()
+        }));
+
+        const { error } = await supabase
+          .from('tasks')
+          .upsert(tagUpdates, {
+            onConflict: 'job_id',
+            ignoreDuplicates: false
+          });
+
+        if (error) {
+          console.error(`❌ Sub-batch tag update error: ${error.message}`);
+          totalErrors += tagUpdates.length;
+        } else {
+          totalUpdated += tagUpdates.length;
+        }
+
+        // Small delay to avoid hitting Tookan rate limits on get_job_details
+        await sleep(200);
+      }
+
+      console.log(`   ✅ Current total updated: ${totalUpdated}`);
+    }
+
+    return { success: true, stats: { totalUpdated, totalErrors } };
+  } catch (error) {
+    console.error('❌ Tag sync failed:', error);
+    return { success: false, message: error.message };
+  }
+}
+
 module.exports = {
   syncOrders,
   incrementalSync,
+  syncTaskTags,
   getSyncStatus,
   updateSyncStatus,
   fetchWithRetry,
