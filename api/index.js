@@ -19,8 +19,8 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
 const isSupabaseConfigured = !!(
-  supabaseUrl && 
-  supabaseServiceKey && 
+  supabaseUrl &&
+  supabaseServiceKey &&
   supabaseUrl.startsWith('https://') &&
   !supabaseUrl.includes('YOUR_')
 );
@@ -47,9 +47,9 @@ function getApp() {
     const cors = require('cors');
     const fetch = require('node-fetch');
     const crypto = require('crypto');
-    
+
     app = express();
-    
+
     // Middleware
     app.use(cors());
     // Keep raw body for webhook signature verification
@@ -58,10 +58,10 @@ function getApp() {
         req.rawBody = buf;
       }
     }));
-    
+
     // Import all the route handlers from server/index.js
     // For Vercel, we'll include the essential routes inline
-    
+
     const getApiKey = () => {
       const apiKey = process.env.TOOKAN_API_KEY;
       if (!apiKey) {
@@ -137,16 +137,16 @@ function getApp() {
       CONFIRM_COD_PAYMENTS: 'confirm_cod_payments',
       MANAGE_USERS: 'manage_users' // Superadmin only
     };
-    
+
     // Superadmin email - the only user who can manage other users
     const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL || 'ahmedhassan123.ah83@gmail.com';
-    
+
     // Check if user is superadmin
     const isSuperadmin = (user) => {
       if (!user) return false;
       return user.email === SUPERADMIN_EMAIL;
     };
-    
+
     // Superadmin middleware
     const requireSuperadmin = () => {
       return (req, res, next) => {
@@ -169,7 +169,7 @@ function getApp() {
         }
 
         const token = authHeader.split(' ')[1];
-        
+
         // For now, decode the token (in production, verify JWT signature)
         // The token contains user info from login
         try {
@@ -180,7 +180,7 @@ function getApp() {
             role: tokenData.role || 'user',
             permissions: tokenData.permissions || {}
           };
-          
+
           // If user has admin role, grant all permissions
           if (req.user.role === 'admin') {
             req.user.permissions = Object.values(PERMISSIONS).reduce((acc, perm) => {
@@ -188,7 +188,7 @@ function getApp() {
               return acc;
             }, {});
           }
-          
+
           next();
         } catch (e) {
           // If token parsing fails, try to look up user in database
@@ -198,7 +198,7 @@ function getApp() {
               .select('*')
               .or(`id.eq.${token},tookan_id.eq.${token}`)
               .single();
-            
+
             if (userData) {
               req.user = {
                 id: userData.id,
@@ -240,10 +240,10 @@ function getApp() {
         });
 
         if (!hasPermission) {
-          return res.status(403).json({ 
-            status: 'error', 
+          return res.status(403).json({
+            status: 'error',
             message: `Permission denied. Required: ${requiredPermissions.join(' or ')}`,
-            requiredPermissions 
+            requiredPermissions
           });
         }
 
@@ -268,8 +268,8 @@ function getApp() {
 
     // Health check
     app.get('/api/health', (req, res) => {
-      res.json({ 
-        status: 'success', 
+      res.json({
+        status: 'success',
         message: 'Turbo Bahrain API is running',
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || 'development'
@@ -298,10 +298,10 @@ function getApp() {
         }
 
         console.log('Webhook received:', JSON.stringify(req.body, null, 2));
-        
-        const { 
-          job_id, 
-          event_type, 
+
+        const {
+          job_id,
+          event_type,
           job_status,
           fleet_id,
           fleet_name,
@@ -320,7 +320,7 @@ function getApp() {
           acknowledged_datetime,
           started_datetime
         } = req.body;
-        
+
         // Store webhook event in Supabase
         if (isSupabaseConfigured && supabase) {
           // 1. Log the webhook event
@@ -342,7 +342,7 @@ function getApp() {
                 // Task completed - update COD tracking
                 if (job_id && total_amount) {
                   processingNotes = `Task ${job_id} completed. COD: ${total_amount}`;
-                  
+
                   // Log to audit
                   await supabase.from('audit_logs').insert({
                     action: 'TASK_COMPLETED',
@@ -491,7 +491,7 @@ function getApp() {
 
         // Check if task is deleted
         const isDeleted = payload.is_deleted === 1 || payload.is_deleted === '1' || payload.is_deleted === true;
-        
+
         if (isDeleted) {
           // Remove from Supabase if deleted
           await supabase
@@ -558,7 +558,7 @@ function getApp() {
 
         // Check if agent is deleted
         const isDeleted = payload.is_deleted === 1 || payload.is_deleted === '1' || payload.is_deleted === true;
-        
+
         if (isDeleted) {
           // Remove agent from Supabase if deleted
           console.log('Webhook: Agent deleted in Tookan, removing from DB:', fleetId);
@@ -566,7 +566,7 @@ function getApp() {
             .from('agents')
             .delete()
             .eq('fleet_id', fleetId);
-          
+
           if (deleteError) {
             console.error('Supabase agent delete error:', deleteError.message);
           }
@@ -787,12 +787,12 @@ function getApp() {
           body: JSON.stringify({ api_key: apiKey })
         });
         const data = await response.json();
-        
+
         // Ensure fleets is always an array
-        const fleets = Array.isArray(data.data) ? data.data : 
-                       Array.isArray(data.fleets) ? data.fleets : 
-                       Array.isArray(data) ? data : [];
-        
+        const fleets = Array.isArray(data.data) ? data.data :
+          Array.isArray(data.fleets) ? data.fleets :
+            Array.isArray(data) ? data : [];
+
         if (data.status === 200 || fleets.length > 0) {
           res.json({
             status: 'success',
@@ -825,12 +825,12 @@ function getApp() {
           body: JSON.stringify({ api_key: apiKey })
         });
         const data = await response.json();
-        
+
         // Ensure customers is always an array
-        const customers = Array.isArray(data.data) ? data.data : 
-                          Array.isArray(data.customers) ? data.customers : 
-                          Array.isArray(data) ? data : [];
-        
+        const customers = Array.isArray(data.data) ? data.data :
+          Array.isArray(data.customers) ? data.customers :
+            Array.isArray(data) ? data : [];
+
         if (data.status === 200 || customers.length > 0) {
           res.json({
             status: 'success',
@@ -857,16 +857,16 @@ function getApp() {
     app.get('/api/tookan/orders', async (req, res) => {
       try {
         const { dateFrom, dateTo, limit = 100, page = 1, forceRefresh } = req.query;
-        
+
         // Calculate default date range: last 6 months (Tookan only keeps 6 months)
         const formatDate = (date) => date.toISOString().split('T')[0];
         const today = new Date();
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-        
+
         let startDate = dateFrom || formatDate(sixMonthsAgo);
         let endDate = dateTo || formatDate(today);
-        
+
         // Validate dates don't exceed 6 months ago
         const sixMonthsAgoDate = new Date();
         sixMonthsAgoDate.setMonth(sixMonthsAgoDate.getMonth() - 6);
@@ -874,10 +874,10 @@ function getApp() {
         if (requestedStart < sixMonthsAgoDate) {
           startDate = formatDate(sixMonthsAgoDate);
         }
-        
+
         let orders = [];
         let source = 'api';
-        
+
         // Try cache first if Supabase is configured
         if (isSupabaseConfigured && supabase && !forceRefresh) {
           try {
@@ -887,7 +887,7 @@ function getApp() {
               .select('last_successful_sync')
               .eq('sync_type', 'orders')
               .single();
-            
+
             let isFresh = false;
             if (syncStatus?.last_successful_sync) {
               const lastSync = new Date(syncStatus.last_successful_sync);
@@ -895,7 +895,7 @@ function getApp() {
               const hoursDiff = (now - lastSync) / (1000 * 60 * 60);
               isFresh = hoursDiff < 24;
             }
-            
+
             if (isFresh) {
               // Fetch from cache
               const { data: cachedOrders, error: cacheError } = await supabase
@@ -905,7 +905,7 @@ function getApp() {
                 .lte('creation_datetime', endDate + 'T23:59:59.999Z')
                 .order('creation_datetime', { ascending: false })
                 .limit(parseInt(limit));
-              
+
               if (!cacheError && cachedOrders && cachedOrders.length > 0) {
                 orders = cachedOrders.map(task => ({
                   id: task.job_id?.toString(),
@@ -929,11 +929,11 @@ function getApp() {
             console.log('Cache check failed, falling back to API:', cacheErr.message);
           }
         }
-        
+
         // Fallback to Tookan API if cache miss
         if (orders.length === 0) {
-        const apiKey = getApiKey();
-          
+          const apiKey = getApiKey();
+
           // Fetch with retry logic
           const fetchWithRetry = async (url, options, retries = 3) => {
             for (let attempt = 1; attempt <= retries; attempt++) {
@@ -950,28 +950,28 @@ function getApp() {
               }
             }
           };
-          
+
           // Fetch all job types
           const jobTypes = [0, 1, 2, 3];
           const allTasks = [];
-          
+
           for (const jobType of jobTypes) {
             try {
               const response = await fetchWithRetry('https://api.tookanapp.com/v2/get_all_tasks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            api_key: apiKey,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  api_key: apiKey,
                   job_type: jobType,
-            job_status: '0,1,2,3,4,5,6,7,8,9',
+                  job_status: '0,1,2,3,4,5,6,7,8,9',
                   start_date: startDate,
                   end_date: endDate,
-            limit: parseInt(limit),
-            custom_fields: 1
-          })
-        });
-              
-        const data = await response.json();
+                  limit: parseInt(limit),
+                  custom_fields: 1
+                })
+              });
+
+              const data = await response.json();
               if (data.status === 200 || data.status === 1) {
                 const tasks = Array.isArray(data.data) ? data.data : [];
                 allTasks.push(...tasks);
@@ -980,7 +980,7 @@ function getApp() {
               console.error(`Error fetching job type ${jobType}:`, err.message);
             }
           }
-          
+
           orders = allTasks.map(task => ({
             id: task.job_id?.toString(),
             job_id: task.job_id,
@@ -998,12 +998,12 @@ function getApp() {
           }));
           source = 'api';
         }
-        
-          res.json({
-            status: 'success',
-            message: 'Orders fetched successfully',
-          data: { 
-            orders: orders, 
+
+        res.json({
+          status: 'success',
+          message: 'Orders fetched successfully',
+          data: {
+            orders: orders,
             total: orders.length,
             source: source,
             filters: { dateFrom: startDate, dateTo: endDate }
@@ -1022,7 +1022,7 @@ function getApp() {
     app.get('/api/reports/analytics', async (req, res) => {
       try {
         const apiKey = getApiKey();
-        
+
         // Fetch data from Tookan - always use get_all_customers for consistency
         const [fleetsRes, customersRes, tasksRes] = await Promise.all([
           fetch('https://api.tookanapp.com/v2/get_all_fleets', {
@@ -1047,37 +1047,37 @@ function getApp() {
             })
           })
         ]);
-        
+
         const [fleetsData, customersData, tasksData] = await Promise.all([
           fleetsRes.json(),
           customersRes.json(),
           tasksRes.json()
         ]);
-        
+
         // Ensure data is always an array
-        const fleets = Array.isArray(fleetsData.data) ? fleetsData.data : 
-                       Array.isArray(fleetsData.fleets) ? fleetsData.fleets : 
-                       Array.isArray(fleetsData) ? fleetsData : [];
-        const customers = Array.isArray(customersData.data) ? customersData.data : 
-                          Array.isArray(customersData.customers) ? customersData.customers : 
-                          Array.isArray(customersData) ? customersData : [];
-        const tasks = Array.isArray(tasksData.data) ? tasksData.data : 
-                      Array.isArray(tasksData.tasks) ? tasksData.tasks : 
-                      Array.isArray(tasksData) ? tasksData : [];
-        
+        const fleets = Array.isArray(fleetsData.data) ? fleetsData.data :
+          Array.isArray(fleetsData.fleets) ? fleetsData.fleets :
+            Array.isArray(fleetsData) ? fleetsData : [];
+        const customers = Array.isArray(customersData.data) ? customersData.data :
+          Array.isArray(customersData.customers) ? customersData.customers :
+            Array.isArray(customersData) ? customersData : [];
+        const tasks = Array.isArray(tasksData.data) ? tasksData.data :
+          Array.isArray(tasksData.tasks) ? tasksData.tasks :
+            Array.isArray(tasksData) ? tasksData : [];
+
         // Calculate analytics
         const completedTasks = tasks.filter(t => t.job_status === 2);
         const pendingCOD = tasks
           .filter(t => t.order_payment && t.job_status === 2)
           .reduce((sum, t) => sum + (parseFloat(t.order_payment) || 0), 0);
-        
+
         // Tookan terminology:
         // - Customers: delivery recipients (all entries from get_all_customers)
         // - Merchants: registered businesses with vendor_id (subset of customers)
         // - Agents/Drivers: delivery personnel (from get_all_fleets)
         const totalCustomers = customers.length;
         const totalMerchants = customers.filter(c => c.vendor_id != null).length;
-        
+
         res.json({
           status: 'success',
           message: 'Analytics fetched successfully',
@@ -1126,7 +1126,7 @@ function getApp() {
       try {
         const apiKey = getApiKey();
         const { vendor_id, amount, description } = req.body;
-        
+
         const response = await fetch('https://api.tookanapp.com/v2/addCustomerPaymentViaDashboard', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1137,7 +1137,7 @@ function getApp() {
             description: description || 'Payment from dashboard'
           })
         });
-        
+
         const data = await response.json();
         res.json({
           status: data.status === 200 ? 'success' : 'error',
@@ -1158,7 +1158,7 @@ function getApp() {
       try {
         const apiKey = getApiKey();
         const { limit = 50, offset = 0 } = req.query;
-        
+
         const response = await fetch('https://api.tookanapp.com/v2/fetch_customers_wallet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1169,7 +1169,7 @@ function getApp() {
             limit: parseInt(limit)
           })
         });
-        
+
         const data = await response.json();
         res.json({
           status: data.status === 200 ? 'success' : 'error',
@@ -1191,10 +1191,10 @@ function getApp() {
       try {
         const apiKey = getApiKey();
         const { fleet_id, amount, description, transaction_type } = req.body;
-        
+
         const tookanTransactionType = transaction_type === 'debit' ? 1 : 2;
         const finalAmount = transaction_type === 'debit' ? -Math.abs(amount) : Math.abs(amount);
-        
+
         const response = await fetch('https://api.tookanapp.com/v2/fleet/wallet/create_transaction', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1207,7 +1207,7 @@ function getApp() {
             wallet_type: 1
           })
         });
-        
+
         const data = await response.json();
         res.json({
           status: data.status === 200 ? 'success' : 'error',
@@ -1407,7 +1407,7 @@ function getApp() {
                   data: {}
                 });
               }
-              
+
               if (userProfile && userProfile.status === 'banned') {
                 return res.status(403).json({
                   status: 'error',
@@ -1417,7 +1417,7 @@ function getApp() {
               }
 
               const userRole = userProfile?.role || 'admin';
-              
+
               // Admin gets all permissions per SRS
               let userPermissions = userProfile?.permissions || {};
               if (userRole === 'admin') {
@@ -1519,7 +1519,7 @@ function getApp() {
           // Get user permissions from database if available
           let userPermissions = {};
           let userRole = userType === 'driver' ? 'driver' : 'merchant';
-          
+
           if (isSupabaseConfigured && supabase) {
             const { data: dbUser } = await supabase
               .from('tookan_users')
@@ -1527,7 +1527,7 @@ function getApp() {
               .eq('tookan_id', userId)
               .eq('user_type', userType)
               .single();
-            
+
             if (dbUser) {
               userRole = dbUser.role || userRole;
               userPermissions = dbUser.permissions || {};
@@ -1558,7 +1558,7 @@ function getApp() {
                 .select('status')
                 .eq('email', userEmail)
                 .single();
-              
+
               if (userProfile && userProfile.status === 'disabled') {
                 return res.status(403).json({
                   status: 'error',
@@ -1941,25 +1941,25 @@ function getApp() {
         const { status } = req.body;
 
         if (!status) {
-          return res.status(400).json({ 
-            status: 'error', 
-            message: 'Status is required. Valid values: active, disabled, banned' 
+          return res.status(400).json({
+            status: 'error',
+            message: 'Status is required. Valid values: active, disabled, banned'
           });
         }
 
         const validStatuses = ['active', 'disabled', 'banned'];
         if (!validStatuses.includes(status.toLowerCase())) {
-          return res.status(400).json({ 
-            status: 'error', 
-            message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` 
+          return res.status(400).json({
+            status: 'error',
+            message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
           });
         }
 
         // Prevent modifying own status
         if (req.user.id === userId) {
-          return res.status(400).json({ 
-            status: 'error', 
-            message: 'You cannot change your own status' 
+          return res.status(400).json({
+            status: 'error',
+            message: 'You cannot change your own status'
           });
         }
 
@@ -1984,8 +1984,8 @@ function getApp() {
           notes: `User ${userId} status changed to ${status} by ${req.user.email}`
         });
 
-        res.json({ 
-          status: 'success', 
+        res.json({
+          status: 'success',
           message: `User ${status === 'active' ? 'enabled' : status === 'banned' ? 'banned' : 'disabled'} successfully`,
           data: {
             id: userData.id,
@@ -2011,12 +2011,12 @@ function getApp() {
         }
 
         const token = authHeader.replace('Bearer ', '');
-        
+
         // Try to decode the token (base64 for Tookan users)
         try {
           const decoded = Buffer.from(token, 'base64').toString('utf8');
           const [userId, timestamp, email] = decoded.split(':');
-          
+
           if (userId && email) {
             // Look up user in tookan_users
             if (isSupabaseConfigured && supabase) {
@@ -2172,8 +2172,8 @@ function getApp() {
 
         // Merchant summaries
         const merchantSummaries = customers.slice(0, 50).map(customer => {
-          const merchantTasks = tasks.filter(t => 
-            t.customer_id === customer.customer_id || 
+          const merchantTasks = tasks.filter(t =>
+            t.customer_id === customer.customer_id ||
             t.merchant_id === customer.vendor_id
           );
           const merchantCOD = merchantTasks.reduce((sum, t) => sum + (parseFloat(t.total_amount || t.order_payment || 0)), 0);
@@ -2431,7 +2431,7 @@ function getApp() {
     app.get('/api/cod/calendar', async (req, res) => {
       try {
         const { dateFrom, dateTo } = req.query;
-        
+
         if (!isSupabaseConfigured || !supabase) {
           return res.json({ status: 'success', data: [] });
         }
@@ -2648,7 +2648,7 @@ function getApp() {
         }
 
         const original = originalData.data || {};
-        
+
         // Use original notes if new notes not provided
         const originalNotes = original.customer_comments || original.job_description || '';
         const effectiveNotes = (notes && notes.trim()) ? notes.trim() : originalNotes;
@@ -2672,14 +2672,14 @@ function getApp() {
         const originalPickupAddr = (orderData.pickupAddress || '').trim();
         const originalDeliveryAddr = (orderData.deliveryAddress || '').trim();
         const isPickupTask = originalPickupAddr === originalDeliveryAddr;
-        
+
         // Task time
         const now = new Date();
         const taskTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours
         const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
-        
+
         let createPayload;
-        
+
         if (isPickupTask) {
           // Original was PICKUP task → Create new PICKUP task
           createPayload = {
@@ -2790,15 +2790,15 @@ function getApp() {
         // Only fetch from Tookan if addresses not provided
         if (!orderData.pickupAddress || !orderData.deliveryAddress) {
           const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ api_key: apiKey, job_id: orderIdToUse })
-        });
-        const originalData = await getResponse.json();
+          });
+          const originalData = await getResponse.json();
 
-        if (originalData.status !== 200) {
-          return res.status(404).json({ status: 'error', message: 'Original order not found' });
-        }
+          if (originalData.status !== 200) {
+            return res.status(404).json({ status: 'error', message: 'Original order not found' });
+          }
 
           const original = originalData.data || {};
           orderData.customerName = orderData.customerName || original.customer_name || original.customer_username || 'Customer';
@@ -2812,12 +2812,12 @@ function getApp() {
         // Get original addresses
         const originalPickupAddr = (orderData.pickupAddress || '').trim();
         const originalDeliveryAddr = (orderData.deliveryAddress || '').trim();
-        
+
         // Determine task type:
         // - Pickup tasks have SAME pickup and delivery address
         // - Delivery tasks have DIFFERENT pickup and delivery address
         const isPickupTask = originalPickupAddr === originalDeliveryAddr;
-        
+
         // Return Order is ONLY available for delivery tasks
         if (isPickupTask || !originalDeliveryAddr) {
           return res.status(400).json({
@@ -2825,22 +2825,22 @@ function getApp() {
             message: 'Return Order is not available for pickup tasks. Pickup tasks already involve collecting items from the customer location - there is nothing to return. Return Order is only available for delivery tasks where items were delivered to a customer and need to be picked up back.'
           });
         }
-        
+
         // Task time
         const now = new Date();
         const pickupTime = new Date(now.getTime() + 1 * 60 * 60 * 1000); // +1 hour for pickup
         const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours for delivery
         const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
-        
+
         // For return:
         // - PICKUP from customer location (original delivery address)
         // - DELIVERY to merchant location (original pickup address)
         const returnPickupAddr = originalDeliveryAddr;
         const returnDeliveryAddr = originalPickupAddr;
-        
+
         // Get assigned driver - MUST be assigned to both tasks
         const assignedDriver = orderData.assignedDriver || null;
-        
+
         // ========== TASK 1: PICKUP from customer ==========
         const pickupPayload = {
           api_key: apiKey,
@@ -2858,7 +2858,7 @@ function getApp() {
           job_description: orderData.notes || '',
           auto_assignment: 0
         };
-        
+
         if (assignedDriver) {
           pickupPayload.fleet_id = assignedDriver;
         }
@@ -2871,14 +2871,14 @@ function getApp() {
 
         const pickupData = await pickupResponse.json();
         const pickupOrderId = pickupData.data?.job_id || null;
-        
+
         if (pickupData.status !== 200) {
           return res.status(500).json({
             status: 'error',
             message: pickupData.message || 'Failed to create pickup return task'
           });
         }
-        
+
         // ========== TASK 2: DELIVERY to merchant ==========
         const deliveryPayload = {
           api_key: apiKey,
@@ -2896,7 +2896,7 @@ function getApp() {
           job_description: orderData.notes || '',
           auto_assignment: 0
         };
-        
+
         if (assignedDriver) {
           deliveryPayload.fleet_id = assignedDriver;
         }
@@ -2932,7 +2932,7 @@ function getApp() {
                 last_synced_at: new Date().toISOString()
               }, { onConflict: 'job_id' });
             }
-            
+
             // Save delivery task
             if (deliveryOrderId) {
               await supabase.from('tasks').upsert({
@@ -2960,9 +2960,9 @@ function getApp() {
         res.json({
           status: deliveryData.status === 200 ? 'success' : 'error',
           message: 'Return order created successfully (Pickup + Delivery tasks)',
-          data: { 
-            pickupOrderId, 
-            deliveryOrderId, 
+          data: {
+            pickupOrderId,
+            deliveryOrderId,
             originalOrderId: orderIdToUse,
             assignedDriver
           }
@@ -3214,10 +3214,10 @@ function getApp() {
         const { action, entityType, limit = 100 } = req.query;
 
         let query = supabase.from('audit_logs').select('*');
-        
+
         if (action) query = query.eq('action', action);
         if (entityType) query = query.eq('entity_type', entityType);
-        
+
         query = query.order('created_at', { ascending: false }).limit(parseInt(limit));
 
         const { data: logs, error } = await query;
@@ -3348,6 +3348,196 @@ function getApp() {
       }
     });
 
+    // ============================================
+    // REPORTS & SEARCH ENDPOINTS
+    // ============================================
+
+    // GET Reports Totals (FAST - Only counts, no full data)
+    app.get('/api/reports/totals', authenticate, async (req, res) => {
+      try {
+        console.log('\n=== GET REPORTS TOTALS (FAST) ===');
+        const startTime = Date.now();
+
+        // Parallel fetch: RPC for orders/deliveries, API for drivers/customers
+        const promises = [];
+
+        // 1. Supabase RPC for orders + completed deliveries (fast SQL)
+        if (isSupabaseConfigured && supabase) {
+          promises.push(supabase.rpc('get_order_stats'));
+        } else {
+          promises.push(Promise.resolve({ data: null, error: null }));
+        }
+
+        // 2. Tookan API for drivers count (lightweight - just need count)
+        promises.push(
+          fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: getApiKey() })
+          }).then(r => r.json()).catch(() => ({ status: 200, data: [] }))
+        );
+
+        // 3. Tookan API for customers count (lightweight - just need count)
+        promises.push(
+          fetch('https://api.tookanapp.com/v2/get_all_customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: getApiKey() })
+          }).then(r => r.json()).catch(() => ({ status: 200, data: [] }))
+        );
+
+        const [orderStats, driversResp, customersResp] = await Promise.all(promises);
+
+        // Extract totals
+        const totals = {
+          orders: 0,
+          drivers: 0,
+          customers: 0,
+          deliveries: 0
+        };
+
+        // From Supabase RPC
+        if (orderStats.data && orderStats.data.length > 0) {
+          totals.orders = orderStats.data[0].total_orders || 0;
+          totals.deliveries = orderStats.data[0].completed_deliveries || 0;
+        }
+
+        // From Tookan API
+        totals.drivers = driversResp.data?.length || 0;
+        totals.customers = customersResp.data?.length || 0;
+
+        const elapsed = Date.now() - startTime;
+        console.log(`📊 Totals fetched in ${elapsed}ms: orders=${totals.orders}, drivers=${totals.drivers}, customers=${totals.customers}, deliveries=${totals.deliveries}`);
+
+        res.json({
+          status: 'success',
+          data: { totals }
+        });
+      } catch (error) {
+        console.error('Reports totals error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to fetch totals',
+          data: { totals: { orders: 0, drivers: 0, customers: 0, deliveries: 0 } }
+        });
+      }
+    });
+
+    // GET Search Order by job_id (from Supabase, bypasses RLS)
+    app.get('/api/search/order/:jobId', authenticate, async (req, res) => {
+      try {
+        const { jobId } = req.params;
+        console.log('\n=== SEARCH ORDER BY JOB_ID ===');
+        console.log('Job ID:', jobId);
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(400).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('job_id', parseInt(jobId))
+          .single();
+
+        if (error) {
+          if (error.code === 'PGRST116') {
+            return res.json({ status: 'success', data: null, message: 'Order not found' });
+          }
+          throw error;
+        }
+
+        res.json({ status: 'success', data });
+      } catch (error) {
+        console.error('Search order error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Search Customers by ID, Name, or Phone (from Supabase, bypasses RLS)
+    app.get('/api/search/customers', authenticate, async (req, res) => {
+      try {
+        const { q } = req.query;
+        console.log('\n=== SEARCH CUSTOMERS ===');
+        console.log('Query:', q);
+
+        if (!q) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(400).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const searchTerm = q.toString().trim();
+
+        // Search in tasks for customer info
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('vendor_id, customer_name, customer_phone, customer_address')
+          .or(`vendor_id.eq.${searchTerm},customer_name.ilike.%${searchTerm}%,customer_phone.ilike.%${searchTerm}%`)
+          .limit(50);
+
+        if (error) throw error;
+
+        // Deduplicate by vendor_id
+        const uniqueCustomers = new Map();
+        (data || []).forEach(task => {
+          const id = task.vendor_id || task.customer_name;
+          if (id && !uniqueCustomers.has(id)) {
+            uniqueCustomers.set(id, {
+              id: task.vendor_id,
+              name: task.customer_name,
+              phone: task.customer_phone,
+              address: task.customer_address
+            });
+          }
+        });
+
+        res.json({ status: 'success', data: Array.from(uniqueCustomers.values()) });
+      } catch (error) {
+        console.error('Search customers error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Search Drivers/Agents by ID or Name (from Supabase, bypasses RLS)
+    app.get('/api/search/drivers', authenticate, async (req, res) => {
+      try {
+        const { q } = req.query;
+        console.log('\n=== SEARCH DRIVERS ===');
+        console.log('Query:', q);
+
+        if (!q) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(400).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const searchTerm = q.toString().trim();
+        const isNumeric = /^\d+$/.test(searchTerm);
+
+        let query = supabase.from('agents').select('*');
+
+        if (isNumeric) {
+          query = query.eq('fleet_id', parseInt(searchTerm));
+        } else {
+          query = query.ilike('name', `%${searchTerm}%`);
+        }
+
+        const { data, error } = await query.limit(50);
+
+        if (error) throw error;
+
+        res.json({ status: 'success', data: data || [] });
+      } catch (error) {
+        console.error('Search drivers error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
     // Catch-all for other API routes
     app.all('/api/*', (req, res) => {
       res.status(404).json({
@@ -3356,7 +3546,7 @@ function getApp() {
       });
     });
   }
-  
+
   return app;
 }
 

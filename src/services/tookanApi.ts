@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /**
  * Tookan API Service
  * Handles all Tookan API interactions
@@ -14,11 +15,11 @@ function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  
+
   return headers;
 }
 
@@ -254,10 +255,10 @@ export async function fetchAnalytics(
   try {
     let url = `${API_BASE_URL}/api/reports/analytics`;
     const params = new URLSearchParams();
-    
+
     if (dateFrom) params.append('dateFrom', dateFrom);
     if (dateTo) params.append('dateTo', dateTo);
-    
+
     if (params.toString()) {
       url += `?${params.toString()}`;
     }
@@ -667,7 +668,7 @@ export async function fetchAllOrders(
   try {
     let url = `${API_BASE_URL}/api/tookan/orders`;
     const params = new URLSearchParams();
-    
+
     if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
     if (filters?.dateTo) params.append('dateTo', filters.dateTo);
     if (filters?.driverId) params.append('driverId', filters.driverId);
@@ -676,7 +677,7 @@ export async function fetchAllOrders(
     if (filters?.limit) params.append('limit', filters.limit.toString());
     if (filters?.page) params.append('page', filters.page.toString());
     if (filters?.search) params.append('search', filters.search);
-    
+
     if (params.toString()) {
       url += `?${params.toString()}`;
     }
@@ -1009,6 +1010,58 @@ export async function fetchAllCustomers(): Promise<TookanApiResponse<{ customers
 }
 
 /**
+ * Fetch reports totals (FAST - only counts)
+ */
+export async function fetchReportsTotals(): Promise<TookanApiResponse<{
+  totals: {
+    orders: number;
+    drivers: number;
+    customers: number;
+    deliveries: number;
+  };
+}>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/reports/totals`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_reports_totals',
+        entity: 'report',
+        message: data.message || 'Failed to fetch totals',
+        data: {
+          totals: { orders: 0, drivers: 0, customers: 0, deliveries: 0 },
+        },
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_reports_totals',
+      entity: 'report',
+      message: 'Totals fetched successfully',
+      data: data.data || { totals: { orders: 0, drivers: 0, customers: 0, deliveries: 0 } },
+    };
+  } catch (error) {
+    console.error('Fetch reports totals error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_reports_totals',
+      entity: 'report',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: {
+        totals: { orders: 0, drivers: 0, customers: 0, deliveries: 0 },
+      },
+    };
+  }
+}
+
+/**
  * Fetch reports summary
  */
 export async function fetchReportsSummary(
@@ -1029,10 +1082,10 @@ export async function fetchReportsSummary(
   try {
     let url = `${API_BASE_URL}/api/reports/summary`;
     const queryParams = new URLSearchParams();
-    
+
     if (params?.dateFrom) queryParams.append('dateFrom', params.dateFrom);
     if (params?.dateTo) queryParams.append('dateTo', params.dateTo);
-    
+
     if (queryParams.toString()) {
       url += `?${queryParams.toString()}`;
     }
@@ -1410,7 +1463,7 @@ export async function fetchCachedOrders(
   try {
     let url = `${API_BASE_URL}/api/tookan/orders/cached`;
     const params = new URLSearchParams();
-    
+
     if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
     if (filters?.dateTo) params.append('dateTo', filters.dateTo);
     if (filters?.driverId) params.append('driverId', filters.driverId);
@@ -1419,7 +1472,7 @@ export async function fetchCachedOrders(
     if (filters?.search) params.append('search', filters.search);
     if (filters?.limit) params.append('limit', filters.limit.toString());
     if (filters?.page) params.append('page', filters.page.toString());
-    
+
     if (params.toString()) {
       url += `?${params.toString()}`;
     }
@@ -1469,11 +1522,11 @@ export async function fetchAgentsFromDB(
   try {
     let url = `${API_BASE_URL}/api/agents`;
     const params = new URLSearchParams();
-    
+
     if (filters?.isActive !== undefined) params.append('isActive', filters.isActive.toString());
     if (filters?.teamId) params.append('teamId', filters.teamId);
     if (filters?.search) params.append('search', filters.search);
-    
+
     if (params.toString()) {
       url += `?${params.toString()}`;
     }
