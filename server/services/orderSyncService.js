@@ -69,30 +69,30 @@ function sleep(ms) {
  */
 async function fetchWithRetry(url, options, retries = MAX_RETRIES) {
   let lastError;
-  
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const response = await fetch(url, options);
       return response;
     } catch (error) {
       lastError = error;
-      const isSSLError = error.message.includes('SSL') || 
-                         error.message.includes('ssl') ||
-                         error.message.includes('decryption') ||
-                         error.message.includes('ECONNRESET') ||
-                         error.message.includes('ETIMEDOUT');
-      
+      const isSSLError = error.message.includes('SSL') ||
+        error.message.includes('ssl') ||
+        error.message.includes('decryption') ||
+        error.message.includes('ECONNRESET') ||
+        error.message.includes('ETIMEDOUT');
+
       if (isSSLError && attempt < retries) {
         const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1); // Exponential backoff
         console.log(`⚠️  Retry ${attempt}/${retries} after ${delay}ms due to: ${error.message}`);
         await sleep(delay);
         continue;
       }
-      
+
       throw error;
     }
   }
-  
+
   throw lastError;
 }
 
@@ -103,28 +103,28 @@ function generateDateBatches(customStartDate, customEndDate) {
   const batches = [];
   const endDate = customEndDate ? new Date(customEndDate) : new Date();
   const startDate = customStartDate ? new Date(customStartDate) : getSixMonthsAgo();
-  
+
   let currentEnd = new Date(endDate);
-  
+
   while (currentEnd >= startDate) {
     const batchStart = new Date(currentEnd);
     batchStart.setDate(batchStart.getDate() - MAX_DAYS_PER_BATCH + 1);
-    
+
     // Ensure we don't go before the 6-month start date
     if (batchStart < startDate) {
       batchStart.setTime(startDate.getTime());
     }
-    
+
     batches.push({
       startDate: formatDate(batchStart),
       endDate: formatDate(currentEnd)
     });
-    
+
     // Move to the previous batch
     currentEnd = new Date(batchStart);
     currentEnd.setDate(currentEnd.getDate() - 1);
   }
-  
+
   return batches.reverse(); // Start from oldest to newest
 }
 
@@ -133,7 +133,7 @@ function generateDateBatches(customStartDate, customEndDate) {
  */
 async function fetchTasksBatch(startDate, endDate, jobType, offset = 0) {
   const apiKey = getApiKey();
-  
+
   const payload = {
     api_key: apiKey,
     job_type: jobType,
@@ -145,28 +145,28 @@ async function fetchTasksBatch(startDate, endDate, jobType, offset = 0) {
     limit: BATCH_SIZE,
     custom_fields: 1
   };
-  
+
   const response = await fetchWithRetry(`${TOOKAN_API_BASE}/get_all_tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     timeout: 45000
   });
-  
+
   const text = await response.text();
-  
+
   try {
     const data = JSON.parse(text);
-    
+
     if (data.status === 200 || data.status === 1) {
       return Array.isArray(data.data) ? data.data : [];
     }
-    
+
     // Some error statuses are expected (no data)
     if (data.message && data.message.includes('No task')) {
       return [];
     }
-    
+
     console.log(`⚠️  API response: ${data.message || 'Unknown status'}`);
     return [];
   } catch (parseError) {
@@ -180,44 +180,44 @@ async function fetchTasksBatch(startDate, endDate, jobType, offset = 0) {
  */
 async function fetchAllTasksForDateRange(startDate, endDate) {
   const allTasks = [];
-  
+
   for (const jobType of JOB_TYPES) {
     const jobTypeName = ['Pickup', 'Delivery', 'Appointment', 'FOS'][jobType];
     let offset = 0;
     let hasMore = true;
     let pageCount = 0;
     let jobTypeTasks = 0;
-    
+
     while (hasMore) {
       try {
         const tasks = await fetchTasksBatch(startDate, endDate, jobType, offset);
         pageCount++;
-        
+
         if (tasks.length === 0) {
           hasMore = false;
         } else {
           allTasks.push(...tasks);
           jobTypeTasks += tasks.length;
-          
+
           // Log pagination progress for debugging
           if (tasks.length === BATCH_SIZE) {
             console.log(`      [${jobTypeName}] Page ${pageCount}: ${tasks.length} tasks (offset ${offset}), continuing...`);
           }
-          
+
           offset += BATCH_SIZE; // Always increment by BATCH_SIZE, not tasks.length
-          
+
           // If we got less than BATCH_SIZE, we've reached the end
           if (tasks.length < BATCH_SIZE) {
             hasMore = false;
           }
-          
+
           // Safety limit: don't fetch more than 50 pages per job type per date range
           if (pageCount >= 50) {
             console.log(`      [${jobTypeName}] Hit 50 page limit, moving on...`);
             hasMore = false;
           }
         }
-        
+
         // Small delay between requests to avoid rate limiting
         await sleep(150);
       } catch (error) {
@@ -225,13 +225,13 @@ async function fetchAllTasksForDateRange(startDate, endDate) {
         hasMore = false;
       }
     }
-    
+
     // Log total for this job type if we fetched multiple pages
     if (pageCount > 1) {
       console.log(`      [${jobTypeName}] Total: ${jobTypeTasks} tasks in ${pageCount} pages`);
     }
   }
-  
+
   return allTasks;
 }
 
@@ -253,7 +253,7 @@ function transformTaskToRecord(task) {
     order_id: truncateString(task.order_id, 100),
     status: parseInt(task.job_status) || 0,
     job_type: parseInt(task.job_type) || 1,
-    
+
     // Customer/Delivery info (truncate to fit varchar columns)
     customer_name: truncateString(task.customer_username || task.job_delivery_name, 255),
     customer_phone: truncateString(task.customer_phone || task.job_delivery_phone, 100),
@@ -261,33 +261,33 @@ function transformTaskToRecord(task) {
     delivery_name: truncateString(task.job_delivery_name || task.customer_username, 255),
     delivery_phone: truncateString(task.job_delivery_phone || task.customer_phone, 100),
     delivery_address: task.job_address || task.customer_address || null,
-    
+
     // Pickup info
     pickup_name: truncateString(task.job_pickup_name, 255),
     pickup_phone: truncateString(task.job_pickup_phone, 100),
     pickup_address: task.job_pickup_address || null,
-    
+
     // Financial
     total_amount: parseFloat(task.total_amount || task.order_payment || task.cod || 0),
     cod_amount: parseFloat(task.cod_amount || task.total_amount || 0),
     cod_collected: task.cod_collected || false,
     order_fees: parseFloat(task.order_fees || 0),
-    
+
     // Assignment
     fleet_id: parseInt(task.fleet_id) || null,
     fleet_name: truncateString(task.fleet_name, 255),
     vendor_id: parseInt(task.customer_id || task.vendor_id) || null,
-    
+
     // Timestamps
     creation_datetime: normalizeTimestamp(task.creation_datetime || task.created_at || task.job_time || task.creation_date),
-    completed_datetime: normalizeTimestamp(task.completed_datetime),
-    started_datetime: normalizeTimestamp(task.started_datetime),
-    acknowledged_datetime: normalizeTimestamp(task.acknowledged_datetime),
-    
+    completed_datetime: normalizeTimestamp(task.completed_datetime || task.job_completed_datetime || task.completed_on || task.completed_at || task.job_completion_time),
+    started_datetime: normalizeTimestamp(task.started_datetime || task.job_started_datetime || task.arrival_datetime),
+    acknowledged_datetime: normalizeTimestamp(task.acknowledged_datetime || task.job_acknowledged_datetime),
+
     // Template fields and notes (use Tookan job_description as system note)
     template_fields: task.template_data || task.custom_field || {},
     notes: task.job_description || null,
-    
+
     // Sync metadata
     source: 'api_sync',
     last_synced_at: new Date().toISOString(),
@@ -302,24 +302,24 @@ async function bulkUpsertTasks(tasks) {
   if (!isConfigured()) {
     throw new Error('Supabase not configured');
   }
-  
+
   if (tasks.length === 0) {
     return { inserted: 0, updated: 0, errors: 0 };
   }
-  
+
   const records = tasks.map(transformTaskToRecord);
-  
+
   // Process in smaller chunks to avoid payload size limits
   const CHUNK_SIZE = 50; // Smaller chunks for better reliability
   const MAX_RETRIES = 3;
   let inserted = 0;
   let updated = 0;
   let errors = 0;
-  
+
   for (let i = 0; i < records.length; i += CHUNK_SIZE) {
     const chunk = records.slice(i, i + CHUNK_SIZE);
     let success = false;
-    
+
     for (let attempt = 1; attempt <= MAX_RETRIES && !success; attempt++) {
       try {
         const { data, error } = await supabase
@@ -328,20 +328,20 @@ async function bulkUpsertTasks(tasks) {
             onConflict: 'job_id',
             ignoreDuplicates: false
           });
-        
+
         if (error) {
           // Check if it's a transient error worth retrying
-          const isTransient = error.message.includes('fetch') || 
-                              error.message.includes('timeout') ||
-                              error.message.includes('500') ||
-                              error.message.includes('503');
-          
+          const isTransient = error.message.includes('fetch') ||
+            error.message.includes('timeout') ||
+            error.message.includes('500') ||
+            error.message.includes('503');
+
           if (isTransient && attempt < MAX_RETRIES) {
             console.log(`   ⚠️  Retry ${attempt}/${MAX_RETRIES} for chunk due to: ${error.message.substring(0, 80)}`);
             await sleep(1000 * attempt); // Backoff
             continue;
           }
-          
+
           console.error(`❌ Bulk upsert error: ${error.message.substring(0, 100)}`);
           errors += chunk.length;
         } else {
@@ -349,26 +349,26 @@ async function bulkUpsertTasks(tasks) {
         }
         success = true;
       } catch (err) {
-        const isTransient = err.message.includes('fetch') || 
-                            err.message.includes('ECONNRESET') ||
-                            err.message.includes('timeout');
-        
+        const isTransient = err.message.includes('fetch') ||
+          err.message.includes('ECONNRESET') ||
+          err.message.includes('timeout');
+
         if (isTransient && attempt < MAX_RETRIES) {
           console.log(`   ⚠️  Retry ${attempt}/${MAX_RETRIES} for chunk due to: ${err.message.substring(0, 80)}`);
           await sleep(1000 * attempt);
           continue;
         }
-        
+
         console.error(`❌ Bulk upsert exception: ${err.message.substring(0, 100)}`);
         errors += chunk.length;
         success = true; // Move on after max retries
       }
     }
-    
+
     // Small delay between chunks to avoid overwhelming Supabase
     await sleep(100);
   }
-  
+
   return { inserted, updated, errors };
 }
 
@@ -379,7 +379,7 @@ async function updateSyncStatus(updates) {
   if (!isConfigured()) {
     return;
   }
-  
+
   try {
     await supabase
       .from('sync_status')
@@ -400,18 +400,18 @@ async function getSyncStatus() {
   if (!isConfigured()) {
     return null;
   }
-  
+
   try {
     const { data, error } = await supabase
       .from('sync_status')
       .select('*')
       .eq('sync_type', 'orders')
       .single();
-    
+
     if (error && error.code !== 'PGRST116') {
       throw error;
     }
-    
+
     return data;
   } catch (error) {
     console.error('Failed to get sync status:', error.message);
@@ -424,31 +424,31 @@ async function getSyncStatus() {
  */
 async function syncOrders(options = {}) {
   const { resumeFromBatch = 0, forceSync = false, dateFrom = null, dateTo = null } = options;
-  
+
   console.log('\n' + '='.repeat(60));
   console.log('TOOKAN ORDER SYNC');
   console.log('='.repeat(60));
   console.log(`Started at: ${new Date().toISOString()}`);
   console.log(`DEBUG: dateFrom=${dateFrom}, dateTo=${dateTo}`);
-  
+
   // Check if sync is already in progress
   const currentStatus = await getSyncStatus();
   if (currentStatus?.status === 'in_progress' && !forceSync) {
     console.log('⚠️  Sync already in progress. Use forceSync option to override.');
     return { success: false, message: 'Sync already in progress' };
   }
-  
+
   // Generate date batches (pass custom dates if provided)
   const batches = generateDateBatches(dateFrom, dateTo);
   console.log(`DEBUG: Generated ${batches.length} batches`);
   const startDateStr = dateFrom || formatDate(getSixMonthsAgo());
   const endDateStr = dateTo || formatDate(new Date());
-  
+
   console.log(`📅 Date range: ${startDateStr} to ${endDateStr}`);
   console.log(`📦 Total batches: ${batches.length} (${MAX_DAYS_PER_BATCH}-day chunks)`);
   console.log(`🔄 Job types: Pickup, Delivery, Appointment, FOS`);
   console.log('='.repeat(60));
-  
+
   // Initialize sync status
   await updateSyncStatus({
     status: 'in_progress',
@@ -464,29 +464,29 @@ async function syncOrders(options = {}) {
     last_error: null,
     error_count: 0
   });
-  
+
   let totalSynced = 0;
   let totalErrors = 0;
   let completedBatches = resumeFromBatch;
-  
+
   try {
     // Process each batch
     for (let i = resumeFromBatch; i < batches.length; i++) {
       const batch = batches[i];
       console.log(`\n📥 Batch ${i + 1}/${batches.length}: ${batch.startDate} to ${batch.endDate}`);
-      
+
       // Update current batch in status
       await updateSyncStatus({
         current_batch_start: batch.startDate,
         current_batch_end: batch.endDate,
         completed_batches: i
       });
-      
+
       try {
         // Fetch all tasks for this date range
         const tasks = await fetchAllTasksForDateRange(batch.startDate, batch.endDate);
         console.log(`   📋 Fetched ${tasks.length} tasks`);
-        
+
         if (tasks.length > 0) {
           // Bulk upsert to database
           const result = await bulkUpsertTasks(tasks);
@@ -494,32 +494,32 @@ async function syncOrders(options = {}) {
           totalErrors += result.errors;
           console.log(`   ✅ Synced: ${result.inserted}, Errors: ${result.errors}`);
         }
-        
+
         completedBatches = i + 1;
-        
+
         // Update progress
         await updateSyncStatus({
           completed_batches: completedBatches,
           synced_records: totalSynced,
           failed_records: totalErrors
         });
-        
+
       } catch (batchError) {
         console.error(`   ❌ Batch error: ${batchError.message}`);
         totalErrors++;
-        
+
         await updateSyncStatus({
           last_error: batchError.message,
           error_count: totalErrors
         });
-        
+
         // Continue with next batch instead of stopping
       }
-      
+
       // Delay between batches to avoid rate limiting
       await sleep(500);
     }
-    
+
     // Sync completed successfully
     await updateSyncStatus({
       status: 'completed',
@@ -531,14 +531,14 @@ async function syncOrders(options = {}) {
       current_batch_start: null,
       current_batch_end: null
     });
-    
+
     console.log('\n' + '='.repeat(60));
     console.log('✅ SYNC COMPLETED');
     console.log(`   Total synced: ${totalSynced}`);
     console.log(`   Total errors: ${totalErrors}`);
     console.log(`   Completed at: ${new Date().toISOString()}`);
     console.log('='.repeat(60) + '\n');
-    
+
     return {
       success: true,
       message: 'Sync completed successfully',
@@ -549,16 +549,16 @@ async function syncOrders(options = {}) {
         dateRange: { from: startDateStr, to: endDateStr }
       }
     };
-    
+
   } catch (error) {
     console.error('\n❌ SYNC FAILED:', error.message);
-    
+
     await updateSyncStatus({
       status: 'failed',
       last_error: error.message,
       error_count: totalErrors + 1
     });
-    
+
     return {
       success: false,
       message: error.message,
@@ -577,10 +577,10 @@ async function syncOrders(options = {}) {
  */
 async function incrementalSync() {
   console.log('\n📥 Starting incremental sync...');
-  
+
   const status = await getSyncStatus();
   let startDate;
-  
+
   if (status?.last_successful_sync) {
     // Start from day after last successful sync
     const lastSync = new Date(status.last_successful_sync);
@@ -591,37 +591,37 @@ async function incrementalSync() {
     console.log('⚠️  No previous sync found. Running full sync...');
     return syncOrders();
   }
-  
+
   const endDate = formatDate(new Date());
   console.log(`📅 Incremental sync: ${startDate} to ${endDate}`);
-  
+
   await updateSyncStatus({
     status: 'in_progress',
     started_at: new Date().toISOString()
   });
-  
+
   try {
     const tasks = await fetchAllTasksForDateRange(startDate, endDate);
     console.log(`📋 Fetched ${tasks.length} tasks`);
-    
+
     if (tasks.length > 0) {
       const result = await bulkUpsertTasks(tasks);
       console.log(`✅ Synced: ${result.inserted}, Errors: ${result.errors}`);
     }
-    
+
     await updateSyncStatus({
       status: 'completed',
       completed_at: new Date().toISOString(),
       last_successful_sync: new Date().toISOString()
     });
-    
+
     return { success: true, synced: tasks.length };
   } catch (error) {
     await updateSyncStatus({
       status: 'failed',
       last_error: error.message
     });
-    
+
     return { success: false, error: error.message };
   }
 }

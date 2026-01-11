@@ -99,7 +99,7 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
 
   let query = supabase
     .from('tasks')
-    .select('job_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status', { count: 'exact' });
+    .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status', { count: 'exact' });
 
   if (filters.dateFrom) {
     query = query.gte('creation_datetime', filters.dateFrom);
@@ -117,11 +117,18 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
     query = query.eq('status', filters.status);
   }
   if (filters.search) {
-    const term = String(filters.search).trim().replace(/,/g, '');
-    // Search by job_id (numeric, primary)
-    const numTerm = parseInt(term, 10);
-    if (!isNaN(numTerm)) {
-      query = query.eq('job_id', numTerm);
+    const searchTerm = String(filters.search).trim();
+    console.log('🔍 Search filter received:', searchTerm);
+    // Exact Job ID match only (must be numeric)
+    const numericJobId = parseInt(searchTerm, 10);
+    console.log('🔍 Parsed numeric ID:', numericJobId, 'isValid:', !isNaN(numericJobId) && String(numericJobId) === searchTerm);
+    if (!isNaN(numericJobId) && String(numericJobId) === searchTerm) {
+      query = query.eq('job_id', numericJobId);
+      console.log('🔍 Searching for exact job_id:', numericJobId);
+    } else {
+      // Non-numeric search returns no results (exact match required)
+      query = query.eq('job_id', -1); // Impossible match
+      console.log('🔍 Non-numeric search, returning no results');
     }
   }
 
@@ -356,7 +363,7 @@ async function getLastSyncTimestamp() {
  */
 async function isCacheFresh(maxAgeHours = 24) {
   const lastSync = await getLastSyncTimestamp();
-  
+
   if (!lastSync) {
     return false;
   }

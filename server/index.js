@@ -4146,16 +4146,28 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
       const orderFees = parseFloat(task.order_fees || 0);
       return {
         jobId: task.job_id?.toString() || '',
+        job_id: task.job_id,  // Also include snake_case for frontend compatibility
+        order_id: task.order_id || '',
+        completed_datetime: task.completed_datetime || '',
         codAmount,
+        cod_amount: codAmount,  // Also include snake_case
         orderFees,
+        order_fees: orderFees,  // Also include snake_case
+        fleet_id: task.fleet_id || null,
         assignedDriver: task.fleet_id || null,
+        fleet_name: task.fleet_name || '',
         assignedDriverName: task.fleet_name || '',
         notes: task.notes || '',
         date: task.creation_datetime || null,
+        creation_datetime: task.creation_datetime || null,
+        customer_name: task.customer_name || '',
         customerName: task.customer_name || '',
+        customer_phone: task.customer_phone || '',
         customerPhone: task.customer_phone || '',
         customerEmail: task.customer_email || '',
+        pickup_address: task.pickup_address || '',
         pickupAddress: task.pickup_address || '',
+        delivery_address: task.delivery_address || '',
         deliveryAddress: task.delivery_address || '',
         status: task.status ?? null  // 0=Assigned, 1=Started, 2=Successful, 3=Failed
       };
@@ -5222,6 +5234,58 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
   }
 });
 
+// GET Reports Summary (Aggregated Data - Wrapper around Totals for now)
+app.get('/api/reports/summary', authenticate, async (req, res) => {
+  try {
+    // Reuse the fast totals logic or just call it internally if refactored
+    // For now, we will do a simplified fetch to support the client-side calculation fallback
+
+    // 1. Get Totals via RPC
+    const { data: orderStats, error } = isConfigured()
+      ? await supabase.rpc('get_order_stats')
+      : { data: null, error: null };
+
+    // 2. Get Counts from Tookan (Approximation for fast load)
+    // We won't fetch full lists here to keep it fast
+
+    const totals = {
+      orders: 0,
+      drivers: 0,
+      customers: 0,
+      deliveries: 0
+    };
+
+    if (orderStats && orderStats.length > 0) {
+      totals.orders = orderStats[0].total_orders || 0;
+      totals.deliveries = orderStats[0].completed_deliveries || 0;
+    }
+
+    // Fetch counts from Tookan API in parallel if needed, or just return 0 and let client update
+    // Client ReportsPanel fetches totals via fetchReportsTotals separately anyway?
+    // User code calls fetchReportsSummary AND fetchReportsTotals (via fetchAll*).
+    // Actually ReportsPanel calls fetchAllOrders, fetchAllDrivers, fetchAllCustomers. 
+    // AND fetchReportsSummary.
+
+    // We'll return just the totals we validly have fast access to. 
+    // Client handles empty summaries by calculating from orders.
+
+    res.json({
+      status: 'success',
+      data: {
+        orders: [],
+        drivers: [],
+        customers: [],
+        driverSummaries: [],
+        merchantSummaries: [],
+        totals: totals
+      }
+    });
+  } catch (error) {
+    console.error('Reports summary error:', error);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 // GET Reports Totals (FAST - Only counts, no full data)
 app.get('/api/reports/totals', authenticate, async (req, res) => {
   try {
@@ -5405,6 +5469,28 @@ app.get('/api/search/drivers', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Search drivers error:', error);
     res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// GET All Customers (via Tookan API)
+app.get('/api/tookan/customers', authenticate, async (req, res) => {
+  try {
+    const response = await fetch('https://api.tookanapp.com/v2/get_all_customers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: getApiKey() })
+    });
+
+    const data = await response.json();
+
+    if (data.status === 200) {
+      res.json({ status: 'success', data: { customers: data.data || [] } });
+    } else {
+      throw new Error(data.message || 'Failed to fetch customers');
+    }
+  } catch (error) {
+    console.error('Fetch all customers error:', error);
+    res.status(500).json({ status: 'error', message: error.message, data: { customers: [] } });
   }
 });
 
@@ -7131,7 +7217,7 @@ app.put('/api/users/:id/role', authenticate, requireSuperadmin(), async (req, re
 // GET Reports Summary (Totals)
 app.get('/api/reports/summary', authenticate, async (req, res) => {
   try {
-    const { dateFrom, dateTo } = req.query;
+    const { dateFrom, dateTo } = req.query; // (RPC get_order_stats currently doesn't use date, but user logic implies total)
 
     if (!isConfigured()) {
       return res.json({
@@ -7150,64 +7236,18 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
       });
     }
 
-    // Parallel fetch for totals using Supabase Client API (no custom SQL functions)
-    // 1. Total Orders (count only)
-    const ordersPromise = supabase
-      .from('tasks')
-      .select('*', { count: 'exact', head: true });
+    // Call RPC get_order_stats for ultra-fast counting
+    // Drivers and Customers are fetched via API calls on frontend as requested
+    const { data: stats, error } = await supabase.rpc('get_order_stats');
 
-    // 2. Total Drivers (count only from 'agents' table)
-    const driversPromise = supabase
-      .from('agents')
-      .select('*', { count: 'exact', head: true });
+    if (error) {
+      throw error;
+    }
 
-    // 3. Completed Deliveries - fetch data to filter in memory
-    const completedPromise = supabase
-      .from('tasks')
-      .select('pickup_address, delivery_address')
-      .eq('status', 2)
-      .range(0, 99999);
+    const totalOrders = stats && stats[0] ? stats[0].total_orders : 0;
+    const completedDeliveries = stats && stats[0] ? stats[0].completed_deliveries : 0;
 
-    // 4. Total Customers (Unique vendors) - fetch data to filter in memory
-    const customersPromise = supabase
-      .from('tasks')
-      .select('vendor_id')
-      .not('vendor_id', 'is', null)
-      .range(0, 99999);
-
-    const [ordersResult, driversResult, completedResult, customersResult] = await Promise.all([
-      ordersPromise,
-      driversPromise,
-      completedPromise,
-      customersPromise
-    ]);
-
-    // Debug logging
-    console.log('📊 Reports Summary Debug:');
-    console.log('   Orders result count:', ordersResult.count, 'error:', ordersResult.error?.message);
-    console.log('   Drivers result count:', driversResult.count, 'error:', driversResult.error?.message);
-    console.log('   Completed data length:', completedResult.data?.length, 'error:', completedResult.error?.message);
-    console.log('   Customers data length:', customersResult.data?.length, 'error:', customersResult.error?.message);
-
-    // Process Orders
-    const totalOrders = ordersResult.count || 0;
-
-    // Process Drivers
-    const totalDrivers = driversResult.count || 0;
-
-    // Process Completed Deliveries
-    // Client-side filter for pickup != delivery (address comparison)
-    const completedDeliveries = (completedResult.data || []).filter(t =>
-      t.pickup_address && t.delivery_address && t.pickup_address !== t.delivery_address
-    ).length;
-
-    // Process Customers
-    // Create a Set of unique vendor_ids
-    const uniqueCustomers = new Set((customersResult.data || []).map(t => t.vendor_id));
-    const totalCustomers = uniqueCustomers.size;
-
-    console.log('   Final totals: orders=%d, drivers=%d, customers=%d, deliveries=%d',
-      totalOrders, totalDrivers, totalCustomers, completedDeliveries);
+    console.log('📊 Reports Summary (RPC): orders=%d, deliveries=%d', totalOrders, completedDeliveries);
 
     res.json({
       status: 'success',
@@ -7220,8 +7260,8 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
         customerSummaries: [],
         totals: {
           orders: totalOrders,
-          drivers: totalDrivers,
-          customers: totalCustomers,
+          drivers: 0, // Frontend fetches this via API
+          customers: 0, // Frontend fetches this via API
           deliveries: completedDeliveries
         }
       }

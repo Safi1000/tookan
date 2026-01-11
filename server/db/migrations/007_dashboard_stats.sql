@@ -10,7 +10,7 @@ RETURNS TABLE (
 BEGIN
   RETURN QUERY 
   SELECT 
-    (SELECT COUNT(*) FROM tasks)::BIGINT as total_orders,
+    (SELECT COUNT(*) FROM tasks WHERE pickup_address IS DISTINCT FROM delivery_address)::BIGINT as total_orders,
     (SELECT COUNT(*) FROM tasks WHERE status = 2 AND pickup_address IS DISTINCT FROM delivery_address)::BIGINT as completed_deliveries;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

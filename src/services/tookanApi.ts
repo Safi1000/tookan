@@ -161,11 +161,12 @@ export interface DriverSummary {
   orderFees: number;
   totalValue: number;
   avgDeliveryTime: number;
+  // Fallback properties for compatibility
+  totalOrders?: number;
+  feesTotal?: number;
+  averageDeliveryTime?: number;
 }
 
-/**
- * Customer Summary (previously MerchantSummary)
- */
 export interface CustomerSummary {
   customerId: string;
   customerName: string;
@@ -173,6 +174,23 @@ export interface CustomerSummary {
   codReceived: number;
   orderFees: number;
   revenue: number;
+  // Fallback properties for compatibility
+  totalOrders?: number;
+  codTotal?: number;
+  feesTotal?: number;
+}
+
+export interface MerchantSummary {
+  merchantId: string;
+  merchantName: string;
+  orderCount: number;
+  codReceived: number;
+  orderFees: number;
+  revenue: number;
+  // Fallback properties for compatibility
+  totalOrders?: number;
+  codTotal?: number;
+  feesTotal?: number;
 }
 
 /**
@@ -666,7 +684,7 @@ export async function fetchAllOrders(
   filters?: OrderFilters
 ): Promise<TookanApiResponse<{ orders: OrderData[]; total?: number }>> {
   try {
-    let url = `${API_BASE_URL}/api/tookan/orders`;
+    let url = `${API_BASE_URL}/api/tookan/orders/cached`;
     const params = new URLSearchParams();
 
     if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
@@ -674,9 +692,9 @@ export async function fetchAllOrders(
     if (filters?.driverId) params.append('driverId', filters.driverId);
     if (filters?.customerId) params.append('customerId', filters.customerId);
     if (filters?.status) params.append('status', filters.status);
-    if (filters?.limit) params.append('limit', filters.limit.toString());
-    if (filters?.page) params.append('page', filters.page.toString());
-    if (filters?.search) params.append('search', filters.search);
+    if (filters?.limit) params.append('limit', (filters.limit || 50).toString());
+    if (filters?.page) params.append('page', (filters.page || 1).toString());
+    if (filters?.search) params.append('search', filters.search || '');
 
     if (params.toString()) {
       url += `?${params.toString()}`;
@@ -932,7 +950,8 @@ export async function updateTaskCOD(
  */
 export async function fetchAllDrivers(): Promise<TookanApiResponse<{ fleets: any[] }>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/tookan/fleets`, {
+    // Use the agents endpoint which fetches from DB (faster than Tookan API)
+    const response = await fetch(`${API_BASE_URL}/api/agents`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
@@ -954,7 +973,8 @@ export async function fetchAllDrivers(): Promise<TookanApiResponse<{ fleets: any
       action: 'fetch_drivers',
       entity: 'driver',
       message: data.message || 'Drivers fetched successfully',
-      data: data.data || { fleets: [] },
+      // Map 'agents' to 'fleets' for backward compatibility
+      data: { fleets: data.data?.agents || [] },
     };
   } catch (error) {
     console.error('Fetch drivers error:', error);
@@ -1071,7 +1091,7 @@ export async function fetchReportsSummary(
   drivers: any[];
   customers: any[];
   driverSummaries: DriverSummary[];
-  customerSummaries: CustomerSummary[];
+  merchantSummaries: MerchantSummary[];
   totals: {
     orders: number;
     drivers: number;
@@ -1108,7 +1128,7 @@ export async function fetchReportsSummary(
           drivers: [],
           customers: [],
           driverSummaries: [],
-          customerSummaries: [],
+          merchantSummaries: [],
           totals: {
             orders: 0,
             drivers: 0,
@@ -1129,7 +1149,7 @@ export async function fetchReportsSummary(
         drivers: [],
         customers: [],
         driverSummaries: [],
-        customerSummaries: [],
+        merchantSummaries: [],
         totals: {
           orders: 0,
           drivers: 0,
@@ -1150,7 +1170,7 @@ export async function fetchReportsSummary(
         drivers: [],
         customers: [],
         driverSummaries: [],
-        customerSummaries: [],
+        merchantSummaries: [],
         totals: {
           orders: 0,
           drivers: 0,
@@ -1657,3 +1677,4 @@ export async function syncAgents(): Promise<TookanApiResponse<{ synced: number; 
     };
   }
 }
+

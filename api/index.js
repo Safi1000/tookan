@@ -696,7 +696,7 @@ function getApp() {
 
         let query = supabase
           .from('tasks')
-          .select('job_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status', { count: 'exact' });
+          .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status', { count: 'exact' });
 
         if (dateFrom) query = query.gte('creation_datetime', dateFrom);
         if (dateTo) query = query.lte('creation_datetime', dateTo);
@@ -706,11 +706,14 @@ function getApp() {
           query = query.eq('status', parseInt(status));
         }
         if (search) {
-          const term = String(search).trim().replace(/,/g, '');
-          // Search by job_id (numeric, primary)
-          const numTerm = parseInt(term, 10);
-          if (!isNaN(numTerm)) {
-            query = query.eq('job_id', numTerm);
+          const searchTerm = String(search).trim();
+          // Exact Job ID match only (must be numeric)
+          const numericJobId = parseInt(searchTerm, 10);
+          if (!isNaN(numericJobId) && String(numericJobId) === searchTerm) {
+            query = query.eq('job_id', numericJobId);
+          } else {
+            // Non-numeric search returns no results (exact match required)
+            query = query.eq('job_id', -1); // Impossible match
           }
         }
 
@@ -726,21 +729,37 @@ function getApp() {
           });
         }
 
-        const orders = (data || []).map(task => ({
-          jobId: task.job_id?.toString() || '',
-          codAmount: parseFloat(task.cod_amount || 0),
-          orderFees: parseFloat(task.order_fees || 0),
-          assignedDriver: task.fleet_id || null,
-          assignedDriverName: task.fleet_name || '',
-          notes: task.notes || '',
-          date: task.creation_datetime || null,
-          customerName: task.customer_name || '',
-          customerPhone: task.customer_phone || '',
-          customerEmail: task.customer_email || '',
-          pickupAddress: task.pickup_address || '',
-          deliveryAddress: task.delivery_address || '',
-          status: task.status ?? null  // 0=Assigned, 1=Started, 2=Successful, 3=Failed
-        }));
+        const orders = (data || []).map(task => {
+          const codAmount = parseFloat(task.cod_amount || 0);
+          const orderFees = parseFloat(task.order_fees || 0);
+          return {
+            jobId: task.job_id?.toString() || '',
+            job_id: task.job_id,
+            order_id: task.order_id || '',
+            completed_datetime: task.completed_datetime || '',
+            codAmount,
+            cod_amount: codAmount,
+            orderFees,
+            order_fees: orderFees,
+            fleet_id: task.fleet_id || null,
+            assignedDriver: task.fleet_id || null,
+            fleet_name: task.fleet_name || '',
+            assignedDriverName: task.fleet_name || '',
+            notes: task.notes || '',
+            date: task.creation_datetime || null,
+            creation_datetime: task.creation_datetime || null,
+            customer_name: task.customer_name || '',
+            customerName: task.customer_name || '',
+            customer_phone: task.customer_phone || '',
+            customerPhone: task.customer_phone || '',
+            customerEmail: task.customer_email || '',
+            pickup_address: task.pickup_address || '',
+            pickupAddress: task.pickup_address || '',
+            delivery_address: task.delivery_address || '',
+            deliveryAddress: task.delivery_address || '',
+            status: task.status ?? null
+          };
+        });
 
         const total = count || 0;
         const hasMore = (pageNum * limitNum) < total;
@@ -2103,113 +2122,6 @@ function getApp() {
       }
     });
 
-    // ============================================
-    // REPORTS PANEL ENDPOINTS
-    // ============================================
-
-    // GET Reports Summary
-    app.get('/api/reports/summary', async (req, res) => {
-      try {
-        const apiKey = getApiKey();
-        const { dateFrom, dateTo } = req.query;
-
-        // Fetch all data from Tookan
-        const [fleetsRes, customersRes, tasksRes] = await Promise.all([
-          fetch('https://api.tookanapp.com/v2/get_all_fleets', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_key: apiKey })
-          }),
-          fetch('https://api.tookanapp.com/v2/get_all_customers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_key: apiKey })
-          }),
-          fetch('https://api.tookanapp.com/v2/get_all_tasks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              api_key: apiKey,
-              job_type: 1,
-              job_status: '0,1,2,3,4,5,6,7,8,9',
-              start_date: dateFrom || undefined,
-              end_date: dateTo || undefined,
-              limit: 1000,
-              custom_fields: 1
-            })
-          })
-        ]);
-
-        const [fleetsData, customersData, tasksData] = await Promise.all([
-          fleetsRes.json(),
-          customersRes.json(),
-          tasksRes.json()
-        ]);
-
-        const fleets = Array.isArray(fleetsData.data) ? fleetsData.data : [];
-        const customers = Array.isArray(customersData.data) ? customersData.data : [];
-        const tasks = Array.isArray(tasksData.data) ? tasksData.data : [];
-
-        // Calculate summaries
-        const completedTasks = tasks.filter(t => t.job_status === 2);
-        const totalCOD = tasks.reduce((sum, t) => sum + (parseFloat(t.total_amount || t.order_payment || 0)), 0);
-
-        // Driver summaries
-        const driverSummaries = fleets.map(fleet => {
-          const driverTasks = tasks.filter(t => t.fleet_id === fleet.fleet_id);
-          const driverCompleted = driverTasks.filter(t => t.job_status === 2);
-          const driverCOD = driverTasks.reduce((sum, t) => sum + (parseFloat(t.total_amount || t.order_payment || 0)), 0);
-          return {
-            id: fleet.fleet_id,
-            name: fleet.name || fleet.username,
-            phone: fleet.phone,
-            totalOrders: driverTasks.length,
-            completedOrders: driverCompleted.length,
-            totalCOD: driverCOD,
-            pendingCOD: driverCOD // Simplified - would need settlement data
-          };
-        });
-
-        // Merchant summaries
-        const merchantSummaries = customers.slice(0, 50).map(customer => {
-          const merchantTasks = tasks.filter(t =>
-            t.customer_id === customer.customer_id ||
-            t.merchant_id === customer.vendor_id
-          );
-          const merchantCOD = merchantTasks.reduce((sum, t) => sum + (parseFloat(t.total_amount || t.order_payment || 0)), 0);
-          return {
-            id: customer.vendor_id || customer.customer_id,
-            name: customer.customer_username || customer.Name,
-            phone: customer.customer_phone,
-            totalOrders: merchantTasks.length,
-            totalCOD: merchantCOD
-          };
-        });
-
-        res.json({
-          status: 'success',
-          message: 'Summary fetched successfully',
-          data: {
-            totals: {
-              orders: tasks.length,
-              drivers: fleets.length,
-              merchants: customers.length,
-              deliveries: completedTasks.length,
-              totalCOD: totalCOD
-            },
-            driverSummaries,
-            merchantSummaries
-          }
-        });
-      } catch (error) {
-        console.error('Reports summary error:', error);
-        res.status(500).json({
-          status: 'error',
-          message: error.message,
-          data: { totals: {}, driverSummaries: [], merchantSummaries: [] }
-        });
-      }
-    });
 
     // GET Daily Report
     app.get('/api/reports/daily', async (req, res) => {
@@ -3352,6 +3264,43 @@ function getApp() {
     // REPORTS & SEARCH ENDPOINTS
     // ============================================
 
+    // GET Reports Summary (Aggregated Data - Wrapper around Totals for now)
+    app.get('/api/reports/summary', authenticate, async (req, res) => {
+      try {
+        // 1. Get Totals via RPC
+        const { data: orderStats, error } = (isSupabaseConfigured && supabase)
+          ? await supabase.rpc('get_order_stats')
+          : { data: null, error: null };
+
+        const totals = {
+          orders: 0,
+          drivers: 0,
+          customers: 0,
+          deliveries: 0
+        };
+
+        if (orderStats && orderStats.length > 0) {
+          totals.orders = orderStats[0].total_orders || 0;
+          totals.deliveries = orderStats[0].completed_deliveries || 0;
+        }
+
+        res.json({
+          status: 'success',
+          data: {
+            orders: [],
+            drivers: [],
+            customers: [],
+            driverSummaries: [],
+            merchantSummaries: [],
+            totals: totals
+          }
+        });
+      } catch (error) {
+        console.error('Reports summary error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
     // GET Reports Totals (FAST - Only counts, no full data)
     app.get('/api/reports/totals', authenticate, async (req, res) => {
       try {
@@ -3535,6 +3484,28 @@ function getApp() {
       } catch (error) {
         console.error('Search drivers error:', error);
         res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET All Customers (via Tookan API)
+    app.get('/api/tookan/customers', authenticate, async (req, res) => {
+      try {
+        const response = await fetch('https://api.tookanapp.com/v2/get_all_customers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: getApiKey() })
+        });
+
+        const data = await response.json();
+
+        if (data.status === 200) {
+          res.json({ status: 'success', data: { customers: data.data || [] } });
+        } else {
+          throw new Error(data.message || 'Failed to fetch customers');
+        }
+      } catch (error) {
+        console.error('Fetch all customers error:', error);
+        res.status(500).json({ status: 'error', message: error.message, data: { customers: [] } });
       }
     });
 
