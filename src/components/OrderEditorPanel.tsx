@@ -274,27 +274,38 @@ export function OrderEditorPanel() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-heading">Order Editor</h1>
-        <p className="text-subheading text-sm">Search by Task ID, then Re-Order / Return / Delete</p>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-heading leading-tight">
+          Order Editor
+        </h1>
+        <p className="text-sm text-subheading mt-1">
+          Search by Task ID, then Re-Order / Return / Delete
+        </p>
       </div>
 
-      <div className="bg-card dark:bg-[#223560] rounded-xl border border-border dark:border-[#2A3C63] p-4 space-y-3">
+
+      <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6 space-y-5 shadow-sm hover:shadow-md transition-shadow">
+        {/* Header */}
         <div className="flex items-center justify-between gap-2">
           <div>
-            <p className="text-xs uppercase text-muted-foreground">Search by Task ID</p>
-            <p className="text-[11px] text-muted-foreground/80">Enter Tookan job_id</p>
+            <p className="text-xs uppercase text-muted-foreground tracking-wider">Search by Task ID</p>
+            <p className="text-[12px] text-muted-foreground/80 mt-1">Enter Tookan job_id</p>
           </div>
           <button
             onClick={() => { setSearch(''); setOrder(null); }}
-            className="text-xs text-muted-foreground hover:text-heading transition"
+            className="text-xs text-muted-foreground hover:text-heading transition-colors font-medium"
           >
             Clear
           </button>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="w-full max-w-sm flex items-center gap-2 px-3 py-2 rounded-lg border border-input-border dark:border-[#2A3C63] bg-input-bg dark:bg-[#1A2C53] focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400">
-            <Search className="w-4 h-4 text-muted-foreground" />
+
+        {/* Search Input + Button */}
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div
+            className="w-full max-w-sm flex items-center gap-3 px-4 py-3 rounded-xl border border-input-border dark:border-[#2A3C63] bg-input-bg dark:bg-[#1A2C53] focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400 transition-all"
+            style={{ marginTop: '15px' }}
+          >
+            <Search className="w-5 h-5 text-muted-foreground" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -303,16 +314,19 @@ export function OrderEditorPanel() {
               className="flex-1 bg-transparent border-0 focus:ring-0 focus:outline-none text-heading text-sm placeholder:text-muted-foreground"
             />
           </div>
+
+
           <button
             onClick={loadOrder}
             disabled={isLoading}
-            className="px-4 py-2 bg-[#C1EEFA] text-[#1A2C53] rounded-lg flex items-center gap-2 justify-center hover:shadow-lg transition disabled:opacity-50"
+            className="px-6 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl flex items-center gap-3 justify-center hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
           >
-            {isLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
             Search
           </button>
         </div>
       </div>
+
 
       {!isLoading && !order && (
         <div className="text-subheading text-sm">No order selected. Search by Task ID to begin.</div>
@@ -333,7 +347,7 @@ export function OrderEditorPanel() {
 
           {/* Locked Fields Section */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Locked Fields (Read Only)</p>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-subheading text-xs uppercase mb-1">Order Date</p>
@@ -380,7 +394,7 @@ export function OrderEditorPanel() {
 
           {/* Editable Fields Section */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-wide">Editable Fields</p>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-subheading text-xs uppercase mb-1">COD Amount ($)</p>
@@ -449,97 +463,79 @@ export function OrderEditorPanel() {
 
       {/* Re-Order Modal */}
       {showReorderModal && order && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card dark:bg-[#1A2C53] rounded-xl border border-border dark:border-[#2A3C63] w-full max-w-[480px] max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b border-border dark:border-[#2A3C63]">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-card dark:bg-[#1A2C53] rounded-2xl border border-border dark:border-[#2A3C63] w-full max-w-md shadow-2xl">
+            {/* Header */}
+            <div
+              className="flex items-center justify-between py-4 border-b border-border dark:border-[#2A3C63]"
+              style={{ paddingLeft: '15px', paddingRight: '15px' }}
+            >
+
               <h2 className="text-lg font-bold text-heading">Create Re-Order</h2>
               <button
                 onClick={() => setShowReorderModal(false)}
-                className="p-1 hover:bg-muted rounded-lg transition"
+                className="p-1.5 hover:bg-muted rounded-lg transition"
               >
-                <X className="w-5 h-5 text-muted-foreground" />
+                <X className="w-4 h-4 text-muted-foreground" />
               </button>
             </div>
 
-            <div className="p-4 space-y-4">
-              <p className="text-sm text-muted-foreground">
-                This will create a new task with the same details as the original order.
-              </p>
+            {/* Content */}
+            <div className="px-5 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
 
-              {/* Locked Fields (from original order) */}
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">🔒 Order Details (Cannot be changed)</p>
-                <div className="grid grid-cols-2 gap-3">
+
+              {/* Locked Fields */}
+              <div className="bg-muted/20 dark:bg-[#0F1D33]/40  p-4 border border-border/40 dark:border-[#2A3C63]/40">
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <p className="text-subheading text-xs uppercase mb-1">Customer Name</p>
-                    <input
-                      value={order.customerName || 'N/A'}
-                      disabled
-                      className={lockedInputClass}
-                    />
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Customer</p>
+                    <p className="text-heading truncate">{order.customerName || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="text-subheading text-xs uppercase mb-1">Customer Phone</p>
-                    <input
-                      value={order.customerPhone || 'N/A'}
-                      disabled
-                      className={lockedInputClass}
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <p className="text-subheading text-xs uppercase mb-1">Customer Email</p>
-                    <input
-                      value={order.customerEmail || 'N/A'}
-                      disabled
-                      className={lockedInputClass}
-                    />
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Phone</p>
+                    <p className="text-heading truncate">{order.customerPhone || 'N/A'}</p>
                   </div>
                   <div className="col-span-2">
-                    <p className="text-subheading text-xs uppercase mb-1">Pickup Address</p>
-                    <input
-                      value={order.pickupAddress || 'N/A'}
-                      disabled
-                      className={lockedInputClass}
-                    />
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Email</p>
+                    <p className="text-heading truncate">{order.customerEmail || 'N/A'}</p>
                   </div>
                   <div className="col-span-2">
-                    <p className="text-subheading text-xs uppercase mb-1">Delivery Address</p>
-                    <input
-                      value={order.deliveryAddress || 'N/A'}
-                      disabled
-                      className={lockedInputClass}
-                    />
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Pickup</p>
+                    <p className="text-heading truncate">{order.pickupAddress || 'N/A'}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Delivery</p>
+                    <p className="text-heading truncate">{order.deliveryAddress || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="text-subheading text-xs uppercase mb-1">COD Amount ($)</p>
-                    <input
-                      value={order.codAmount.toFixed(2)}
-                      disabled
-                      className={lockedInputClass}
-                    />
+                    <p className="text-muted-foreground text-xs uppercase mb-1">COD</p>
+                    <p className="text-heading font-mono">${order.codAmount.toFixed(2)}</p>
                   </div>
                   <div>
-                    <p className="text-subheading text-xs uppercase mb-1">Order Fees ($)</p>
-                    <input
-                      value={order.orderFees.toFixed(2)}
-                      disabled
-                      className={lockedInputClass}
-                    />
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Fees</p>
+                    <p className="text-heading font-mono">${order.orderFees.toFixed(2)}</p>
                   </div>
                 </div>
               </div>
 
-              {/* Editable Fields for Re-order */}
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-wide">✏️ Editable Options</p>
-                <div className="grid grid-cols-2 gap-3">
+              {/* Editable Fields */}
+              <div className="bg-[#C1EEFA]/5  p-4 border border-[#C1EEFA]/15">
+
+                <div className="space-y-3">
                   <div>
-                    <p className="text-subheading text-xs uppercase mb-1">Assign Driver</p>
+                    <p
+                      className="text-muted-foreground text-xs uppercase mb-1.5"
+                      style={{ paddingBottom: '10px' }}
+                    >
+                      Assign Driver
+                    </p>
+
                     <select
                       value={reorderDriver}
                       onChange={(e) => setReorderDriver(e.target.value)}
                       disabled={isLoadingAgents}
-                      className={editableInputClass}
+                      className={editableInputClass + ' text-sm py-2'}
                     >
                       <option value="">Unassigned (Default)</option>
                       {agents.length > 0 ? (
@@ -554,41 +550,53 @@ export function OrderEditorPanel() {
                         !isLoadingAgents && <option disabled>No drivers available</option>
                       )}
                     </select>
-                    {isLoadingAgents && <p className="text-xs text-muted-foreground mt-1">Loading drivers from Tookan…</p>}
-                    {!isLoadingAgents && agents.length === 0 && (
-                      <p className="text-xs text-yellow-500 mt-1">⚠️ No drivers found. Please try again.</p>
-                    )}
+                    {isLoadingAgents && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
                   </div>
                   <div>
-                    <p className="text-subheading text-xs uppercase mb-1">Notes for New Order</p>
+                    <p
+                      className="text-muted-foreground text-xs uppercase mb-1.5"
+                      style={{ paddingBottom: '10px' }}
+                    >
+                      Notes
+                    </p>
+
+
                     <textarea
                       value={reorderNotes}
                       onChange={(e) => setReorderNotes(e.target.value)}
-                      rows={3}
-                      placeholder="Add any notes for this re-order..."
-                      className={editableInputClass}
+                      rows={2}
+                      placeholder="Add notes (optional)"
+                      className={editableInputClass + ' text-sm py-2 resize-none'}
                     />
                   </div>
                 </div>
               </div>
-
-              <div className="flex justify-end gap-3 p-4 border-t border-border dark:border-[#2A3C63]">
-                <button
-                  onClick={() => setShowReorderModal(false)}
-                  className="px-4 py-2 bg-muted dark:bg-[#2A3C63] text-heading rounded-lg hover:bg-muted/80 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreateReorder}
-                  disabled={isCreatingReorder}
-                  className="px-4 py-2 bg-[#C1EEFA] text-[#1A2C53] rounded-lg flex items-center gap-2 hover:shadow-lg transition disabled:opacity-50"
-                >
-                  {isCreatingReorder ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  Create Re-Order
-                </button>
-              </div>
             </div>
+
+            {/* Footer */}
+            <div className="flex justify-center gap-3 px-5 py-4 border-t border-border dark:border-[#2A3C63] bg-muted/10 dark:bg-[#0F1D33]/30 rounded-b-2xl">
+              {/* Cancel Button */}
+              <button
+                onClick={() => setShowReorderModal(false)}
+                className="px-6 py-2.5 text-sm font-medium text-heading bg-muted dark:bg-[#2A3C63] rounded-lg hover:bg-muted/80 dark:hover:bg-[#374766] transition-shadow shadow-sm hover:shadow-md"
+              >
+                Cancel
+              </button>
+
+              {/* Create Reorder Button */}
+              <button
+                onClick={handleCreateReorder}
+                disabled={isCreatingReorder}
+                className="px-6 py-2.5 text-sm font-semibold text-[#1A2C53] bg-[#C1EEFA] rounded-lg flex items-center gap-2 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreatingReorder
+                  ? <RefreshCw className="w-4 h-4 animate-spin" />
+                  : <Plus className="w-4 h-4" />
+                }
+                Create Re-Order
+              </button>
+            </div>
+
           </div>
         </div>
       )}
