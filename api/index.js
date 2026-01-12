@@ -1168,25 +1168,20 @@ function getApp() {
             const { data: fleetCounts } = await supabase.rpc('get_fleet_order_counts_last_7_days');
 
             if (fleetCounts && fleetCounts.length > 0) {
-              // Get agent names from agents table
-              const fleetIds = fleetCounts.map(f => parseInt(f.fleet_id));
+              // Get ALL agent names from agents table (safer matching)
               const { data: agents } = await supabase
                 .from('agents')
-                .select('fleet_id, name')
-                .in('fleet_id', fleetIds);
+                .select('fleet_id, name');
 
-              // Create a map of fleet_id (as int) to name
+              // Create a map of fleet_id (as string) to name
               const agentMap = new Map();
               if (agents) {
-                agents.forEach(a => agentMap.set(parseInt(a.fleet_id), a.name));
+                agents.forEach(a => agentMap.set(String(a.fleet_id), a.name));
               }
 
-              console.log('Fleet counts:', fleetCounts.slice(0, 5));
-              console.log('Agents found:', agents?.length || 0);
-
-              // Build leaderboard (top 5)
+              // Build leaderboard (top 5) using string lookup
               driverPerformance = fleetCounts.slice(0, 5).map(f => ({
-                name: agentMap.get(parseInt(f.fleet_id)) || `Driver ${f.fleet_id}`,
+                name: agentMap.get(String(f.fleet_id)) || `Driver ${f.fleet_id}`,
                 deliveries: parseInt(f.total_orders) || 0
               }));
             }
