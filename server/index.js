@@ -5246,25 +5246,37 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
       });
     }
 
-    // Calculate Driver Performance (top 5 by delivery count)
-    const driverPerformanceMap = new Map();
-    orders.forEach(order => {
-      if (order.driverId && [2].includes(parseInt(order.status))) {
-        const driverId = order.driverId.toString();
-        if (!driverPerformanceMap.has(driverId)) {
-          const driver = drivers.find(d => d.id === driverId);
-          driverPerformanceMap.set(driverId, {
-            name: driver?.name || order.driver || 'Unknown Driver',
-            deliveries: 0
-          });
-        }
-        driverPerformanceMap.get(driverId).deliveries++;
-      }
-    });
+    // Calculate Driver Performance using RPC (last 7 days, top 5)
+    let driverPerformance = [];
+    if (isConfigured()) {
+      try {
+        // Get order counts per fleet from RPC
+        const { data: fleetCounts, error: rpcErr } = await supabase.rpc('get_fleet_order_counts_last_7_days');
 
-    const driverPerformance = Array.from(driverPerformanceMap.values())
-      .sort((a, b) => b.deliveries - a.deliveries)
-      .slice(0, 5);
+        if (!rpcErr && fleetCounts && fleetCounts.length > 0) {
+          // Get agent names from agents table
+          const fleetIds = fleetCounts.map(f => f.fleet_id);
+          const { data: agents } = await supabase
+            .from('agents')
+            .select('fleet_id, name')
+            .in('fleet_id', fleetIds);
+
+          // Create a map of fleet_id to name
+          const agentMap = new Map();
+          if (agents) {
+            agents.forEach(a => agentMap.set(a.fleet_id, a.name));
+          }
+
+          // Build leaderboard (top 5)
+          driverPerformance = fleetCounts.slice(0, 5).map(f => ({
+            name: agentMap.get(f.fleet_id) || `Driver ${f.fleet_id}`,
+            deliveries: parseInt(f.total_orders) || 0
+          }));
+        }
+      } catch (e) {
+        console.log('Driver performance RPC failed:', e.message);
+      }
+    }
 
     // Calculate trends (compare with previous period)
     const previousStart = new Date(startDate);

@@ -1160,6 +1160,38 @@ function getApp() {
           }
         }
 
+        // Get top drivers from RPC (last 7 days)
+        let driverPerformance = [];
+        if (isSupabaseConfigured && supabase) {
+          try {
+            // Get order counts per fleet
+            const { data: fleetCounts } = await supabase.rpc('get_fleet_order_counts_last_7_days');
+
+            if (fleetCounts && fleetCounts.length > 0) {
+              // Get agent names from agents table
+              const fleetIds = fleetCounts.map(f => f.fleet_id);
+              const { data: agents } = await supabase
+                .from('agents')
+                .select('fleet_id, name')
+                .in('fleet_id', fleetIds);
+
+              // Create a map of fleet_id to name
+              const agentMap = new Map();
+              if (agents) {
+                agents.forEach(a => agentMap.set(a.fleet_id, a.name));
+              }
+
+              // Build leaderboard (top 5)
+              driverPerformance = fleetCounts.slice(0, 5).map(f => ({
+                name: agentMap.get(f.fleet_id) || `Driver ${f.fleet_id}`,
+                deliveries: parseInt(f.total_orders) || 0
+              }));
+            }
+          } catch (e) {
+            console.log('Driver performance RPC failed:', e.message);
+          }
+        }
+
         // Calculate analytics
         const completedTasks = tasks.filter(t => parseInt(t.job_status) === 2);
         const pendingCOD = tasks
@@ -1197,7 +1229,7 @@ function getApp() {
             },
             codStatus: [],
             orderVolume: [],
-            driverPerformance: []
+            driverPerformance: driverPerformance
           }
         });
       } catch (error) {
