@@ -1169,21 +1169,24 @@ function getApp() {
 
             if (fleetCounts && fleetCounts.length > 0) {
               // Get agent names from agents table
-              const fleetIds = fleetCounts.map(f => f.fleet_id);
+              const fleetIds = fleetCounts.map(f => parseInt(f.fleet_id));
               const { data: agents } = await supabase
                 .from('agents')
                 .select('fleet_id, name')
                 .in('fleet_id', fleetIds);
 
-              // Create a map of fleet_id to name
+              // Create a map of fleet_id (as int) to name
               const agentMap = new Map();
               if (agents) {
-                agents.forEach(a => agentMap.set(a.fleet_id, a.name));
+                agents.forEach(a => agentMap.set(parseInt(a.fleet_id), a.name));
               }
+
+              console.log('Fleet counts:', fleetCounts.slice(0, 5));
+              console.log('Agents found:', agents?.length || 0);
 
               // Build leaderboard (top 5)
               driverPerformance = fleetCounts.slice(0, 5).map(f => ({
-                name: agentMap.get(f.fleet_id) || `Driver ${f.fleet_id}`,
+                name: agentMap.get(parseInt(f.fleet_id)) || `Driver ${f.fleet_id}`,
                 deliveries: parseInt(f.total_orders) || 0
               }));
             }
