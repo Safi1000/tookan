@@ -4267,6 +4267,7 @@ app.post('/api/webhooks/tookan/task', async (req, res) => {
 
     const record = {
       job_id: parseInt(jobId) || jobId,
+      order_id: payload.order_id || payload.job_pickup_name || '',
       cod_amount: parseFloat(payload.cod_amount || payload.cod || 0),
       order_fees: parseFloat(payload.order_fees || payload.order_payment || 0),
       fleet_id: payload.fleet_id ? parseInt(payload.fleet_id) : null,
@@ -4279,6 +4280,8 @@ app.post('/api/webhooks/tookan/task', async (req, res) => {
       pickup_address: payload.job_pickup_address || payload.pickup_address || '',
       delivery_address: payload.customer_address || payload.job_address || payload.delivery_address || '',
       creation_datetime: payload.creation_datetime || payload.job_time || payload.created_at || payload.timestamp || new Date().toISOString(),
+      completed_datetime: payload.completed_datetime || payload.job_delivered_datetime || payload.acknowledged_datetime || null,
+      tags: payload.tags || payload.job_tags || '',
       raw_data: payload,
       last_synced_at: new Date().toISOString()
     };

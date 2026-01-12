@@ -3729,6 +3729,68 @@ function getApp() {
         res.status(500).json({ status: 'error', message: error.message });
       }
     });
+    // POST Tookan Task Webhook (for production stability)
+    app.post('/api/webhooks/tookan/task', async (req, res) => {
+      try {
+        const secretHeader = req.headers['x-webhook-secret'];
+        const expected = getWebhookSecret();
+        const payload = req.body || {};
+        const bodySecret = payload.tookan_shared_secret;
+
+        if (!expected || (secretHeader !== expected && bodySecret !== expected)) {
+          console.warn('⚠️  Vercel Webhook: Unauthorized attempt');
+          return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+        }
+
+        const jobId = payload.job_id || payload.id || payload.task_id;
+        if (!jobId) return res.status(400).json({ status: 'error', message: 'job_id is required' });
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(503).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        // Check if task is deleted
+        const isDeleted = payload.is_deleted === 1 || payload.is_deleted === '1' || payload.is_deleted === true;
+        if (isDeleted) {
+          await supabase.from('tasks').delete().eq('job_id', parseInt(jobId));
+          console.log('✅ Vercel Webhook: Deleted task removed:', jobId);
+          return res.status(200).json({ status: 'success', message: 'Task deleted' });
+        }
+
+        // Map the payload to our schema (using the fixed logic from server/index.js)
+        const record = {
+          job_id: parseInt(jobId) || jobId,
+          order_id: payload.order_id || payload.job_pickup_name || '',
+          cod_amount: parseFloat(payload.cod_amount || payload.cod || 0),
+          order_fees: parseFloat(payload.order_fees || payload.order_payment || 0),
+          fleet_id: payload.fleet_id ? parseInt(payload.fleet_id) : null,
+          fleet_name: payload.fleet_name || payload.driver_name || '',
+          notes: payload.customer_comments || payload.notes || '',
+          status: payload.status || payload.job_status || null,
+          customer_name: payload.customer_name || payload.customer_username || '',
+          customer_phone: payload.customer_phone || '',
+          customer_email: payload.customer_email || '',
+          pickup_address: payload.job_pickup_address || payload.pickup_address || '',
+          delivery_address: payload.customer_address || payload.job_address || payload.delivery_address || '',
+          creation_datetime: payload.creation_datetime || payload.job_time || payload.created_at || payload.timestamp || new Date().toISOString(),
+          completed_datetime: payload.completed_datetime || payload.job_delivered_datetime || payload.acknowledged_datetime || null,
+          tags: payload.tags || payload.job_tags || '',
+          raw_data: payload,
+          last_synced_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        const { error } = await supabase.from('tasks').upsert(record, { onConflict: 'job_id' });
+        if (error) throw error;
+
+        console.log('✅ Vercel Webhook: Task upserted successfully:', jobId);
+        res.json({ status: 'success', message: 'Task upserted' });
+      } catch (err) {
+        console.error('❌ Vercel Webhook error:', err.message);
+        res.status(500).json({ status: 'error', message: err.message });
+      }
+    });
+
 
     // GET All Customers (via Tookan API)
     app.get('/api/tookan/customers', authenticate, async (req, res) => {

@@ -333,7 +333,7 @@ export function OrderEditorPanel() {
 
           {/* Locked Fields Section */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">🔒 Locked Fields (Read Only)</p>
+            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Locked Fields (Read Only)</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-subheading text-xs uppercase mb-1">Order Date</p>
@@ -380,7 +380,7 @@ export function OrderEditorPanel() {
 
           {/* Editable Fields Section */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-wide">✏️ Editable Fields</p>
+            <p className="text-xs font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-wide">Editable Fields</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-subheading text-xs uppercase mb-1">COD Amount ($)</p>
