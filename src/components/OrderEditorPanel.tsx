@@ -334,16 +334,29 @@ export function OrderEditorPanel() {
 
       {order && (
         <div className="bg-card dark:bg-[#223560] rounded-xl border border-border dark:border-[#2A3C63] p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6">
+            {/* Task Info */}
             <div>
-              <p className="text-subheading text-xs uppercase tracking-wide mb-1">Task ID</p>
-              <p className="text-heading text-xl font-mono">{order.jobId}</p>
-              {order.date && <p className="text-sm text-muted-foreground mt-1">{new Date(order.date).toLocaleString()}</p>}
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                Task ID
+              </p>
+              <p className="text-xl font-mono text-heading leading-snug">
+                {order.jobId}
+              </p>
+              {order.date && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  {new Date(order.date).toLocaleString()}
+                </p>
+              )}
             </div>
-            <div className="text-sm text-muted-foreground">
-              COD: ${order.codAmount.toFixed(2)} • Fees: ${order.orderFees.toFixed(2)}
+
+            {/* COD & Fees */}
+            <div className="text-sm text-muted-foreground mt-2 sm:mt-0">
+              <span className="font-medium">COD:</span> ${order.codAmount.toFixed(2)} •{" "}
+              <span className="font-medium">Fees:</span> ${order.orderFees.toFixed(2)}
             </div>
           </div>
+
 
           {/* Locked Fields Section */}
           <div className="space-y-2">

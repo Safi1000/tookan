@@ -4265,26 +4265,40 @@ app.post('/api/webhooks/tookan/task', async (req, res) => {
       return res.status(200).json({ status: 'success', message: 'Task deleted from cache' });
     }
 
+    // Debug: Log payload keys to identify completed_datetime field name
+    console.log('📥 Webhook payload keys:', Object.keys(payload));
+    console.log('📅 completed_datetime candidates:', {
+      completed_datetime: payload.completed_datetime,
+      job_delivered_datetime: payload.job_delivered_datetime,
+      acknowledged_datetime: payload.acknowledged_datetime,
+      completed_date_time: payload.completed_date_time,
+      delivery_datetime: payload.delivery_datetime,
+      job_status: payload.job_status || payload.status
+    });
+
     const record = {
       job_id: parseInt(jobId) || jobId,
       order_id: payload.order_id || payload.job_pickup_name || '',
       cod_amount: parseFloat(payload.cod_amount || payload.cod || 0),
       order_fees: parseFloat(payload.order_fees || payload.order_payment || 0),
       fleet_id: payload.fleet_id ? parseInt(payload.fleet_id) : null,
-      fleet_name: payload.fleet_name || payload.driver_name || '',
-      notes: payload.customer_comments || payload.notes || '',
-      status: payload.status || payload.job_status || null,
+      fleet_name: payload.fleet_name || payload.driver_name || payload.username || '',
+      notes: payload.customer_comments || payload.customer_comment || payload.notes || '',
+      status: payload.job_status || payload.status || null,
       customer_name: payload.customer_name || payload.customer_username || '',
       customer_phone: payload.customer_phone || '',
       customer_email: payload.customer_email || '',
       pickup_address: payload.job_pickup_address || payload.pickup_address || '',
       delivery_address: payload.customer_address || payload.job_address || payload.delivery_address || '',
       creation_datetime: payload.creation_datetime || payload.job_time || payload.created_at || payload.timestamp || new Date().toISOString(),
-      completed_datetime: payload.completed_datetime || payload.job_delivered_datetime || payload.acknowledged_datetime || null,
+      // Expanded completed_datetime lookup - check all possible Tookan field names
+      completed_datetime: payload.completed_datetime || payload.job_delivered_datetime || payload.acknowledged_datetime || payload.completed_date_time || payload.delivery_datetime || null,
       tags: payload.tags || payload.job_tags || '',
       raw_data: payload,
       last_synced_at: new Date().toISOString()
     };
+
+    console.log('📝 Record completed_datetime value:', record.completed_datetime);
 
     await taskModel.upsertTask(record.job_id, record);
 

@@ -147,6 +147,7 @@ function transformTaskToDB(taskData) {
     delivery_address: taskData.delivery_address,
     notes: taskData.notes,
     creation_datetime: taskData.creation_datetime || taskData.job_time || taskData.created_at,
+    completed_datetime: taskData.completed_datetime || taskData.job_completed_datetime || taskData.acknowledged_datetime || null,
     webhook_received_at: taskData.webhook_received_at,
     event_type: taskData.event_type,
     tags: taskData.tags || null
@@ -256,6 +257,7 @@ async function updateTaskFromWebhook(webhookData) {
     job_id: jobId,
     order_id: jobId, // Alias for compatibility
     creation_datetime: webhookData.creation_datetime || webhookData.created_at || webhookData.job_time || existingTask?.creation_datetime,
+    completed_datetime: webhookData.completed_datetime || webhookData.job_completed_datetime || webhookData.acknowledged_datetime || existingTask?.completed_datetime,
     job_time: webhookData.job_time || webhookData.creation_datetime || existingTask?.job_time,
 
     // Status
