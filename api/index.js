@@ -718,7 +718,7 @@ function getApp() {
         const agentMap = {};
         if (allAgents) {
           allAgents.forEach(a => {
-            agentMap[a.fleet_id] = a.phone || a.fleet_phone || '';
+            agentMap[String(a.fleet_id)] = a.phone || a.fleet_phone || '';
           });
         }
 
@@ -788,6 +788,7 @@ function getApp() {
         const orders = (data || []).map(task => {
           const codAmount = parseFloat(task.cod_amount || 0);
           const orderFees = parseFloat(task.order_fees || 0);
+          const fleetIdStr = task.fleet_id ? String(task.fleet_id) : '';
           return {
             jobId: task.job_id?.toString() || '',
             job_id: task.job_id,
@@ -801,8 +802,8 @@ function getApp() {
             assignedDriver: task.fleet_id || null,
             fleet_name: task.fleet_name || '',
             assignedDriverName: task.fleet_name || '',
-            driver_phone: agentMap[task.fleet_id] || task.raw_data?.fleet_phone || '',
-            driverPhone: agentMap[task.fleet_id] || task.raw_data?.fleet_phone || '',
+            driver_phone: agentMap[fleetIdStr] || task.raw_data?.fleet_phone || '',
+            driverPhone: agentMap[fleetIdStr] || task.raw_data?.fleet_phone || '',
             notes: task.notes || '',
             date: task.creation_datetime || null,
             creation_datetime: task.creation_datetime || null,

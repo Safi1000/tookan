@@ -24,6 +24,7 @@ export function ReportsPanel() {
   const [unifiedDriverSearch, setUnifiedDriverSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   // Data state
   const [orders, setOrders] = useState<any[]>([]);
@@ -57,13 +58,14 @@ export function ReportsPanel() {
   }, [orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch]);
 
   const hasActiveSearch = useMemo(() => {
-    return !!(combinedSearch || dateFrom || dateTo);
-  }, [combinedSearch, dateFrom, dateTo]);
+    return !!(combinedSearch || dateFrom || dateTo || statusFilter);
+  }, [combinedSearch, dateFrom, dateTo, statusFilter]);
+
 
   // Fetch data on mount and when filters change
   useEffect(() => {
     loadData();
-  }, [dateFrom, dateTo, combinedSearch]); // Reload when date filters or search change
+  }, [dateFrom, dateTo, combinedSearch, statusFilter]); // Reload when date filters, search, or status change
 
   const loadData = async () => {
     setIsLoading(true);
@@ -77,8 +79,10 @@ export function ReportsPanel() {
       if (hasActiveSearch) {
         // Build filters
         const filters: OrderFilters = {
+
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,
+          status: statusFilter || undefined,
           search: combinedSearch,
           limit: 100, // Search results limit
           page: 1
@@ -290,7 +294,7 @@ export function ReportsPanel() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     format: 'excel',
-                    filters: { orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch, dateFrom, dateTo },
+                    filters: { orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch, dateFrom, dateTo, status: statusFilter },
                     columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
                   })
                 });
@@ -321,7 +325,7 @@ export function ReportsPanel() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     format: 'csv',
-                    filters: { orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch, dateFrom, dateTo },
+                    filters: { orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch, dateFrom, dateTo, status: statusFilter },
                     columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
                   })
                 });
@@ -488,6 +492,33 @@ export function ReportsPanel() {
           </div>
         </div>
 
+
+        {/* Status Filter */}
+        <div className="mb-6">
+          <label className="block text-heading text-sm mb-2">Filter by Status</label>
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1]" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none transition-all appearance-none cursor-pointer"
+            >
+              <option value="">All Statuses</option>
+              <option value="0">Assigned</option>
+              <option value="1">Started</option>
+              <option value="2">Successful</option>
+              <option value="3">Failed</option>
+              <option value="4">InProgress/Arrived</option>
+              <option value="6">Unassigned</option>
+              <option value="7">Accepted/Acknowledged</option>
+              <option value="8">Declined</option>
+              <option value="9">Cancelled</option>
+              <option value="10">Deleted</option>
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1] pointer-events-none" />
+          </div>
+        </div>
+
         {/* Date Range */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -510,43 +541,45 @@ export function ReportsPanel() {
       </div>
 
       {/* Driver Performance Table */}
-      {driverPerformanceData.length > 0 && (
-        <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
-          <div className="px-6 py-4 border-b border-border dark:border-[#2A3C63] bg-muted/10 dark:bg-[#1A2C53]/30">
-            <h3 className="text-heading dark:text-[#C1EEFA] font-semibold">Driver Summary</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                <tr>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Name</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Number of Orders</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD Totals</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Total Order Value</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Avg Delivery Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {driverPerformanceData.map((perf, idx) => (
-                  <tr key={perf.fleet_id || idx} className="border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors">
-                    <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">{perf.fleet_id}</td>
-                    <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{perf.name}</td>
-                    <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{perf.total_orders}</td>
-                    <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
-                    <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
-                    <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
-                    <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
-                      {perf.avg_delivery_time > 0 ? `${perf.avg_delivery_time.toFixed(1)} mins` : 'N/A'}
-                    </td>
+      {
+        driverPerformanceData.length > 0 && (
+          <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
+            <div className="px-6 py-4 border-b border-border dark:border-[#2A3C63] bg-muted/10 dark:bg-[#1A2C53]/30">
+              <h3 className="text-heading dark:text-[#C1EEFA] font-semibold">Driver Summary</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                  <tr>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Name</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Number of Orders</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD Totals</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Total Order Value</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Avg Delivery Time</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {driverPerformanceData.map((perf, idx) => (
+                    <tr key={perf.fleet_id || idx} className="border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors">
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">{perf.fleet_id}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{perf.name}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{perf.total_orders}</td>
+                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
+                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
+                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
+                        {perf.avg_delivery_time > 0 ? `${perf.avg_delivery_time.toFixed(1)} mins` : 'N/A'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Orders Table */}
       <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
@@ -612,6 +645,7 @@ export function ReportsPanel() {
                       </td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{driverId}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{driverName}</td>
+                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{order.driver_phone || order.driverPhone || ''}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{customerName}</td>
                       <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{customerPhone}</td>
                       <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate" title={pickupAddress}>{pickupAddress}</td>
@@ -619,8 +653,6 @@ export function ReportsPanel() {
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof cod === 'number' ? cod.toFixed(2) : cod}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{typeof orderFees === 'number' ? orderFees.toFixed(2) : orderFees}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">{orderId}</td>
-                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm italic">{order.tags || order.tag || ''}</td>
-                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{order.driver_phone || order.driverPhone || ''}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
                         <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${order.status === 2 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                           order.status === 3 || order.status === 9 || order.status === 8 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
@@ -629,6 +661,7 @@ export function ReportsPanel() {
                           {mapStatus(order.status)}
                         </span>
                       </td>
+                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm italic">{order.tags || order.tag || ''}</td>
                     </tr>
                   );
                 })}
@@ -637,6 +670,6 @@ export function ReportsPanel() {
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 }

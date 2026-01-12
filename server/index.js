@@ -4149,13 +4149,17 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
     const agentPhoneMap = {};
     if (allAgents) {
       allAgents.forEach(a => {
-        agentPhoneMap[a.fleet_id] = a.phone || '';
+        // Use string keys to ensure matching works regardless of type (int/string)
+        agentPhoneMap[String(a.fleet_id)] = a.phone || '';
       });
     }
 
     const orders = (result.tasks || []).map(task => {
       const codAmount = parseFloat(task.cod_amount || 0);
       const orderFees = parseFloat(task.order_fees || 0);
+      // Ensure fleet_id is handled safely for lookup
+      const fleetIdStr = task.fleet_id ? String(task.fleet_id) : '';
+
       return {
         jobId: task.job_id?.toString() || '',
         job_id: task.job_id,  // Also include snake_case for frontend compatibility
@@ -4169,8 +4173,8 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
         assignedDriver: task.fleet_id || null,
         fleet_name: task.fleet_name || '',
         assignedDriverName: task.fleet_name || '',
-        driver_phone: agentPhoneMap[task.fleet_id] || task.raw_data?.fleet_phone || '',
-        driverPhone: agentPhoneMap[task.fleet_id] || task.raw_data?.fleet_phone || '',
+        driver_phone: agentPhoneMap[fleetIdStr] || task.raw_data?.fleet_phone || '',
+        driverPhone: agentPhoneMap[fleetIdStr] || task.raw_data?.fleet_phone || '',
         notes: task.notes || '',
         date: task.creation_datetime || null,
         creation_datetime: task.creation_datetime || null,
