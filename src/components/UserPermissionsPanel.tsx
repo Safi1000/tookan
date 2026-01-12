@@ -1,406 +1,435 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, Edit, Trash2, Shield, User as UserIcon, CheckCircle, XCircle, Save, X, UserPlus, Lock, X as XIcon, ChevronDown, ChevronRight } from 'lucide-react';
-import { toast } from 'sonner';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
-import { fetchAllUsers, createUser, updateUser, updateUserPermissions, updateUserRole, deleteUser, changeUserPassword, updateUserStatus, type UserAccount as ApiUserAccount } from '../services/userApi';
+"use client"
+
+import { useState, useEffect } from "react"
+import {
+  Search,
+  Plus,
+  Edit,
+  Trash2,
+  Shield,
+  UserIcon,
+  CheckCircle,
+  Save,
+  X,
+  UserPlus,
+  Lock,
+  ChevronDown,
+  Mail,
+  KeyRound,
+  UserCog,
+} from "lucide-react"
+import { toast } from "sonner"
+import { FormGroup, FormControlLabel, Checkbox } from "@mui/material"
+import {
+  fetchAllUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  changeUserPassword,
+  updateUserStatus,
+  type UserAccount as ApiUserAccount,
+} from "../services/userApi"
 
 // Available permissions
 const availablePermissions = [
-  { id: 'edit_order_financials', label: 'Edit Order Financials', category: 'Orders' },
-  { id: 'manage_wallets', label: 'Manage Wallets', category: 'Financial' },
-  { id: 'perform_reorder', label: 'Perform Reorder', category: 'Orders' },
-  { id: 'perform_return', label: 'Perform Return', category: 'Orders' },
-  { id: 'delete_ongoing_orders', label: 'Delete Ongoing Orders', category: 'Orders' },
-  { id: 'export_reports', label: 'Export Reports', category: 'Reports' },
-  { id: 'add_cod', label: 'Add COD', category: 'Financial' },
-  { id: 'confirm_cod_payments', label: 'Confirm COD Payments', category: 'Financial' },
-];
+  { id: "edit_order_financials", label: "Edit Order Financials", category: "Orders" },
+  { id: "manage_wallets", label: "Manage Wallets", category: "Financial" },
+  { id: "perform_reorder", label: "Perform Reorder", category: "Orders" },
+  { id: "perform_return", label: "Perform Return", category: "Orders" },
+  { id: "delete_ongoing_orders", label: "Delete Ongoing Orders", category: "Orders" },
+  { id: "export_reports", label: "Export Reports", category: "Reports" },
+  { id: "add_cod", label: "Add COD", category: "Financial" },
+  { id: "confirm_cod_payments", label: "Confirm COD Payments", category: "Financial" },
+]
 
 interface UserAccount {
-  id: string;
-  name: string;
-  email: string;
-  permissions: string[];
-  status: 'Active' | 'Inactive' | 'Banned';
-  lastLogin: string;
-  role?: string;
+  id: string
+  name: string
+  email: string
+  permissions: string[]
+  status: "Active" | "Inactive" | "Banned"
+  lastLogin: string
+  role?: string
 }
 
 // Convert API user to UI user format
 function apiUserToUIUser(apiUser: ApiUserAccount): UserAccount {
   // Convert permissions object to array
-  const permissionsArray = typeof apiUser.permissions === 'object' && !Array.isArray(apiUser.permissions)
-    ? Object.keys(apiUser.permissions).filter(key => apiUser.permissions[key] === true)
-    : Array.isArray(apiUser.permissions) 
-      ? apiUser.permissions 
-      : [];
-  
+  const permissionsArray =
+    typeof apiUser.permissions === "object" && !Array.isArray(apiUser.permissions)
+      ? Object.keys(apiUser.permissions).filter((key) => (apiUser.permissions as Record<string, boolean>)[key] === true)
+      : Array.isArray(apiUser.permissions)
+        ? apiUser.permissions
+        : []
+
   // Map status from API to UI format
-  const statusMap: Record<string, 'Active' | 'Inactive' | 'Banned'> = {
-    'active': 'Active',
-    'disabled': 'Inactive',
-    'banned': 'Banned',
-    'inactive': 'Inactive' // tolerate legacy UI label
-  };
-  const rawStatus = (apiUser.status || 'active').toString().toLowerCase();
-  const uiStatus = statusMap[rawStatus] || 'Active';
-  
+  const statusMap: Record<string, "Active" | "Inactive" | "Banned"> = {
+    active: "Active",
+    disabled: "Inactive",
+    banned: "Banned",
+    inactive: "Inactive", // tolerate legacy UI label
+  }
+  const rawStatus = (apiUser.status || "active").toString().toLowerCase()
+  const uiStatus = statusMap[rawStatus] || "Active"
+
   return {
     id: apiUser.id,
     name: apiUser.name || apiUser.email,
     email: apiUser.email,
     permissions: permissionsArray,
     status: uiStatus,
-    lastLogin: apiUser.lastLogin || 'Never',
-    role: apiUser.role
-  };
+    lastLogin: apiUser.lastLogin || "Never",
+    role: apiUser.role,
+  }
 }
 
 // Convert UI user permissions array to API permissions object
 function permissionsArrayToObject(permissions: string[]): Record<string, boolean> {
-  const obj: Record<string, boolean> = {};
-  permissions.forEach(perm => {
-    obj[perm] = true;
-  });
-  return obj;
+  const obj: Record<string, boolean> = {}
+  permissions.forEach((perm) => {
+    obj[perm] = true
+  })
+  return obj
 }
 
 export function UserPermissionsPanel() {
   // Get permission categories (must be defined before useState)
-  const permissionCategories = Array.from(new Set(availablePermissions.map(p => p.category)));
-  
-  const [users, setUsers] = useState<UserAccount[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
-  const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
-  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
-  const [isProcessingCustomer, setIsProcessingCustomer] = useState(false);
-  const [showDeleteAuthModal, setShowDeleteAuthModal] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<string | null>(null);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
-  const [userToChangePassword, setUserToChangePassword] = useState<UserAccount | null>(null);
-  const [passwordData, setPasswordData] = useState({ newPassword: '', confirmPassword: '' });
-  const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const permissionCategories = Array.from(new Set(availablePermissions.map((p) => p.category)))
+
+  const [users, setUsers] = useState<UserAccount[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false)
+  const [editingUser, setEditingUser] = useState<UserAccount | null>(null)
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([])
+  const [isProcessingCustomer, setIsProcessingCustomer] = useState(false)
+  const [showDeleteAuthModal, setShowDeleteAuthModal] = useState(false)
+  const [userToDelete, setUserToDelete] = useState<string | null>(null)
+  const [deletePassword, setDeletePassword] = useState("")
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false)
+  const [userToChangePassword, setUserToChangePassword] = useState<UserAccount | null>(null)
+  const [passwordData, setPasswordData] = useState({ newPassword: "", confirmPassword: "" })
+  const [permissionsOpen, setPermissionsOpen] = useState(false)
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(
-    permissionCategories.reduce((acc, cat) => ({ ...acc, [cat]: false }), {})
-  );
-  
+    permissionCategories.reduce((acc, cat) => ({ ...acc, [cat]: false }), {}),
+  )
+
   // Form state
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    status: 'Active' as 'Active' | 'Inactive' | 'Banned',
-  });
+    name: "",
+    email: "",
+    password: "",
+    status: "Active" as "Active" | "Inactive" | "Banned",
+  })
 
   // Customer form state
   const [customerFormData, setCustomerFormData] = useState({
-    name: '',
-    phone: '',
-  });
+    name: "",
+    phone: "",
+  })
 
   // Fetch users on mount
   useEffect(() => {
-    loadUsers();
-  }, []);
+    loadUsers()
+  }, [])
 
   const loadUsers = async () => {
-    setIsLoading(true);
+    setIsLoading(true)
     try {
-      const response = await fetchAllUsers();
-      if (response.status === 'success' && response.data.users) {
-        const uiUsers = response.data.users.map(apiUserToUIUser);
-        setUsers(uiUsers);
+      const response = await fetchAllUsers()
+      if (response.status === "success" && response.data.users) {
+        const uiUsers = response.data.users.map(apiUserToUIUser)
+        setUsers(uiUsers)
       } else {
-        toast.error(response.message || 'Failed to load users');
+        toast.error(response.message || "Failed to load users")
       }
     } catch (error) {
-      console.error('Error loading users:', error);
-      toast.error('Failed to load users');
+      console.error("Error loading users:", error)
+      toast.error("Failed to load users")
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   // Filter users
-  const filteredUsers = (users || []).filter(user => {
-    if (!searchQuery) return true;
-    const lower = searchQuery.toLowerCase();
+  const filteredUsers = (users || []).filter((user) => {
+    if (!searchQuery) return true
+    const lower = searchQuery.toLowerCase()
     return (
       user.name.toLowerCase().includes(lower) ||
       user.email.toLowerCase().includes(lower) ||
       user.id.toLowerCase().includes(lower)
-    );
-  });
+    )
+  })
 
   // Handle add user
   const handleAddUser = () => {
-    setFormData({ name: '', email: '', password: '', status: 'Active' });
-    setSelectedPermissions([]);
-    setEditingUser(null);
-    setShowAddModal(true);
-  };
+    setFormData({ name: "", email: "", password: "", status: "Active" })
+    setSelectedPermissions([])
+    setEditingUser(null)
+    setShowAddModal(true)
+  }
 
   // Handle edit user
   const handleEditUser = (user: UserAccount) => {
     setFormData({
       name: user.name,
       email: user.email,
-      password: '',
+      password: "",
       status: user.status,
-    });
-    setSelectedPermissions([...user.permissions]);
-    setEditingUser(user);
-    setShowAddModal(true);
-  };
+    })
+    setSelectedPermissions([...user.permissions])
+    setEditingUser(user)
+    setShowAddModal(true)
+  }
 
   // Handle save user
   const handleSaveUser = async () => {
     if (!formData.name || !formData.email) {
-      toast.error('Please fill in all required fields');
-      return;
+      toast.error("Please fill in all required fields")
+      return
     }
 
     try {
       if (editingUser) {
         // Update existing user
-        const permissionsObj = permissionsArrayToObject(selectedPermissions);
+        const permissionsObj = permissionsArrayToObject(selectedPermissions)
         const response = await updateUser(editingUser.id, {
           name: formData.name,
           email: formData.email,
-          permissions: permissionsObj
-        });
+          permissions: permissionsObj,
+        })
 
-        if (response.status === 'success') {
-          toast.success('User updated successfully');
-          await loadUsers();
-          setShowAddModal(false);
-          setEditingUser(null);
-          setFormData({ name: '', email: '', password: '', status: 'Active' });
-          setSelectedPermissions([]);
+        if (response.status === "success") {
+          toast.success("User updated successfully")
+          await loadUsers()
+          setShowAddModal(false)
+          setEditingUser(null)
+          setFormData({ name: "", email: "", password: "", status: "Active" })
+          setSelectedPermissions([])
         } else {
-          toast.error(response.message || 'Failed to update user');
+          toast.error(response.message || "Failed to update user")
         }
       } else {
         // Create new user with password
         if (!formData.password) {
-          toast.error('Password is required for new users');
-          return;
+          toast.error("Password is required for new users")
+          return
         }
 
         if (formData.password.length < 6) {
-          toast.error('Password must be at least 6 characters long');
-          return;
+          toast.error("Password must be at least 6 characters long")
+          return
         }
 
-        const permissionsObj = permissionsArrayToObject(selectedPermissions);
+        const permissionsObj = permissionsArrayToObject(selectedPermissions)
         const response = await createUser({
           email: formData.email,
           password: formData.password,
           name: formData.name,
-          role: 'user',
-          permissions: permissionsObj
-        });
+          role: "user",
+          permissions: permissionsObj,
+        })
 
-        if (response.status === 'success') {
-          toast.success('User created successfully');
-          await loadUsers();
-          setShowAddModal(false);
-          setFormData({ name: '', email: '', password: '', status: 'Active' });
-          setSelectedPermissions([]);
+        if (response.status === "success") {
+          toast.success("User created successfully")
+          await loadUsers()
+          setShowAddModal(false)
+          setFormData({ name: "", email: "", password: "", status: "Active" })
+          setSelectedPermissions([])
         } else {
-          toast.error(response.message || 'Failed to create user');
+          toast.error(response.message || "Failed to create user")
         }
       }
     } catch (error) {
-      console.error('Error saving user:', error);
-      toast.error('Failed to save user');
+      console.error("Error saving user:", error)
+      toast.error("Failed to save user")
     }
-  };
+  }
 
   // Check if user is admin
   const isAdminUser = (userId: string): boolean => {
-    const user = users.find(u => u.id === userId);
-    return user ? user.email.toLowerCase().includes('admin@turbobahrain.com') || user.name.toLowerCase().includes('admin user') : false;
-  };
+    const user = users.find((u) => u.id === userId)
+    return user
+      ? user.email.toLowerCase().includes("admin@turbobahrain.com") || user.name.toLowerCase().includes("admin user")
+      : false
+  }
 
   // Handle delete user - show password modal
   const handleDeleteUser = (userId: string) => {
     if (isAdminUser(userId)) {
-      toast.error('Admin users cannot be deleted');
-      return;
+      toast.error("Admin users cannot be deleted")
+      return
     }
-    setUserToDelete(userId);
-    setDeletePassword('');
-    setShowDeleteAuthModal(true);
-  };
+    setUserToDelete(userId)
+    setDeletePassword("")
+    setShowDeleteAuthModal(true)
+  }
 
   // Verify admin password and delete user
   const handleDeleteConfirm = async () => {
     if (!userToDelete) {
-      return;
+      return
     }
 
     // Double check to prevent admin deletion
     if (isAdminUser(userToDelete)) {
-      toast.error('Admin users cannot be deleted');
-      setShowDeleteAuthModal(false);
-      setUserToDelete(null);
-      setDeletePassword('');
-      return;
+      toast.error("Admin users cannot be deleted")
+      setShowDeleteAuthModal(false)
+      setUserToDelete(null)
+      setDeletePassword("")
+      return
     }
 
     try {
-      const response = await deleteUser(userToDelete);
-      if (response.status === 'success') {
-        toast.success('User deleted successfully');
-        await loadUsers();
-        setShowDeleteAuthModal(false);
-        setUserToDelete(null);
-        setDeletePassword('');
+      const response = await deleteUser(userToDelete)
+      if (response.status === "success") {
+        toast.success("User deleted successfully")
+        await loadUsers()
+        setShowDeleteAuthModal(false)
+        setUserToDelete(null)
+        setDeletePassword("")
       } else {
-        toast.error(response.message || 'Failed to delete user');
+        toast.error(response.message || "Failed to delete user")
       }
     } catch (error) {
-      console.error('Error deleting user:', error);
-      toast.error('Failed to delete user');
+      console.error("Error deleting user:", error)
+      toast.error("Failed to delete user")
     }
-  };
+  }
 
   // Handle change password
   const handleChangePasswordClick = (user: UserAccount) => {
-    setUserToChangePassword(user);
-    setPasswordData({ newPassword: '', confirmPassword: '' });
-    setShowChangePasswordModal(true);
-  };
+    setUserToChangePassword(user)
+    setPasswordData({ newPassword: "", confirmPassword: "" })
+    setShowChangePasswordModal(true)
+  }
 
   // Confirm password change
   const handleChangePasswordConfirm = async () => {
     if (!passwordData.newPassword || !passwordData.confirmPassword) {
-      toast.error('Please fill in all fields');
-      return;
+      toast.error("Please fill in all fields")
+      return
     }
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error('Passwords do not match');
-      return;
+      toast.error("Passwords do not match")
+      return
     }
 
     if (passwordData.newPassword.length < 6) {
-      toast.error('Password must be at least 6 characters long');
-      return;
+      toast.error("Password must be at least 6 characters long")
+      return
     }
 
     if (!userToChangePassword) {
-      return;
+      return
     }
 
     try {
-      const response = await changeUserPassword(userToChangePassword.id, passwordData.newPassword);
-      if (response.status === 'success') {
-        toast.success(`Password changed successfully for ${userToChangePassword.name}`);
-        setShowChangePasswordModal(false);
-        setUserToChangePassword(null);
-        setPasswordData({ newPassword: '', confirmPassword: '' });
+      const response = await changeUserPassword(userToChangePassword.id, passwordData.newPassword)
+      if (response.status === "success") {
+        toast.success(`Password changed successfully for ${userToChangePassword.name}`)
+        setShowChangePasswordModal(false)
+        setUserToChangePassword(null)
+        setPasswordData({ newPassword: "", confirmPassword: "" })
       } else {
-        toast.error(response.message || 'Failed to change password');
+        toast.error(response.message || "Failed to change password")
       }
     } catch (error) {
-      console.error('Error changing password:', error);
-      toast.error('Failed to change password');
+      console.error("Error changing password:", error)
+      toast.error("Failed to change password")
     }
-  };
+  }
 
   // Handle status change (enable/disable/ban)
-  const handleStatusChange = async (userId: string, newStatus: 'active' | 'disabled' | 'banned') => {
-    const user = users.find(u => u.id === userId);
+  const handleStatusChange = async (userId: string, newStatus: "active" | "disabled" | "banned") => {
+    const user = users.find((u) => u.id === userId)
     if (!user) {
-      toast.error('User not found');
-      return;
+      toast.error("User not found")
+      return
     }
 
     // Prevent changing superadmin status
-    if (user.email === 'ahmedhassan123.ah83@gmail.com') {
-      toast.error('Cannot change superadmin status');
-      return;
+    if (user.email === "ahmedhassan123.ah83@gmail.com") {
+      toast.error("Cannot change superadmin status")
+      return
     }
 
     try {
-      const response = await updateUserStatus(userId, newStatus);
-      if (response.status === 'success') {
-        const actionLabel = newStatus === 'active' ? 'enabled' : newStatus === 'banned' ? 'banned' : 'disabled';
-        toast.success(`User ${actionLabel} successfully`);
-        await loadUsers();
+      const response = await updateUserStatus(userId, newStatus)
+      if (response.status === "success") {
+        const actionLabel = newStatus === "active" ? "enabled" : newStatus === "banned" ? "banned" : "disabled"
+        toast.success(`User ${actionLabel} successfully`)
+        await loadUsers()
       } else {
-        toast.error(response.message || 'Failed to update user status');
+        toast.error(response.message || "Failed to update user status")
       }
     } catch (error) {
-      console.error('Error updating user status:', error);
-      toast.error('Failed to update user status');
+      console.error("Error updating user status:", error)
+      toast.error("Failed to update user status")
     }
-  };
+  }
 
   // Toggle permission
   const togglePermission = (permissionId: string) => {
     if (selectedPermissions.includes(permissionId)) {
-      setSelectedPermissions(selectedPermissions.filter(p => p !== permissionId));
+      setSelectedPermissions(selectedPermissions.filter((p) => p !== permissionId))
     } else {
-      setSelectedPermissions([...selectedPermissions, permissionId]);
+      setSelectedPermissions([...selectedPermissions, permissionId])
     }
     // Keep dropdown open for multiple selections
-  };
+  }
 
   // Toggle category
   const toggleCategory = (category: string) => {
-    setOpenCategories(prev => ({ ...prev, [category]: !prev[category] }));
-  };
+    setOpenCategories((prev) => ({ ...prev, [category]: !prev[category] }))
+  }
 
   // Handle add customer
   const handleAddCustomer = async () => {
     if (!customerFormData.name || !customerFormData.phone) {
-      toast.error('Please fill in all required fields');
-      return;
+      toast.error("Please fill in all required fields")
+      return
     }
 
-    setIsProcessingCustomer(true);
+    setIsProcessingCustomer(true)
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem("auth_token")
       const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+        "Content-Type": "application/json",
       }
-      
-      const apiBase = (import.meta as any).env?.VITE_API_BASE_URL || '';
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`
+      }
+
+      const apiBase = (import.meta as any).env?.VITE_API_BASE_URL || ""
       const response = await fetch(`${apiBase}/api/tookan/customer/add`, {
-        method: 'POST',
+        method: "POST",
         headers,
         body: JSON.stringify({
           name: customerFormData.name,
           phone: customerFormData.phone,
         }),
-      });
+      })
 
-      const result = await response.json();
+      const result = await response.json()
 
-      if (result.status === 'success') {
-        toast.success('Customer added successfully');
-        setShowAddCustomerModal(false);
-        setCustomerFormData({ name: '', phone: '' });
+      if (result.status === "success") {
+        toast.success("Customer added successfully")
+        setShowAddCustomerModal(false)
+        setCustomerFormData({ name: "", phone: "" })
       } else {
-        toast.error(result.message || 'Failed to add customer');
+        toast.error(result.message || "Failed to add customer")
       }
     } catch (error) {
-      console.error('Add customer error:', error);
-      toast.error('Failed to add customer. Please try again.');
+      console.error("Add customer error:", error)
+      toast.error("Failed to add customer. Please try again.")
     } finally {
-      setIsProcessingCustomer(false);
+      setIsProcessingCustomer(false)
     }
-  };
+  }
 
   return (
     <div className="p-8 space-y-6">
@@ -442,17 +471,25 @@ export function UserPermissionsPanel() {
             <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
               <tr>
                 <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">User</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Permissions</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Last Login</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Actions</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">
+                  Permissions
+                </th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">
+                  Status
+                </th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">
+                  Last Login
+                </th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {filteredUsers.map((user, index) => (
                 <tr
                   key={user.id}
-                  className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}
+                  className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? "table-zebra dark:bg-[#223560]/20" : ""}`}
                 >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
@@ -474,9 +511,12 @@ export function UserPermissionsPanel() {
                         </span>
                       ) : (
                         <>
-                          {user.permissions.slice(0, 3).map(perm => (
-                            <span key={perm} className="px-2 py-1 rounded text-xs bg-primary/10 dark:bg-[#C1EEFA]/20 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30">
-                              {availablePermissions.find(p => p.id === perm)?.label || perm}
+                          {user.permissions.slice(0, 3).map((perm) => (
+                            <span
+                              key={perm}
+                              className="px-2 py-1 rounded text-xs bg-primary/10 dark:bg-[#C1EEFA]/20 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30"
+                            >
+                              {availablePermissions.find((p) => p.id === perm)?.label || perm}
                             </span>
                           ))}
                           {user.permissions.length > 3 && (
@@ -489,31 +529,36 @@ export function UserPermissionsPanel() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    {user.email === 'ahmedhassan123.ah83@gmail.com' ? (
+                    {user.email === "ahmedhassan123.ah83@gmail.com" ? (
                       <span className="px-3 py-1 rounded-lg text-xs font-medium bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/30">
                         👑 Superadmin
                       </span>
                     ) : (
                       <select
-                        value={user.status === 'Active' ? 'active' : user.status === 'Inactive' ? 'disabled' : 'banned'}
-                        onChange={(e) => handleStatusChange(user.id, e.target.value as 'active' | 'disabled' | 'banned')}
-                        className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer border ${
-                          user.status === 'Active'
-                            ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30'
-                            : user.status === 'Inactive'
-                            ? 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/30'
-                            : 'bg-destructive/10 text-destructive border-destructive/30'
-                        }`}
+                        value={user.status === "Active" ? "active" : user.status === "Inactive" ? "disabled" : "banned"}
+                        onChange={(e) =>
+                          handleStatusChange(user.id, e.target.value as "active" | "disabled" | "banned")
+                        }
+                        className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer border ${user.status === "Active"
+                          ? "bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30"
+                          : user.status === "Inactive"
+                            ? "bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/30"
+                            : "bg-destructive/10 text-destructive border-destructive/30"
+                          }`}
                       >
-                        <option value="active" className="bg-background text-foreground">✓ Active</option>
-                        <option value="disabled" className="bg-background text-foreground">⏸ Disabled</option>
-                        <option value="banned" className="bg-background text-foreground">🚫 Banned</option>
+                        <option value="active" className="bg-background text-foreground">
+                          ✓ Active
+                        </option>
+                        <option value="disabled" className="bg-background text-foreground">
+                          ⏸ Disabled
+                        </option>
+                        <option value="banned" className="bg-background text-foreground">
+                          🚫 Banned
+                        </option>
                       </select>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1] text-sm">
-                    {user.lastLogin}
-                  </td>
+                  <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{user.lastLogin}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <button
@@ -539,7 +584,10 @@ export function UserPermissionsPanel() {
                           <Trash2 className="w-4 h-4 text-destructive" />
                         </button>
                       ) : (
-                        <span className="p-2 text-muted-light dark:text-[#99BFD1] cursor-not-allowed opacity-50" title="Admin users cannot be deleted">
+                        <span
+                          className="p-2 text-muted-light dark:text-[#99BFD1] cursor-not-allowed opacity-50"
+                          title="Admin users cannot be deleted"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </span>
                       )}
@@ -564,203 +612,298 @@ export function UserPermissionsPanel() {
         ) : null}
       </div>
 
-      {/* Add/Edit User Modal */}
       {showAddModal && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4 md:p-6 lg:p-8 animate-in fade-in-0 duration-150" 
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] px-4 py-12 animate-in fade-in-0 duration-300"
           onClick={() => {
-            setShowAddModal(false);
-            setEditingUser(null);
-            setFormData({ name: '', email: '', password: '', status: 'Active' });
-            setSelectedPermissions([]);
+            setShowAddModal(false)
+            setEditingUser(null)
+            setFormData({ name: "", email: "", password: "", status: "Active" })
+            setSelectedPermissions([])
           }}
         >
-          <div 
-            className="relative bg-card dark:bg-[#1A2C53] rounded-xl sm:rounded-2xl shadow-xl w-full max-w-sm sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] sm:max-h-[85vh] mx-auto flex flex-col border border-border dark:border-[#2A3C63] animate-in zoom-in-95 slide-in-from-bottom-1 duration-200"
+          <div
+            className="bg-[#1A2C53] rounded-2xl shadow-2xl w-full max-h-full flex flex-col border border-[#3D5A80] overflow-hidden"
+            style={{ maxWidth: "600px" }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="flex items-start sm:items-center justify-between gap-3 px-4 sm:px-6 md:px-8 lg:px-10 py-3 sm:py-4 md:py-5 border-b border-border dark:border-[#2A3C63]">
-              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-lg sm:rounded-xl md:rounded-xl bg-gradient-to-br from-[#DE3544] to-[#9B3249] flex items-center justify-center flex-shrink-0">
-                  <UserIcon className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+            <div className="flex items-center justify-between px-6 py-5 border-b border-[#3D5A80] bg-[#152342] shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#DE3544] to-[#C42E3C] flex items-center justify-center shadow-lg">
+                  {editingUser ? (
+                    <UserCog className="w-5 h-5 text-white" />
+                  ) : (
+                    <UserPlus className="w-5 h-5 text-white" />
+                  )}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-base sm:text-lg md:text-xl font-semibold text-heading dark:text-[#C1EEFA] truncate">
-                    {editingUser ? 'Edit User' : 'Add User'}
+                <div>
+                  <h2 className="text-lg font-bold text-white tracking-tight">
+                    {editingUser ? "Edit User" : "Create User"}
                   </h2>
-                  <p className="text-[10px] sm:text-xs md:text-sm text-muted-light dark:text-[#99BFD1] line-clamp-1">
-                    {editingUser ? 'Update details and permissions' : 'Create a new user account'}
+                  <p className="text-sm text-[#99BFD1]">
+                    {editingUser ? "Update details and permissions" : "Add a new team member"}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => {
-                  setShowAddModal(false);
-                  setEditingUser(null);
-                  setFormData({ name: '', email: '', password: '', status: 'Active' });
-                  setSelectedPermissions([]);
+                  setShowAddModal(false)
+                  setEditingUser(null)
+                  setFormData({ name: "", email: "", password: "", status: "Active" })
+                  setSelectedPermissions([])
                 }}
-                className="p-1.5 sm:p-2 rounded-lg hover:bg-muted/50 dark:hover:bg-[#2A3C63]/50 transition-colors flex-shrink-0"
+                className="p-2 rounded-xl hover:bg-white/10 transition-all duration-200 group"
+                aria-label="Close"
               >
-                <X className="w-4 h-4 sm:w-5 sm:h-5 text-muted-light dark:text-[#99BFD1]" />
+                <X className="w-5 h-5 text-[#99BFD1] group-hover:text-white transition-colors" />
               </button>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-10 space-y-4 sm:space-y-5 md:space-y-6">
-              {/* Name Field */}
-              <div>
-                <label className="block text-heading dark:text-[#C1EEFA] text-xs sm:text-sm md:text-base mb-1.5 sm:mb-2 md:mb-2.5 font-medium">
-                  Name <span className="text-destructive">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-lg sm:rounded-xl md:rounded-xl px-3 sm:px-4 md:px-5 py-2 sm:py-3 md:py-3 text-sm md:text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
-                  placeholder="Enter full name"
-                />
-              </div>
-
-              {/* Email Field */}
-              <div>
-                <label className="block text-heading dark:text-[#C1EEFA] text-xs sm:text-sm md:text-base mb-1.5 sm:mb-2 md:mb-2.5 font-medium">
-                  Email <span className="text-destructive">*</span>
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-lg sm:rounded-xl md:rounded-xl px-3 sm:px-4 md:px-5 py-2 sm:py-3 md:py-3 text-sm md:text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
-                  placeholder="user@example.com"
-                />
-              </div>
-
-              {/* Password Field - Only for new users */}
-              {!editingUser && (
-                <div>
-                  <label className="block text-heading dark:text-[#C1EEFA] text-xs sm:text-sm md:text-base mb-1.5 sm:mb-2 md:mb-2.5 font-medium">
-                    Password <span className="text-destructive">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-lg sm:rounded-xl md:rounded-xl px-3 sm:px-4 md:px-5 py-2 sm:py-3 md:py-3 text-sm md:text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
-                    placeholder="Minimum 6 characters"
-                  />
-                  <p className="text-[10px] sm:text-xs md:text-sm text-muted-light dark:text-[#99BFD1] mt-1 sm:mt-1.5 md:mt-2">Password must be at least 6 characters</p>
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0">
+              {/* User Details Section */}
+              <div className="space-y-6">
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-5 bg-[#DE3544] rounded-full" />
+                  <h3 className="text-sm font-bold text-[#C1EEFA] uppercase tracking-widest">Account Details</h3>
                 </div>
-              )}
 
-              {/* Status Field */}
-              <div>
-                <label className="block text-heading dark:text-[#C1EEFA] text-xs sm:text-sm md:text-base mb-1.5 sm:mb-2 md:mb-2.5 font-medium">
-                  Status
-                </label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Active' | 'Inactive' | 'Banned' })}
-                  className="w-full bg-input-bg dark:bg-[#223560]/50 border border-input-border dark:border-[#2A3C63] rounded-lg sm:rounded-xl md:rounded-xl px-3 sm:px-4 md:px-5 py-2 sm:py-3 md:py-3 text-sm md:text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-[#C1EEFA]/30 focus:border-[#C1EEFA]/50 transition-all"
-                >
-                  <option value="Active">✓ Active</option>
-                  <option value="Inactive">⏸ Inactive</option>
-                  <option value="Banned">🚫 Banned</option>
-                </select>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Full Name */}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-[#99BFD1] uppercase tracking-wider">
+                      <UserIcon className="w-4 h-4" />
+                      Full Name
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full bg-[#0F172A] border border-[#3D5A80] rounded-lg px-3 py-2 text-sm text-white placeholder:text-[#5B7894] focus:outline-none focus:border-[#C1EEFA] focus:ring-2 focus:ring-[#C1EEFA]/20 transition-all duration-200"
+                      placeholder="Enter full name"
+                    />
+                  </div>
+
+                  {/* Email */}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-[#99BFD1] uppercase tracking-wider">
+                      <Mail className="w-4 h-4" />
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className="w-full bg-[#0F172A] border border-[#3D5A80] rounded-lg px-3 py-2 text-sm text-white placeholder:text-[#5B7894] focus:outline-none focus:border-[#C1EEFA] focus:ring-2 focus:ring-[#C1EEFA]/20 transition-all duration-200"
+                      placeholder="user@example.com"
+                    />
+                  </div>
+
+                  {/* Password - only for new users */}
+                  {!editingUser && (
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 text-xs font-bold text-[#99BFD1] uppercase tracking-wider">
+                        <KeyRound className="w-4 h-4" />
+                        Password
+                      </label>
+                      <input
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        className="w-full bg-[#0F172A] border border-[#3D5A80] rounded-lg px-3 py-2 text-sm text-white placeholder:text-[#5B7894] focus:outline-none focus:border-[#C1EEFA] focus:ring-2 focus:ring-[#C1EEFA]/20 transition-all duration-200"
+                        placeholder="Min. 6 characters"
+                      />
+                    </div>
+                  )}
+
+                  {/* Status */}
+                  <div className={`space-y-2 ${!editingUser ? "" : "md:col-span-2"}`}>
+                    <label className="flex items-center gap-2 text-xs font-bold text-[#99BFD1] uppercase tracking-wider">
+                      <CheckCircle className="w-4 h-4" />
+                      Account Status
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={formData.status}
+                        onChange={(e) =>
+                          setFormData({ ...formData, status: e.target.value as "Active" | "Inactive" | "Banned" })
+                        }
+                        className="w-full bg-[#0F172A] border border-[#3D5A80] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#C1EEFA] focus:ring-2 focus:ring-[#C1EEFA]/20 transition-all duration-200 appearance-none cursor-pointer"
+                      >
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Disabled</option>
+                        <option value="Banned">Banned</option>
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#5B7894] pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Permissions Section */}
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
-                  <label className="flex items-center gap-1.5 sm:gap-2 md:gap-2.5 text-heading dark:text-[#C1EEFA] text-xs sm:text-sm md:text-base font-medium flex-1 min-w-0">
-                    <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 flex-shrink-0" />
-                    <span className="truncate">Permissions</span>
-                    {selectedPermissions.length > 0 && (
-                      <span className="px-1.5 sm:px-2 md:px-2.5 py-0.5 md:py-1 rounded-full bg-[#C1EEFA]/20 text-[#1A2C53] dark:text-[#C1EEFA] text-[10px] sm:text-xs md:text-sm font-bold flex-shrink-0">
-                        {selectedPermissions.length}
-                      </span>
-                    )}
-                  </label>
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1 h-5 bg-[#C1EEFA] rounded-full" />
+                    <h3 className="text-sm font-bold text-[#C1EEFA] uppercase tracking-widest flex items-center gap-2">
+                      <Shield className="w-4 h-4" />
+                      Permissions
+                    </h3>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
                       if (selectedPermissions.length === availablePermissions.length) {
-                        setSelectedPermissions([]);
+                        setSelectedPermissions([])
                       } else {
-                        setSelectedPermissions(availablePermissions.map(p => p.id));
+                        setSelectedPermissions(availablePermissions.map((p) => p.id))
                       }
                     }}
-                    className="text-[10px] sm:text-xs md:text-sm text-[#C1EEFA] hover:text-[#8FD0E0] font-medium transition-colors whitespace-nowrap flex-shrink-0"
+                    className="text-xs font-bold text-[#C1EEFA] hover:text-white transition-colors px-3 py-1.5 bg-[#C1EEFA]/10 hover:bg-[#C1EEFA]/20 rounded-lg"
                   >
-                    {selectedPermissions.length === availablePermissions.length ? 'Clear All' : 'Select All'}
+                    {selectedPermissions.length === availablePermissions.length ? "Clear All" : "Select All"}
                   </button>
                 </div>
 
-                <div className="space-y-1.5 sm:space-y-2 md:space-y-2.5 max-h-40 sm:max-h-48 md:max-h-56 lg:max-h-64 overflow-y-auto pr-1 -mr-1">
-                  {availablePermissions.map(permission => {
-                    const isSelected = selectedPermissions.includes(permission.id);
+                {/* Permission count indicator */}
+                <div className="flex items-center gap-3 px-1">
+                  <div className="flex-1 h-1.5 bg-[#0F172A] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-[#DE3544] to-[#C1EEFA] transition-all duration-300 rounded-full"
+                      style={{ width: `${(selectedPermissions.length / availablePermissions.length) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-semibold text-[#99BFD1]">
+                    {selectedPermissions.length}/{availablePermissions.length}
+                  </span>
+                </div>
+
+                {/* Permission Categories */}
+                <div className="grid grid-cols-1 gap-3">
+                  {permissionCategories.map((category) => {
+                    const categoryPermissions = availablePermissions.filter((p) => p.category === category)
+                    const selectedInCategory = categoryPermissions.filter((p) =>
+                      selectedPermissions.includes(p.id),
+                    ).length
+
                     return (
-                      <button
-                        key={permission.id}
-                        type="button"
-                        onClick={() => togglePermission(permission.id)}
-                        className={`w-full flex items-center justify-between gap-2 sm:gap-3 md:gap-4 px-3 sm:px-4 md:px-5 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-lg border transition-all ${
-                          isSelected
-                            ? 'bg-[#10B981]/10 border-[#10B981]/30 dark:bg-[#10B981]/20'
-                            : 'bg-muted/10 dark:bg-[#223560]/30 border-transparent hover:bg-muted/20 dark:hover:bg-[#223560]/50'
-                        }`}
-                      >
-                        <span className={`text-xs sm:text-sm md:text-base ${isSelected ? 'text-[#10B981] font-medium' : 'text-heading dark:text-[#C1EEFA]'} truncate flex-1 text-left`}>
-                          {permission.label}
-                        </span>
-                        <div className={`w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 rounded-md flex items-center justify-center transition-all flex-shrink-0 ${
-                          isSelected ? 'bg-[#10B981] text-white' : 'bg-muted/30 dark:bg-[#2A3C63]'
-                        }`}>
-                          {isSelected && <CheckCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />}
+                      <div key={category} className="bg-[#0F172A] rounded-xl border border-[#3D5A80] overflow-hidden">
+                        {/* Category Header */}
+                        <div className="flex items-center justify-between px-4 py-2 border-b border-[#3D5A80] bg-[#1A2C53]/50">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-white uppercase tracking-wide">{category}</span>
+                            <span className="text-[10px] font-semibold text-[#5B7894] bg-[#1A2C53] border border-[#3D5A80] px-2 py-0.5 rounded-full">
+                              {selectedInCategory}/{categoryPermissions.length}
+                            </span>
+                          </div>
                         </div>
-                      </button>
-                    );
+
+                        {/* Permission Items */}
+                        <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <FormGroup className="contents">
+                            {categoryPermissions.map((permission) => {
+                              const isSelected = selectedPermissions.includes(permission.id)
+                              return (
+                                <FormControlLabel
+                                  key={permission.id}
+                                  control={
+                                    <Checkbox
+                                      checked={isSelected}
+                                      onChange={() => togglePermission(permission.id)}
+                                      sx={{
+                                        color: "#3D5A80",
+                                        padding: "4px",
+                                        "&.Mui-checked": {
+                                          color: "#DE3544",
+                                        },
+                                        "& .MuiSvgIcon-root": { fontSize: 16 },
+                                      }}
+                                    />
+                                  }
+                                  label={permission.label}
+                                  sx={{
+                                    margin: 0,
+                                    width: '100%',
+                                    borderRadius: "6px",
+                                    padding: "2px 6px",
+                                    backgroundColor: isSelected ? "rgba(222, 53, 68, 0.08)" : "transparent",
+                                    border: isSelected ? "1px solid rgba(222, 53, 68, 0.2)" : "1px solid transparent",
+                                    transition: "all 0.2s",
+                                    "& .MuiFormControlLabel-label": {
+                                      fontSize: "11px",
+                                      fontWeight: 600,
+                                      color: isSelected ? "#fff" : "#99BFD1",
+                                      transition: "color 0.2s",
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      lineHeight: 1.2
+                                    },
+                                    "&:hover": {
+                                      backgroundColor: isSelected
+                                        ? "rgba(222, 53, 68, 0.15)"
+                                        : "rgba(193, 238, 250, 0.05)",
+                                    },
+                                    minHeight: "32px"
+                                  }}
+                                />
+                              )
+                            })}
+                          </FormGroup>
+                        </div>
+                      </div>
+                    )
                   })}
                 </div>
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 md:gap-4 px-4 sm:px-6 md:px-8 lg:px-10 py-3 sm:py-4 md:py-5 border-t border-border dark:border-[#2A3C63]">
-              <button
-                onClick={() => {
-                  setShowAddModal(false);
-                  setEditingUser(null);
-                  setFormData({ name: '', email: '', password: '', status: 'Active' });
-                  setSelectedPermissions([]);
-                }}
-                className="w-full sm:w-auto px-4 sm:px-5 md:px-6 lg:px-7 py-2.5 md:py-3 bg-muted/30 dark:bg-[#2A3C63]/50 hover:bg-muted/50 dark:hover:bg-[#2A3C63]/70 text-heading dark:text-[#C1EEFA] rounded-lg sm:rounded-xl md:rounded-xl transition-all text-sm md:text-base font-medium order-2 sm:order-1"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveUser}
-                className="w-full sm:w-auto px-4 sm:px-5 md:px-6 lg:px-7 py-2.5 md:py-3 bg-[#C1EEFA] hover:bg-[#A8E0F0] text-[#1A2C53] rounded-lg sm:rounded-xl md:rounded-xl transition-all text-sm md:text-base font-semibold order-1 sm:order-2"
-              >
-                {editingUser ? 'Save Changes' : 'Add User'}
-              </button>
+            <div className="flex items-center justify-between gap-4 px-6 py-5 bg-[#152342] border-t border-[#3D5A80] shrink-0">
+              <div className="flex-1" />
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                <button
+                  onClick={() => {
+                    setShowAddModal(false)
+                    setEditingUser(null)
+                    setFormData({ name: "", email: "", password: "", status: "Active" })
+                    setSelectedPermissions([])
+                  }}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-[#99BFD1] hover:text-white hover:bg-white/10 transition-all duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveUser}
+                  className="px-6 py-2 rounded-xl bg-gradient-to-r from-[#DE3544] to-[#C42E3C] hover:from-[#E5404F] hover:to-[#D43545] text-white text-sm font-bold shadow-lg shadow-red-900/20 hover:shadow-red-900/40 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center gap-2"
+                >
+                  {editingUser ? (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Save Changes
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4" />
+                      Create User
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete User Password Modal */}
+      {/* Delete User Password Modal - unchanged */}
       {showDeleteAuthModal && (
-        <div 
-          className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in-0 duration-200" 
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in-0 duration-200"
           onClick={() => {
-            setShowDeleteAuthModal(false);
-            setUserToDelete(null);
-            setDeletePassword('');
+            setShowDeleteAuthModal(false)
+            setUserToDelete(null)
+            setDeletePassword("")
           }}
         >
-          <div 
+          <div
             className="relative bg-card dark:bg-[#223560] rounded-3xl border-2 border-[#C1EEFA]/60 dark:border-[#C1EEFA]/70 shadow-[0_0_30px_rgba(193,238,250,0.4)] dark:shadow-[0_0_40px_rgba(193,238,250,0.6)] p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-2 duration-300"
             onClick={(e) => e.stopPropagation()}
           >
@@ -771,9 +914,7 @@ export function UserPermissionsPanel() {
                   <Lock className="w-6 h-6 text-destructive" />
                 </div>
                 <div>
-                  <h2 className="text-heading dark:text-[#C1EEFA] text-xl font-bold">
-                    Admin Password Required
-                  </h2>
+                  <h2 className="text-heading dark:text-[#C1EEFA] text-xl font-bold">Admin Password Required</h2>
                   <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-0.5">
                     Enter admin password to delete user
                   </p>
@@ -781,9 +922,9 @@ export function UserPermissionsPanel() {
               </div>
               <button
                 onClick={() => {
-                  setShowDeleteAuthModal(false);
-                  setUserToDelete(null);
-                  setDeletePassword('');
+                  setShowDeleteAuthModal(false)
+                  setUserToDelete(null)
+                  setDeletePassword("")
                 }}
                 className="p-2 hover:bg-muted/80 dark:hover:bg-[#2A3C63]/80 rounded-xl transition-all hover:scale-110 active:scale-95"
               >
@@ -798,7 +939,7 @@ export function UserPermissionsPanel() {
                   Warning: This action cannot be undone. The user will be permanently deleted.
                 </p>
               </div>
-               
+
               <div>
                 <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-semibold">
                   Admin Password <span className="text-destructive">*</span>
@@ -811,8 +952,8 @@ export function UserPermissionsPanel() {
                   placeholder="Enter admin password"
                   autoFocus
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleDeleteConfirm();
+                    if (e.key === "Enter") {
+                      handleDeleteConfirm()
                     }
                   }}
                 />
@@ -823,9 +964,9 @@ export function UserPermissionsPanel() {
             <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-border/50 dark:border-[#2A3C63]/50">
               <button
                 onClick={() => {
-                  setShowDeleteAuthModal(false);
-                  setUserToDelete(null);
-                  setDeletePassword('');
+                  setShowDeleteAuthModal(false)
+                  setUserToDelete(null)
+                  setDeletePassword("")
                 }}
                 className="px-5 py-2.5 bg-muted/80 dark:bg-[#2A3C63]/80 hover:bg-muted dark:hover:bg-[#2A3C63] text-heading dark:text-[#C1EEFA] rounded-xl transition-all text-sm font-semibold active:scale-95"
               >
@@ -844,17 +985,17 @@ export function UserPermissionsPanel() {
         </div>
       )}
 
-      {/* Change Password Modal */}
+      {/* Change Password Modal - unchanged */}
       {showChangePasswordModal && userToChangePassword && (
-        <div 
-          className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in-0 duration-200" 
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in-0 duration-200"
           onClick={() => {
-            setShowChangePasswordModal(false);
-            setUserToChangePassword(null);
-            setPasswordData({ newPassword: '', confirmPassword: '' });
+            setShowChangePasswordModal(false)
+            setUserToChangePassword(null)
+            setPasswordData({ newPassword: "", confirmPassword: "" })
           }}
         >
-          <div 
+          <div
             className="relative bg-card dark:bg-[#223560] rounded-3xl border-2 border-[#C1EEFA]/60 dark:border-[#C1EEFA]/70 shadow-[0_0_30px_rgba(193,238,250,0.4)] dark:shadow-[0_0_40px_rgba(193,238,250,0.6)] p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-2 duration-300"
             onClick={(e) => e.stopPropagation()}
           >
@@ -865,19 +1006,17 @@ export function UserPermissionsPanel() {
                   <Lock className="w-6 h-6 text-blue-500" />
                 </div>
                 <div>
-                  <h2 className="text-heading dark:text-[#C1EEFA] text-xl font-bold">
-                    Change Password
-                  </h2>
+                  <h2 className="text-heading dark:text-[#C1EEFA] text-xl font-bold">Change Password</h2>
                   <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-0.5">
-                    Update password for {userToChangePassword.name}
+                    Set new password for {userToChangePassword.name}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => {
-                  setShowChangePasswordModal(false);
-                  setUserToChangePassword(null);
-                  setPasswordData({ newPassword: '', confirmPassword: '' });
+                  setShowChangePasswordModal(false)
+                  setUserToChangePassword(null)
+                  setPasswordData({ newPassword: "", confirmPassword: "" })
                 }}
                 className="p-2 hover:bg-muted/80 dark:hover:bg-[#2A3C63]/80 rounded-xl transition-all hover:scale-110 active:scale-95"
               >
@@ -886,7 +1025,7 @@ export function UserPermissionsPanel() {
             </div>
 
             {/* Form Content */}
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
                 <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-semibold">
                   New Password <span className="text-destructive">*</span>
@@ -895,13 +1034,12 @@ export function UserPermissionsPanel() {
                   type="password"
                   value={passwordData.newPassword}
                   onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                  className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border/50 dark:border-[#2A3C63]/50 rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all hover:border-blue-500/50"
+                  className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border/50 dark:border-[#2A3C63]/50 rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                   placeholder="Enter new password"
                   autoFocus
                 />
-                <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1.5">Minimum 6 characters</p>
               </div>
-               
+
               <div>
                 <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-semibold">
                   Confirm Password <span className="text-destructive">*</span>
@@ -910,11 +1048,11 @@ export function UserPermissionsPanel() {
                   type="password"
                   value={passwordData.confirmPassword}
                   onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                  className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border/50 dark:border-[#2A3C63]/50 rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all hover:border-blue-500/50"
+                  className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border/50 dark:border-[#2A3C63]/50 rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                   placeholder="Confirm new password"
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleChangePasswordConfirm();
+                    if (e.key === "Enter") {
+                      handleChangePasswordConfirm()
                     }
                   }}
                 />
@@ -925,9 +1063,9 @@ export function UserPermissionsPanel() {
             <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-border/50 dark:border-[#2A3C63]/50">
               <button
                 onClick={() => {
-                  setShowChangePasswordModal(false);
-                  setUserToChangePassword(null);
-                  setPasswordData({ newPassword: '', confirmPassword: '' });
+                  setShowChangePasswordModal(false)
+                  setUserToChangePassword(null)
+                  setPasswordData({ newPassword: "", confirmPassword: "" })
                 }}
                 className="px-5 py-2.5 bg-muted/80 dark:bg-[#2A3C63]/80 hover:bg-muted dark:hover:bg-[#2A3C63] text-heading dark:text-[#C1EEFA] rounded-xl transition-all text-sm font-semibold active:scale-95"
               >
@@ -935,16 +1073,16 @@ export function UserPermissionsPanel() {
               </button>
               <button
                 onClick={handleChangePasswordConfirm}
-                disabled={!passwordData.newPassword || !passwordData.confirmPassword || passwordData.newPassword.length < 6}
+                disabled={!passwordData.newPassword || !passwordData.confirmPassword}
                 className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:shadow-[0_0_20px_rgba(59,130,246,0.5)] transition-all text-sm font-semibold flex items-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
               >
                 <Lock className="w-4 h-4" />
-                Change Password
+                Update Password
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }
