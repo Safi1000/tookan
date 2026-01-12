@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Calendar, Search, Filter, Download, ArrowUpDown, ChevronDown, CheckCircle, XCircle, RefreshCw, AlertCircle, Settings2, X } from 'lucide-react';
 import { DatePicker } from './ui/date-picker';
 import { toast } from 'sonner';
 import { fetchAllOrders, fetchAllDrivers, fetchAllCustomers, fetchReportsSummary, fetchDriverPerformance, type OrderFilters } from '../services/tookanApi';
+import * as XLSX from 'xlsx';
 
 const columnDefinitions = [
   { key: 'taskId', label: 'Task ID' },
@@ -217,6 +218,83 @@ export function ReportsPanel() {
     return filtered;
   }, [orders, orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch]);
 
+  // Dynamic export: exports only visible data (Driver Summary + Orders)
+  const handleExport = useCallback((format: 'excel' | 'csv') => {
+    try {
+      const workbook = XLSX.utils.book_new();
+      const dateStr = new Date().toISOString().split('T')[0];
+
+      // 1. Driver Summary sheet (if visible)
+      if (driverPerformanceData.length > 0) {
+        const driverData = driverPerformanceData.map((perf: any) => ({
+          'Driver ID': perf.fleet_id || '',
+          'Name': perf.name || '',
+          'Number of Orders': perf.total_orders || 0,
+          'COD Totals': '—',
+          'Order Fees': '—',
+          'Total Order Value': '—',
+          'Avg Delivery Time': perf.avg_delivery_time > 0 ? `${perf.avg_delivery_time.toFixed(1)} mins` : 'N/A'
+        }));
+        const driverSheet = XLSX.utils.json_to_sheet(driverData);
+        XLSX.utils.book_append_sheet(workbook, driverSheet, 'Driver Summary');
+      }
+
+      // 2. Order List sheet (if there are filtered orders)
+      if (filteredOrders.length > 0) {
+        const ordersData = filteredOrders.map((order: any) => ({
+          'Task ID': order.jobId || order.job_id || '',
+          'Date/Time Delivered': order.completed_datetime || '',
+          'Driver ID': order.fleet_id || order.assignedDriver || '',
+          'Driver Name': order.fleet_name || order.assignedDriverName || '',
+          'Driver Phone': order.driver_phone || order.driverPhone || '',
+          'Customer Name': order.customer_name || order.customerName || '',
+          'Customer Phone': order.customer_phone || order.customerPhone || '',
+          'Pickup Address': order.pickup_address || order.pickupAddress || '',
+          'Delivery Address': order.delivery_address || order.deliveryAddress || '',
+          'COD': typeof (order.cod_amount || order.codAmount) === 'number' ? (order.cod_amount || order.codAmount).toFixed(2) : '0.00',
+          'Order Fees': typeof (order.order_fees || order.orderFees) === 'number' ? (order.order_fees || order.orderFees).toFixed(2) : '0.00',
+          'Order ID': order.order_id || '',
+          'Status': mapStatus(order.status),
+          'Tags': order.tags || order.tag || ''
+        }));
+        const ordersSheet = XLSX.utils.json_to_sheet(ordersData);
+        XLSX.utils.book_append_sheet(workbook, ordersSheet, 'Order List');
+      }
+
+      // Check if any data exists
+      if (workbook.SheetNames.length === 0) {
+        toast.error('No data to export');
+        return;
+      }
+
+      // Export
+      if (format === 'excel') {
+        XLSX.writeFile(workbook, `reports-export-${dateStr}.xlsx`);
+      } else {
+        // For CSV: combine sheets with section headers
+        let csvContent = '';
+        workbook.SheetNames.forEach((sheetName, idx) => {
+          if (idx > 0) csvContent += '\n\n';
+          // Add section header (using '---' to avoid Google Sheets interpreting '=' as formula)
+          csvContent += `--- ${sheetName} ---\n`;
+          csvContent += XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+        });
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `reports-export-${dateStr}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      }
+
+      toast.success(`Export successful (${workbook.SheetNames.join(' + ')})`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export data');
+    }
+  }, [driverPerformanceData, filteredOrders, mapStatus]);
+
   // Mock validation states for auto-suggest
   const getValidationColor = (value: string) => {
     if (!value) return 'border-[#2A3C63] dark:border-[#2A3C63]';
@@ -287,63 +365,8 @@ export function ReportsPanel() {
             Manage Columns
           </button>
           <button
-            onClick={async () => {
-              try {
-                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/reports/orders/export`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    format: 'excel',
-                    filters: { orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch, dateFrom, dateTo, status: statusFilter },
-                    columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
-                  })
-                });
-                if (!response.ok) throw new Error('Export failed');
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `orders-export-${new Date().toISOString().split('T')[0]}.xlsx`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-                toast.success('Export successful');
-              } catch (error) {
-                console.error('Export error:', error);
-                toast.error('Failed to export orders');
-              }
-            }}
+            onClick={() => handleExport('csv')}
             className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
-          >
-            <Download className="w-5 h-5" />
-            Export Excel
-          </button>
-          <button
-            onClick={async () => {
-              try {
-                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/reports/orders/export`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    format: 'csv',
-                    filters: { orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch, dateFrom, dateTo, status: statusFilter },
-                    columns: Object.keys(visibleColumns).filter(key => visibleColumns[key])
-                  })
-                });
-                if (!response.ok) throw new Error('Export failed');
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `orders-export-${new Date().toISOString().split('T')[0]}.csv`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-                toast.success('Export successful');
-              } catch (error) {
-                console.error('Export error:', error);
-                toast.error('Failed to export orders');
-              }
-            }}
-            className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA]/80 text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
           >
             <Download className="w-5 h-5" />
             Export CSV
