@@ -461,10 +461,18 @@ export function OrderEditorPanel() {
               <RotateCcw className="w-4 h-4" />
               Re-Order
             </button>
+            {/* Return Order Button - Disabled for Pickup Tasks (where Pickup Address == Delivery Address) */}
             <button
               onClick={openReturnModal}
-              disabled={isAction}
-              className="flex-1 px-4 py-3 bg-muted dark:bg-[#2A3C63] text-heading dark:text-white border border-border dark:border-[#4D6AA5] rounded-lg hover:bg-muted/80 dark:hover:bg-[#324a78] transition disabled:opacity-50 flex items-center gap-2 justify-center"
+              disabled={isAction || (order.pickupAddress?.trim().toLowerCase() === order.deliveryAddress?.trim().toLowerCase())}
+              title={(order.pickupAddress?.trim().toLowerCase() === order.deliveryAddress?.trim().toLowerCase())
+                ? "Return Order is not available for Pickup tasks (same pickup & delivery address)"
+                : "Create Return Order"}
+              className={`flex-1 px-4 py-3 border rounded-lg flex items-center gap-2 justify-center transition
+                ${(order.pickupAddress?.trim().toLowerCase() === order.deliveryAddress?.trim().toLowerCase())
+                  ? 'bg-muted/50 text-muted-foreground border-border cursor-not-allowed opacity-70'
+                  : 'bg-muted dark:bg-[#2A3C63] text-heading dark:text-white border-border dark:border-[#4D6AA5] hover:bg-muted/80 dark:hover:bg-[#324a78] disabled:opacity-50'
+                }`}
             >
               <CornerDownLeft className="w-4 h-4" />
               Return Order
@@ -616,140 +624,122 @@ export function OrderEditorPanel() {
 
       {/* Return Order Modal */}
       {showReturnModal && order && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card dark:bg-[#1A2C53] rounded-xl border border-border dark:border-[#2A3C63] w-full max-w-[480px] max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b border-border dark:border-[#2A3C63]">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-card dark:bg-[#1A2C53] rounded-2xl border border-border dark:border-[#2A3C63] w-full max-w-md shadow-2xl">
+            {/* Header */}
+            <div
+              className="flex items-center justify-between py-4 border-b border-border dark:border-[#2A3C63]"
+              style={{ paddingLeft: '15px', paddingRight: '15px' }}
+            >
               <h2 className="text-lg font-bold text-heading">Create Return Order</h2>
               <button
                 onClick={() => setShowReturnModal(false)}
-                className="p-1 hover:bg-muted rounded-lg transition"
+                className="p-1.5 hover:bg-muted rounded-lg transition"
               >
-                <X className="w-5 h-5 text-muted-foreground" />
+                <X className="w-4 h-4 text-muted-foreground" />
               </button>
             </div>
 
-            <div className="p-4 space-y-4">
-              <p className="text-sm text-muted-foreground">
-                This will create a return order with pickup from the original delivery address and delivery to the original pickup address. COD will be removed.
-              </p>
+            {/* Content */}
+            <div className="px-5 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
 
               {/* Locked Fields (from original order) */}
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">🔒 Order Details (Cannot be changed)</p>
-                <div className="grid grid-cols-2 gap-3">
+              <div className="bg-muted/20 dark:bg-[#0F1D33]/40 p-4 border border-border/40 dark:border-[#2A3C63]/40">
+                <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <p className="text-subheading text-xs uppercase mb-1">Customer Name</p>
-                    <input
-                      value={order.customerName || 'N/A'}
-                      disabled
-                      className={lockedInputClass}
-                    />
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Customer</p>
+                    <p className="text-heading truncate">{order.customerName || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="text-subheading text-xs uppercase mb-1">Customer Phone</p>
-                    <input
-                      value={order.customerPhone || 'N/A'}
-                      disabled
-                      className={lockedInputClass}
-                    />
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Phone</p>
+                    <p className="text-heading truncate">{order.customerPhone || 'N/A'}</p>
                   </div>
                   <div className="col-span-2">
-                    <p className="text-subheading text-xs uppercase mb-1">Customer Email</p>
-                    <input
-                      value={order.customerEmail || 'N/A'}
-                      disabled
-                      className={lockedInputClass}
-                    />
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Email</p>
+                    <p className="text-heading truncate">{order.customerEmail || 'N/A'}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Original Pickup → Return Delivery</p>
+                    <p className="text-heading truncate">{order.pickupAddress || 'N/A'}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Original Delivery → Return Pickup</p>
+                    <p className="text-heading truncate">{order.deliveryAddress || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="text-subheading text-xs uppercase mb-1">Original Pickup Address → Return Delivery</p>
-                    <input
-                      value={order.pickupAddress || 'N/A'}
-                      disabled
-                      className={lockedInputClass}
-                    />
+                    <p className="text-muted-foreground text-xs uppercase mb-1">Fees</p>
+                    <p className="text-heading font-mono">{order.orderFees || 0}</p>
                   </div>
                   <div>
-                    <p className="text-subheading text-xs uppercase mb-1">Original Delivery Address → Return Pickup</p>
-                    <input
-                      value={order.deliveryAddress || 'N/A'}
-                      disabled
-                      className={lockedInputClass}
-                    />
-                  </div>
-                  <div>
-                    <p className="text-subheading text-xs uppercase mb-1">Order Fees</p>
-                    <input
-                      value={order.orderFees || 0}
-                      disabled
-                      className={lockedInputClass}
-                    />
-                  </div>
-                  <div>
-                    <p className="text-subheading text-xs uppercase mb-1">COD (Removed for Return)</p>
-                    <input
-                      value="0 (COD removed)"
-                      disabled
-                      className={lockedInputClass}
-                    />
+                    <p className="text-muted-foreground text-xs uppercase mb-1">COD</p>
+                    <p className="text-heading font-mono text-muted-foreground/50">Removed</p>
                   </div>
                 </div>
               </div>
 
               {/* Editable Fields for Return Order */}
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-wide">✏️ Editable Options</p>
-                <div>
-                  <p className="text-subheading text-xs uppercase mb-1">Assign Driver</p>
-                  <select
-                    value={returnDriver}
-                    onChange={(e) => setReturnDriver(e.target.value)}
-                    disabled={isLoadingAgents}
-                    className={editableInputClass}
-                  >
-                    <option value="">Keep Original Driver ({order.assignedDriverName || 'Unassigned'})</option>
-                    <option value="unassigned">Unassigned</option>
-                    {agents.length > 0 ? (
-                      agents
-                        .filter(a => a.fleet_id != null && a.fleet_id !== undefined)
-                        .map(a => (
-                          <option key={a.fleet_id} value={a.fleet_id.toString()}>
-                            {a.name}
-                          </option>
-                        ))
-                    ) : (
-                      !isLoadingAgents && <option disabled>No drivers available</option>
-                    )}
-                  </select>
-                  {isLoadingAgents && <p className="text-xs text-muted-foreground mt-1">Loading drivers from Tookan…</p>}
-                  {!isLoadingAgents && agents.length === 0 && (
-                    <p className="text-xs text-yellow-500 mt-1">⚠️ No drivers found. Please try again.</p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-subheading text-xs uppercase mb-1">Notes for Return Order</p>
-                  <textarea
-                    value={returnNotes}
-                    onChange={(e) => setReturnNotes(e.target.value)}
-                    rows={3}
-                    placeholder="Add any notes for this return order..."
-                    className={editableInputClass}
-                  />
+              <div className="bg-[#C1EEFA]/5 p-4 border border-[#C1EEFA]/15">
+                <div className="space-y-3">
+                  <div>
+                    <p
+                      className="text-muted-foreground text-xs uppercase mb-1.5"
+                      style={{ paddingBottom: '10px' }}
+                    >
+                      Assign Driver
+                    </p>
+                    <select
+                      value={returnDriver}
+                      onChange={(e) => setReturnDriver(e.target.value)}
+                      disabled={isLoadingAgents}
+                      className={editableInputClass + ' text-sm py-2'}
+                    >
+                      <option value="">Keep Original Driver ({order.assignedDriverName || 'Unassigned'})</option>
+                      <option value="unassigned">Unassigned</option>
+                      {agents.length > 0 ? (
+                        agents
+                          .filter(a => a.fleet_id != null && a.fleet_id !== undefined)
+                          .map(a => (
+                            <option key={a.fleet_id} value={a.fleet_id.toString()}>
+                              {a.name}
+                            </option>
+                          ))
+                      ) : (
+                        !isLoadingAgents && <option disabled>No drivers available</option>
+                      )}
+                    </select>
+                    {isLoadingAgents && <p className="text-xs text-muted-foreground mt-1">Loading drivers...</p>}
+                  </div>
+                  <div>
+                    <p
+                      className="text-muted-foreground text-xs uppercase mb-1.5"
+                      style={{ paddingBottom: '10px' }}
+                    >
+                      Notes for Return Order
+                    </p>
+                    <textarea
+                      value={returnNotes}
+                      onChange={(e) => setReturnNotes(e.target.value)}
+                      rows={2}
+                      placeholder="Add notes (optional)"
+                      className={editableInputClass + ' text-sm py-2 resize-none'}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 p-4 border-t border-border dark:border-[#2A3C63]">
+            {/* Footer */}
+            <div className="flex justify-center gap-3 px-5 py-4 border-t border-border dark:border-[#2A3C63] bg-muted/10 dark:bg-[#0F1D33]/30 rounded-b-2xl">
               <button
                 onClick={() => setShowReturnModal(false)}
-                className="px-4 py-2 bg-muted dark:bg-[#2A3C63] text-heading rounded-lg hover:bg-muted/80 transition"
+                className="px-6 py-2.5 text-sm font-medium text-heading bg-muted dark:bg-[#2A3C63] rounded-lg hover:bg-muted/80 dark:hover:bg-[#374766] transition-shadow shadow-sm hover:shadow-md"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreateReturn}
                 disabled={isCreatingReturn}
-                className="px-4 py-2 bg-[#2A3C63] dark:bg-[#4D6AA5] text-white rounded-lg flex items-center gap-2 hover:shadow-lg transition disabled:opacity-50"
+                className="px-6 py-2.5 text-sm font-semibold text-[#1A2C53] bg-[#C1EEFA] rounded-lg flex items-center gap-2 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isCreatingReturn ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CornerDownLeft className="w-4 h-4" />}
                 Create Return Order
