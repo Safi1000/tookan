@@ -29,7 +29,7 @@ import {
   updateUserStatus,
   type UserAccount as ApiUserAccount,
 } from "../services/userApi"
-
+import { Listbox } from "@headlessui/react"
 // Available permissions
 const availablePermissions = [
   { id: "edit_order_financials", label: "Edit Order Financials", category: "Orders" },
@@ -506,7 +506,7 @@ export function UserPermissionsPanel() {
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap gap-1">
                       {user.permissions.length === 0 ? (
-                        <span className="px-2 py-1 rounded text-xs bg-muted dark:bg-[#2A3C63] text-muted-light dark:text-[#99BFD1]">
+                        <span className="px-2 py-1 rounded text-md bg-muted dark:bg-[#2A3C63] text-muted-light dark:text-[#99BFD1]">
                           No permissions
                         </span>
                       ) : (
@@ -514,10 +514,13 @@ export function UserPermissionsPanel() {
                           {user.permissions.slice(0, 3).map((perm) => (
                             <span
                               key={perm}
-                              className="px-2 py-1 rounded text-xs bg-primary/10 dark:bg-[#C1EEFA]/20 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30"
+                              style={{ fontSize: '20px !important', lineHeight: '1.4', fontWeight: '500' }}
+                              className="px-2 py-1 rounded bg-primary/10 dark:bg-[#C1EEFA]/20 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30"
                             >
                               {availablePermissions.find((p) => p.id === perm)?.label || perm}
                             </span>
+
+
                           ))}
                           {user.permissions.length > 3 && (
                             <span className="px-2 py-1 rounded text-xs bg-muted dark:bg-[#2A3C63] text-muted-light dark:text-[#99BFD1]">
@@ -627,7 +630,11 @@ export function UserPermissionsPanel() {
             style={{ maxWidth: "600px" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 py-5 border-b border-[#3D5A80] bg-[#152342] shrink-0">
+            <div
+              className="flex items-center justify-between px-6 py-5 border-b border-[#3D5A80] bg-[#152342] shrink-0"
+              style={{ paddingBottom: '15px', marginTop: '15px' }}
+            >
+
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#DE3544] to-[#C42E3C] flex items-center justify-center shadow-lg">
                   {editingUser ? (
@@ -640,9 +647,7 @@ export function UserPermissionsPanel() {
                   <h2 className="text-lg font-bold text-white tracking-tight">
                     {editingUser ? "Edit User" : "Create User"}
                   </h2>
-                  <p className="text-sm text-[#99BFD1]">
-                    {editingUser ? "Update details and permissions" : "Add a new team member"}
-                  </p>
+
                 </div>
               </div>
               <button
@@ -659,19 +664,19 @@ export function UserPermissionsPanel() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0">
+            <div
+              className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0"
+              style={{ paddingTop: '12px', paddingBottom: '12px' }}
+            >
               {/* User Details Section */}
               <div className="space-y-6">
-                <div className="flex items-center gap-2">
-                  <div className="w-1 h-5 bg-[#DE3544] rounded-full" />
-                  <h3 className="text-sm font-bold text-[#C1EEFA] uppercase tracking-widest">Account Details</h3>
-                </div>
+
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Full Name */}
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-[#99BFD1] uppercase tracking-wider">
-                      <UserIcon className="w-4 h-4" />
+                    <label className="flex items-center gap-2 text-m font-bold text-[#99BFD1] uppercase tracking-wider">
+                      <UserIcon className="w-6 h-6" />
                       Full Name
                     </label>
                     <input
@@ -685,8 +690,8 @@ export function UserPermissionsPanel() {
 
                   {/* Email */}
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-[#99BFD1] uppercase tracking-wider">
-                      <Mail className="w-4 h-4" />
+                    <label className="flex items-center gap-2 text-m font-bold text-[#99BFD1] uppercase tracking-wider">
+                      <Mail className="w-6 h-6" />
                       Email Address
                     </label>
                     <input
@@ -701,8 +706,8 @@ export function UserPermissionsPanel() {
                   {/* Password - only for new users */}
                   {!editingUser && (
                     <div className="space-y-2">
-                      <label className="flex items-center gap-2 text-xs font-bold text-[#99BFD1] uppercase tracking-wider">
-                        <KeyRound className="w-4 h-4" />
+                      <label className="flex items-center gap-2 text-m font-bold text-[#99BFD1] uppercase tracking-wider">
+                        <KeyRound className="w-6 h-6" />
                         Password
                       </label>
                       <input
@@ -717,25 +722,44 @@ export function UserPermissionsPanel() {
 
                   {/* Status */}
                   <div className={`space-y-2 ${!editingUser ? "" : "md:col-span-2"}`}>
-                    <label className="flex items-center gap-2 text-xs font-bold text-[#99BFD1] uppercase tracking-wider">
-                      <CheckCircle className="w-4 h-4" />
+                    <label className="flex items-center gap-2 text-m font-bold text-[#99BFD1] uppercase tracking-wider">
+                      <CheckCircle className="w-6 h-6" />
                       Account Status
                     </label>
-                    <div className="relative">
-                      <select
-                        value={formData.status}
-                        onChange={(e) =>
-                          setFormData({ ...formData, status: e.target.value as "Active" | "Inactive" | "Banned" })
-                        }
-                        className="w-full bg-[#0F172A] border border-[#3D5A80] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#C1EEFA] focus:ring-2 focus:ring-[#C1EEFA]/20 transition-all duration-200 appearance-none cursor-pointer"
-                      >
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Disabled</option>
-                        <option value="Banned">Banned</option>
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#5B7894] pointer-events-none" />
-                    </div>
+
+                    <Listbox value={formData.status} onChange={(value) => setFormData({ ...formData, status: value })}>
+                      <div className="relative">
+                        {/* Button */}
+                        <Listbox.Button className="w-full bg-[#0F172A] border border-[#3D5A80] rounded-lg px-3 py-2 text-sm text-white flex justify-between items-center cursor-pointer focus:outline-none focus:border-[#C1EEFA] focus:ring-2 focus:ring-[#C1EEFA]/20 transition-all duration-200">
+                          {formData.status}
+                          <ChevronDown className="w-4 h-4 text-[#5B7894]" />
+                        </Listbox.Button>
+
+                        {/* Options */}
+                        <Listbox.Options
+                          style={{ backgroundColor: "#0F172A", opacity: 1 }}
+                          className="absolute mt-1 w-full border border-[#3D5A80] rounded-lg z-10 shadow-lg"
+                        >
+                          {["Active", "Inactive", "Banned"].map((option) => (
+                            <Listbox.Option
+                              key={option}
+                              value={option}
+                              className={({ active, selected }) =>
+                                `px-3 py-2 cursor-pointer ${active ? "bg-[#1E2A4C]" : ""} ${selected ? "font-bold" : ""
+                                }`
+                              }
+                            >
+                              {option}
+                            </Listbox.Option>
+                          ))}
+                        </Listbox.Options>
+                      </div>
+                    </Listbox>
                   </div>
+
+
+
+
                 </div>
               </div>
 
@@ -744,8 +768,8 @@ export function UserPermissionsPanel() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-1 h-5 bg-[#C1EEFA] rounded-full" />
-                    <h3 className="text-sm font-bold text-[#C1EEFA] uppercase tracking-widest flex items-center gap-2">
-                      <Shield className="w-4 h-4" />
+                    <h3 className="text-m font-bold text-[#C1EEFA] uppercase tracking-widest flex items-center gap-2">
+                      <Shield className="w-6 h-6" />
                       Permissions
                     </h3>
                   </div>
@@ -758,24 +782,13 @@ export function UserPermissionsPanel() {
                         setSelectedPermissions(availablePermissions.map((p) => p.id))
                       }
                     }}
-                    className="text-xs font-bold text-[#C1EEFA] hover:text-white transition-colors px-3 py-1.5 bg-[#C1EEFA]/10 hover:bg-[#C1EEFA]/20 rounded-lg"
+                    className="text-s font-bold text-[#C1EEFA] hover:text-white transition-colors px-3 py-1.5 bg-[#C1EEFA]/10 hover:bg-[#C1EEFA]/20 rounded-lg"
                   >
                     {selectedPermissions.length === availablePermissions.length ? "Clear All" : "Select All"}
                   </button>
                 </div>
 
-                {/* Permission count indicator */}
-                <div className="flex items-center gap-3 px-1">
-                  <div className="flex-1 h-1.5 bg-[#0F172A] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-[#DE3544] to-[#C1EEFA] transition-all duration-300 rounded-full"
-                      style={{ width: `${(selectedPermissions.length / availablePermissions.length) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-semibold text-[#99BFD1]">
-                    {selectedPermissions.length}/{availablePermissions.length}
-                  </span>
-                </div>
+
 
                 {/* Permission Categories */}
                 <div className="grid grid-cols-1 gap-3">
@@ -790,8 +803,8 @@ export function UserPermissionsPanel() {
                         {/* Category Header */}
                         <div className="flex items-center justify-between px-4 py-2 border-b border-[#3D5A80] bg-[#1A2C53]/50">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-white uppercase tracking-wide">{category}</span>
-                            <span className="text-[10px] font-semibold text-[#5B7894] bg-[#1A2C53] border border-[#3D5A80] px-2 py-0.5 rounded-full">
+                            <span className="text-s font-bold text-white uppercase tracking-wide">{category}</span>
+                            <span className="text-m font-semibold text-[#5B7894] bg-[#1A2C53] border border-[#3D5A80] px-2 py-0.5 rounded-full">
                               {selectedInCategory}/{categoryPermissions.length}
                             </span>
                           </div>
@@ -815,7 +828,7 @@ export function UserPermissionsPanel() {
                                         "&.Mui-checked": {
                                           color: "#DE3544",
                                         },
-                                        "& .MuiSvgIcon-root": { fontSize: 16 },
+                                        "& .MuiSvgIcon-root": { fontSize: 20 },
                                       }}
                                     />
                                   }
@@ -829,7 +842,7 @@ export function UserPermissionsPanel() {
                                     border: isSelected ? "1px solid rgba(222, 53, 68, 0.2)" : "1px solid transparent",
                                     transition: "all 0.2s",
                                     "& .MuiFormControlLabel-label": {
-                                      fontSize: "11px",
+                                      fontSize: "13px",
                                       fontWeight: 600,
                                       color: isSelected ? "#fff" : "#99BFD1",
                                       transition: "color 0.2s",
@@ -857,9 +870,14 @@ export function UserPermissionsPanel() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-4 px-6 py-5 bg-[#152342] border-t border-[#3D5A80] shrink-0">
-              <div className="flex-1" />
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+            <div
+              className="flex items-center gap-4 px-6 bg-[#152342] border-t border-[#3D5A80] shrink-0"
+              style={{ justifyContent: 'center', paddingTop: '12px', paddingBottom: '12px' }} // top/bottom padding
+            >
+              <div
+                className="flex items-center gap-3"
+                style={{ justifyContent: 'center', width: '100%' }} // center buttons
+              >
                 <button
                   onClick={() => {
                     setShowAddModal(false)
@@ -867,13 +885,13 @@ export function UserPermissionsPanel() {
                     setFormData({ name: "", email: "", password: "", status: "Active" })
                     setSelectedPermissions([])
                   }}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold text-[#99BFD1] hover:text-white hover:bg-white/10 transition-all duration-200"
+                  className="px-6 py-2.5 text-sm font-medium text-heading bg-muted dark:bg-[#2A3C63] rounded-lg hover:bg-muted/80 dark:hover:bg-[#374766] transition-shadow shadow-sm hover:shadow-md"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveUser}
-                  className="px-6 py-2 rounded-xl bg-gradient-to-r from-[#DE3544] to-[#C42E3C] hover:from-[#E5404F] hover:to-[#D43545] text-white text-sm font-bold shadow-lg shadow-red-900/20 hover:shadow-red-900/40 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center gap-2"
+                  className="px-6 py-2.5 text-sm font-semibold text-[#1A2C53] bg-[#C1EEFA] rounded-lg flex items-center gap-2 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {editingUser ? (
                     <>
@@ -889,6 +907,8 @@ export function UserPermissionsPanel() {
                 </button>
               </div>
             </div>
+
+
           </div>
         </div>
       )}

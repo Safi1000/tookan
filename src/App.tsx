@@ -14,11 +14,16 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { PermissionProvider } from './contexts/PermissionContext';
 import { Toaster } from './components/ui/sonner';
 
+// Superadmin email consistent with backend
+const SUPERADMIN_EMAIL = 'ahmedhassan123.ah83@gmail.com';
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeMenu, setActiveMenu] = useState('dashboard');
   const [user, setUser] = useState<any>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  const isSuperadmin = user?.email?.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
 
   // Check for existing auth token on mount
   useEffect(() => {
@@ -71,8 +76,8 @@ export default function App() {
     <ThemeProvider>
       <PermissionProvider>
         <div className="flex h-screen bg-background overflow-hidden transition-colors duration-300">
-          <Navigation 
-            activeMenu={activeMenu} 
+          <Navigation
+            activeMenu={activeMenu}
             setActiveMenu={setActiveMenu}
             onLogout={handleLogout}
             user={user}
@@ -84,8 +89,8 @@ export default function App() {
             {activeMenu === 'order-editor' && <OrderEditorPanel />}
             {activeMenu === 'withdrawals' && <WithdrawalRequestsPanel />}
             {activeMenu === 'merchant-plans' && <MerchantPlansPanel />}
-            {activeMenu === 'permissions' && <UserPermissionsPanel />}
-            {activeMenu === 'logs' && <SystemLogsPanel />}
+            {activeMenu === 'permissions' && isSuperadmin && <UserPermissionsPanel />}
+            {activeMenu === 'logs' && isSuperadmin && <SystemLogsPanel />}
             {activeMenu === 'settings' && <SettingsPanel />}
           </main>
         </div>
