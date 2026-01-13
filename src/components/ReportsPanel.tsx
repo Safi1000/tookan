@@ -653,9 +653,25 @@ export function ReportsPanel() {
                   const orderFees = order.order_fees || order.orderFees || 0;
                   const orderId = order.order_id || '';
 
+                  const isPickup = pickupAddress.trim().toLowerCase() === deliveryAddress.trim().toLowerCase();
+
                   return (
                     <tr key={taskId || index} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">{taskId}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-5 h-5 flex items-center justify-center rounded text-[10px] font-bold shrink-0 shadow-sm border border-black/5 dark:border-white/10"
+                            style={{
+                              backgroundColor: isPickup ? '#FFEDD5' : '#DBEAFE', // orange-100 : blue-100
+                              color: isPickup ? '#C2410C' : '#1D4ED8', // orange-700 : blue-700
+                            }}
+                            title={isPickup ? "Pickup Task" : "Delivery Task"}
+                          >
+                            {isPickup ? 'P' : 'D'}
+                          </span>
+                          <span>{taskId}</span>
+                        </div>
+                      </td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
                         {dateDelivered ? (
                           dateDelivered.replace('T', ' ').split(' ').map((part: string, i: number) => (
