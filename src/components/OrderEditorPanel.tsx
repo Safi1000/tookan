@@ -279,7 +279,7 @@ export function OrderEditorPanel() {
           Order Editor
         </h1>
         <p className="text-sm text-subheading mt-1">
-          Search by Task ID, then Re-Order / Return / Delete
+          Search by Task ID, then Re-Order / Return
         </p>
       </div>
 
@@ -288,8 +288,8 @@ export function OrderEditorPanel() {
         {/* Header */}
         <div className="flex items-center justify-between gap-2">
           <div>
-            <p className="text-xs uppercase text-muted-foreground tracking-wider">Search by Task ID</p>
-            <p className="text-[12px] text-muted-foreground/80 mt-1">Enter Tookan job_id</p>
+            <p className="text-md uppercase text-muted-foreground tracking-wider">Search by Task ID</p>
+
           </div>
           <button
             onClick={() => { setSearch(''); setOrder(null); }}
