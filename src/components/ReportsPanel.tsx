@@ -277,7 +277,8 @@ export function ReportsPanel() {
           csvContent += `--- ${sheetName} ---\n`;
           csvContent += XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
         });
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        // Add Byte Order Mark (BOM) for UTF-8 to support Arabic characters in Excel
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
