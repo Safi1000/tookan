@@ -205,9 +205,30 @@ export function Dashboard() {
       }
 
 
+      // Helper for 12-hour format
+      const formatDateTime12h = (dateStr: string) => {
+        if (!dateStr) return '';
+        try {
+          const d = new Date(dateStr);
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+
+          let hours = d.getHours();
+          const minutes = String(d.getMinutes()).padStart(2, '0');
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          hours = hours % 12;
+          hours = hours ? hours : 12; // the hour '0' should be '12'
+
+          return `${year}-${month}-${day} ${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+        } catch (e) {
+          return dateStr;
+        }
+      };
+
       const exportData = orders.map((order: any) => ({
         'Task ID': order.jobId || order.job_id || '',
-        'Date/Time Delivered': order.completed_datetime || '',
+        'Date/Time Delivered': formatDateTime12h(order.completed_datetime),
         'Driver ID': order.fleet_id || order.assignedDriver || '',
         'Driver Name': order.fleet_name || order.assignedDriverName || '',
         'Driver Phone': order.driver_phone || order.driverPhone || '',
