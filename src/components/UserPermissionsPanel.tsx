@@ -36,7 +36,6 @@ const availablePermissions = [
   { id: "manage_wallets", label: "Manage Wallets", category: "Financial" },
   { id: "perform_reorder", label: "Perform Reorder", category: "Orders" },
   { id: "perform_return", label: "Perform Return", category: "Orders" },
-  { id: "delete_ongoing_orders", label: "Delete Ongoing Orders", category: "Orders" },
   { id: "export_reports", label: "Export Reports", category: "Reports" },
   { id: "add_cod", label: "Add COD", category: "Financial" },
   { id: "confirm_cod_payments", label: "Confirm COD Payments", category: "Financial" },

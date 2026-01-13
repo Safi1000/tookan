@@ -147,7 +147,13 @@ function transformTaskToDB(taskData) {
     delivery_address: taskData.delivery_address,
     notes: taskData.notes,
     creation_datetime: taskData.creation_datetime || taskData.job_time || taskData.created_at,
-    completed_datetime: taskData.completed_datetime || taskData.job_completed_datetime || taskData.acknowledged_datetime || null,
+    completed_datetime: taskData.completed_datetime ||
+      taskData.job_completed_datetime ||
+      taskData.job_delivered_datetime ||
+      taskData.acknowledged_datetime ||
+      taskData.completed_date_time ||
+      taskData.delivery_datetime ||
+      null,
     webhook_received_at: taskData.webhook_received_at,
     event_type: taskData.event_type,
     tags: taskData.tags || null

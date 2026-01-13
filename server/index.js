@@ -2583,10 +2583,66 @@ app.post('/api/tookan/webhook', async (req, res) => {
     // Common events: task_created, task_updated, task_completed, task_assigned, etc.
     if (eventType.includes('task') || eventType.includes('order') || eventType.includes('job') || orderId !== 'unknown') {
       console.log('Processing order-related webhook event');
+      console.log('⏳ Waiting 10 seconds for Tookan data propagation...');
+      await new Promise(resolve => setTimeout(resolve, 10000));
+
+      let taskDataToUpdate = webhookData;
+
+      // Fetch fresh task details from Tookan API
+      if (orderId && orderId !== 'unknown') {
+        try {
+          console.log(`🔄 Fetching fresh details for Job ID: ${orderId}`);
+          const apiKey = getApiKey();
+          const getTaskPayload = {
+            api_key: apiKey,
+            job_id: orderId
+          };
+
+          const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(getTaskPayload),
+          });
+
+          if (getResponse.ok) {
+            const getData = await getResponse.json();
+            if (getData.status === 200 && getData.data) {
+              console.log('✅ Fresh task details fetched successfully');
+
+              // Merge fresh data with webhook data, prioritizing fresh data
+              // We keep webhook event info (type, etc.) but overwrite task properties
+              const freshTask = getData.data;
+
+              // Map Tookan's varied date fields to our standard usage
+              const completedTime = freshTask.job_completed_datetime ||
+                freshTask.completed_datetime ||
+                freshTask.job_delivered_datetime ||
+                freshTask.acknowledged_datetime ||
+                webhookData.completed_datetime;
+
+              taskDataToUpdate = {
+                ...webhookData,
+                ...freshTask,
+                // Ensure explicit fields we care about are carried over/mapped
+                completed_datetime: completedTime,
+                job_status: freshTask.job_status || freshTask.status || webhookData.job_status,
+                // Ensure template fields are preserved/merged
+                template_fields: { ...(webhookData.template_fields || {}), ...(freshTask.template_fields || {}) },
+                custom_fields: { ...(webhookData.custom_fields || {}), ...(freshTask.custom_fields || {}) }
+              };
+
+              console.log('📅 Confirmed completed_datetime:', taskDataToUpdate.completed_datetime);
+            }
+          }
+        } catch (fetchError) {
+          console.error('⚠️ Failed to fetch fresh task details:', fetchError.message);
+          // Fallback to original webhook data
+        }
+      }
 
       // Update task storage with COD data from template fields
       try {
-        const updatedTask = await taskStorage.updateTaskFromWebhook(webhookData);
+        const updatedTask = await taskStorage.updateTaskFromWebhook(taskDataToUpdate);
 
         if (updatedTask) {
           processed = true;

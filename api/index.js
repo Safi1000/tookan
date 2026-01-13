@@ -3768,26 +3768,69 @@ function getApp() {
           job_status: payload.job_status || payload.status
         });
 
+        // Wait 10 seconds for Tookan to propagate data
+        console.log('⏳ Vercel Webhook: Waiting 10s for data propagation...');
+        await new Promise(resolve => setTimeout(resolve, 10000));
+
+        let freshTask = null;
+        try {
+          console.log(`🔄 Vercel Webhook: Fetching fresh details for Job ID: ${jobId}`);
+          const apiKey = getApiKey();
+          const getTaskPayload = {
+            api_key: apiKey,
+            job_id: jobId
+          };
+
+          const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(getTaskPayload),
+          });
+
+          if (getResponse.ok) {
+            const getData = await getResponse.json();
+            if (getData.status === 200 && getData.data) {
+              freshTask = getData.data;
+              console.log('✅ Vercel Webhook: Fresh task details fetched');
+            }
+          }
+        } catch (fetchError) {
+          console.error('⚠️ Vercel Webhook: Failed to fetch fresh details:', fetchError.message);
+        }
+
+        // Use fresh data if available, otherwise fallback to payload
+        const sourceData = freshTask || payload;
+
+        // Map Tookan's varied date fields
+        const completedTime = sourceData.job_completed_datetime ||
+          sourceData.completed_datetime ||
+          sourceData.job_delivered_datetime ||
+          sourceData.acknowledged_datetime ||
+          sourceData.completed_date_time ||
+          sourceData.delivery_datetime ||
+          payload.completed_datetime || // Fallback to payload even if freshTask exists but is missing date
+          null;
+
         // Map the payload to our schema (using the fixed logic from server/index.js)
         const record = {
           job_id: parseInt(jobId) || jobId,
-          order_id: payload.order_id || payload.job_pickup_name || '',
-          cod_amount: parseFloat(payload.cod_amount || payload.cod || 0),
-          order_fees: parseFloat(payload.order_fees || payload.order_payment || 0),
-          fleet_id: payload.fleet_id ? parseInt(payload.fleet_id) : null,
-          fleet_name: payload.fleet_name || payload.driver_name || payload.username || '',
-          notes: payload.customer_comments || payload.customer_comment || payload.notes || '',
-          status: payload.job_status || payload.status || null,
-          customer_name: payload.customer_name || payload.customer_username || '',
-          customer_phone: payload.customer_phone || '',
-          customer_email: payload.customer_email || '',
-          pickup_address: payload.job_pickup_address || payload.pickup_address || '',
-          delivery_address: payload.customer_address || payload.job_address || payload.delivery_address || '',
-          creation_datetime: payload.creation_datetime || payload.job_time || payload.created_at || payload.timestamp || new Date().toISOString(),
+          order_id: sourceData.order_id || sourceData.job_pickup_name || payload.order_id || '',
+          cod_amount: parseFloat(sourceData.cod_amount || sourceData.cod || payload.cod_amount || 0),
+          order_fees: parseFloat(sourceData.order_fees || sourceData.order_payment || payload.order_fees || 0),
+          fleet_id: sourceData.fleet_id ? parseInt(sourceData.fleet_id) : (payload.fleet_id ? parseInt(payload.fleet_id) : null),
+          fleet_name: sourceData.fleet_name || sourceData.driver_name || sourceData.username || payload.fleet_name || '',
+          notes: sourceData.customer_comments || sourceData.customer_comment || sourceData.notes || payload.customer_comments || '',
+          status: sourceData.job_status || sourceData.status || payload.job_status || null,
+          customer_name: sourceData.customer_name || sourceData.customer_username || payload.customer_name || '',
+          customer_phone: sourceData.customer_phone || payload.customer_phone || '',
+          customer_email: sourceData.customer_email || payload.customer_email || '',
+          pickup_address: sourceData.job_pickup_address || sourceData.pickup_address || payload.job_pickup_address || '',
+          delivery_address: sourceData.customer_address || sourceData.job_address || sourceData.delivery_address || payload.delivery_address || '',
+          creation_datetime: sourceData.creation_datetime || sourceData.job_time || sourceData.created_at || sourceData.timestamp || payload.creation_datetime || new Date().toISOString(),
           // Expanded completed_datetime lookup - check all possible Tookan field names
-          completed_datetime: payload.completed_datetime || payload.job_delivered_datetime || payload.acknowledged_datetime || payload.completed_date_time || payload.delivery_datetime || null,
-          tags: payload.tags || payload.job_tags || '',
-          raw_data: payload,
+          completed_datetime: completedTime,
+          tags: sourceData.tags || sourceData.job_tags || payload.tags || '',
+          raw_data: { ...payload, ...(freshTask || {}) },
           last_synced_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
