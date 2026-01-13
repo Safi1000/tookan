@@ -12,7 +12,7 @@ import {
   Loader2,
   Users
 } from 'lucide-react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { fetchAnalytics, type AnalyticsData } from '../services/tookanApi';
 import { toast } from 'sonner';
 
@@ -231,52 +231,7 @@ export function Dashboard() {
           )}
         </div>
 
-        {/* Order Volume per Day - Bar Chart */}
-        <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
-          <h3 className="text-heading dark:text-foreground mb-6 font-semibold">Order Volume (Last 7 Days)</h3>
-          {isLoading ? (
-            <div className="h-[300px] flex items-center justify-center">
-              <Loader2 className="w-8 h-8 animate-spin text-primary dark:text-[#C1EEFA]" />
-            </div>
-          ) : orderVolumeData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={orderVolumeData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" className="dark:stroke-[#2A3C63]" />
-                <XAxis
-                  dataKey="day"
-                  stroke="var(--caption-text)"
-                  tick={{ fill: 'var(--caption-text)', fontSize: 12, fontWeight: 500 }}
-                  className="dark:stroke-[#99BFD1]"
-                  style={{ fontSize: '12px' }}
-                />
-                <YAxis
-                  stroke="var(--caption-text)"
-                  tick={{ fill: 'var(--caption-text)', fontSize: 12, fontWeight: 500 }}
-                  className="dark:stroke-[#99BFD1]"
-                  style={{ fontSize: '12px' }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--card)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '12px',
-                    color: 'var(--heading-color)',
-                    boxShadow: 'var(--shadow-md)',
-                    fontSize: '14px',
-                    fontWeight: 500
-                  }}
-                  labelStyle={{ color: 'var(--heading-color)', fontWeight: 600 }}
-                  cursor={{ fill: 'var(--chart-cursor, rgba(26, 44, 83, 0.08))' }}
-                />
-                <Bar dataKey="orders" fill="var(--chart-1)" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[300px] flex items-center justify-center text-muted-light dark:text-[#99BFD1]">
-              No order volume data available
-            </div>
-          )}
-        </div>
+
 
         {/* Driver Performance - Leaderboard */}
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
@@ -359,15 +314,7 @@ export function Dashboard() {
                   lines.push('');
                 }
 
-                // Order Volume (Last 7 Days)
-                if (analytics.orderVolume && analytics.orderVolume.length > 0) {
-                  lines.push('--- ORDER VOLUME (LAST 7 DAYS) ---');
-                  lines.push('Day,Orders');
-                  analytics.orderVolume.forEach((item: { day: string; orders: number }) => {
-                    lines.push(`${item.day},${item.orders}`);
-                  });
-                  lines.push('');
-                }
+
 
                 // Top Drivers
                 if (analytics.driverPerformance && analytics.driverPerformance.length > 0) {
@@ -442,19 +389,7 @@ export function Dashboard() {
                   lines.push('');
                 }
 
-                // Weekly Trend (Order Volume)
-                if (analytics.orderVolume && analytics.orderVolume.length > 0) {
-                  lines.push('--- WEEKLY ORDER TREND ---');
-                  lines.push('Day,Orders');
-                  let weeklyTotal = 0;
-                  analytics.orderVolume.forEach((item: { day: string; orders: number }) => {
-                    lines.push(`${item.day},${item.orders}`);
-                    weeklyTotal += item.orders;
-                  });
-                  lines.push(`Weekly Total,${weeklyTotal}`);
-                  lines.push(`Daily Average,${(weeklyTotal / analytics.orderVolume.length).toFixed(1)}`);
-                  lines.push('');
-                }
+
 
                 // Driver Performance Rankings
                 if (analytics.driverPerformance && analytics.driverPerformance.length > 0) {
