@@ -287,9 +287,10 @@ function truncateString(str, maxLength) {
 
 /**
  * Transform Tookan task to database record format
+ * Omits null timestamp fields to prevent overwriting existing values
  */
 function transformTaskToRecord(task) {
-  return {
+  const record = {
     job_id: parseInt(task.job_id) || task.job_id,
     order_id: truncateString(task.order_id, 100),
     status: parseInt(task.job_status) || 0,
@@ -319,12 +320,6 @@ function transformTaskToRecord(task) {
     fleet_name: truncateString(task.fleet_name, 255),
     vendor_id: parseInt(task.customer_id || task.vendor_id) || null,
 
-    // Timestamps
-    creation_datetime: normalizeTimestamp(task.creation_datetime || task.created_at || task.job_time || task.creation_date),
-    completed_datetime: normalizeTimestamp(task.completed_datetime || task.job_completed_datetime || task.completed_on || task.completed_at || task.job_completion_time),
-    started_datetime: normalizeTimestamp(task.started_datetime || task.job_started_datetime || task.arrival_datetime),
-    acknowledged_datetime: normalizeTimestamp(task.acknowledged_datetime || task.job_acknowledged_datetime),
-
     // Template fields and notes (use Tookan job_description as system note)
     template_fields: task.template_data || task.custom_field || {},
     notes: task.job_description || null,
@@ -335,6 +330,22 @@ function transformTaskToRecord(task) {
     tags: task.tags || null,
     raw_data: task
   };
+
+  // Only include timestamp fields if they have valid values
+  // This prevents overwriting existing DB values with null
+  const creationDt = normalizeTimestamp(task.creation_datetime || task.created_at || task.job_time || task.creation_date);
+  if (creationDt) record.creation_datetime = creationDt;
+
+  const completedDt = normalizeTimestamp(task.completed_datetime || task.job_completed_datetime || task.completed_on || task.completed_at || task.job_completion_time);
+  if (completedDt) record.completed_datetime = completedDt;
+
+  const startedDt = normalizeTimestamp(task.started_datetime || task.job_started_datetime || task.arrival_datetime);
+  if (startedDt) record.started_datetime = startedDt;
+
+  const acknowledgedDt = normalizeTimestamp(task.acknowledged_datetime || task.job_acknowledged_datetime);
+  if (acknowledgedDt) record.acknowledged_datetime = acknowledgedDt;
+
+  return record;
 }
 
 /**
@@ -701,24 +712,34 @@ async function syncTaskTags(options = {}) {
         console.log(`      🔗 Fetching tags for ${jobIds.length} tasks...`);
         const tagsMap = await fetchTagsForJobIds(jobIds);
 
-        const tagUpdates = subBatchTasks.map(task => ({
-          job_id: parseInt(task.job_id),
-          tags: tagsMap[task.job_id] || null,
-          updated_at: new Date().toISOString()
-        }));
+        // Use UPDATE instead of UPSERT to only modify tags column
+        // This prevents overwriting other columns like completed_datetime
+        let subBatchUpdated = 0;
+        let subBatchErrors = 0;
+        for (const task of subBatchTasks) {
+          const jobId = parseInt(task.job_id);
+          const tags = tagsMap[jobId] || null;
 
-        const { error } = await supabase
-          .from('tasks')
-          .upsert(tagUpdates, {
-            onConflict: 'job_id',
-            ignoreDuplicates: false
-          });
+          const { error } = await supabase
+            .from('tasks')
+            .update({ tags, updated_at: new Date().toISOString() })
+            .eq('job_id', jobId);
 
-        if (error) {
-          console.error(`❌ Sub-batch tag update error: ${error.message}`);
-          totalErrors += tagUpdates.length;
-        } else {
-          totalUpdated += tagUpdates.length;
+          if (error) {
+            // If record doesn't exist, that's expected - just skip
+            if (!error.message.includes('No rows')) {
+              subBatchErrors++;
+            }
+          } else {
+            subBatchUpdated++;
+          }
+        }
+
+        totalUpdated += subBatchUpdated;
+        totalErrors += subBatchErrors;
+
+        if (subBatchErrors > 0) {
+          console.error(`   ⚠️ Sub-batch: ${subBatchUpdated} updated, ${subBatchErrors} errors`);
         }
 
         // Small delay to avoid hitting Tookan rate limits on get_job_details
