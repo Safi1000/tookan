@@ -13,7 +13,8 @@ import {
   Users
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
-import { fetchAnalytics, type AnalyticsData } from '../services/tookanApi';
+import { fetchAnalytics, fetchAllOrders, type AnalyticsData } from '../services/tookanApi';
+import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 
 export function Dashboard() {
@@ -120,10 +121,94 @@ export function Dashboard() {
     });
   };
 
+  // Helper to map Tookan status codes to human readable labels
+  const mapStatus = (status: number | string | null | undefined) => {
+    if (status === null || status === undefined) return 'N/A';
+    const s = Number(status);
+    switch (s) {
+      case 0: return 'Assigned';
+      case 1: return 'Started';
+      case 2: return 'Successful';
+      case 3: return 'Failed';
+      case 4: return 'InProgress/Arrived';
+      case 6: return 'Unassigned';
+      case 7: return 'Accepted/Acknowledged';
+      case 8: return 'Decline';
+      case 9: return 'Cancel';
+      case 10: return 'Deleted';
+      default: return `Status ${s}`;
+    }
+  };
+
   // Calculate max deliveries for progress bar
   const maxDeliveries = driverPerformanceData.length > 0
     ? Math.max(...driverPerformanceData.map(d => d.deliveries), 1)
     : 1;
+
+  const exportOrders = async (range: 'daily' | 'monthly') => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      let dateFrom = today;
+      let dateTo = today;
+
+      if (range === 'monthly') {
+        const thirtyOneDaysAgo = new Date();
+        thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31);
+        dateFrom = thirtyOneDaysAgo.toISOString().split('T')[0];
+      }
+
+      const toastId = toast.loading(`Fetching orders for ${range} report...`);
+
+      const result = await fetchAllOrders({
+        dateFrom,
+        dateTo,
+        limit: 10000 // High limit for export
+      });
+
+      if (result.status !== 'success' || !result.data) {
+        toast.error('Failed to fetch orders for export', { id: toastId });
+        return;
+      }
+
+      const orders = result.data.orders;
+      if (orders.length === 0) {
+        toast.error('No orders found for this period', { id: toastId });
+        return;
+      }
+
+      const exportData = orders.map((order: any) => ({
+        'Task ID': order.jobId || order.job_id || '',
+        'Date/Time Delivered': order.completed_datetime || '',
+        'Driver ID': order.fleet_id || order.assignedDriver || '',
+        'Driver Name': order.fleet_name || order.assignedDriverName || '',
+        'Driver Phone': order.driver_phone || order.driverPhone || '',
+        'Customer Name': order.customer_name || order.customerName || '',
+        'Customer Phone': order.customer_phone || order.customerPhone || '',
+        'Pickup Address': order.pickup_address || order.pickupAddress || '',
+        'Delivery Address': order.delivery_address || order.deliveryAddress || '',
+        'COD': typeof (order.cod_amount || order.codAmount) === 'number' ? (order.cod_amount || order.codAmount).toFixed(2) : '0.00',
+        'Order Fees': typeof (order.order_fees || order.orderFees) === 'number' ? (order.order_fees || order.orderFees).toFixed(2) : '0.00',
+        'Status': mapStatus(order.status),
+        'Tags': order.tags || order.tag || ''
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const csvContent = XLSX.utils.sheet_to_csv(worksheet);
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${range}-report-${today}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`${range === 'daily' ? 'Daily' : 'Monthly'} report exported (${orders.length} orders)`, { id: toastId });
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('An error occurred during export');
+    }
+  };
 
   return (
     <div className="p-8 space-y-8">
@@ -280,61 +365,7 @@ export function Dashboard() {
           <h3 className="text-heading dark:text-foreground mb-6 font-semibold">Quick Actions</h3>
           <div className="space-y-4">
             <button
-              onClick={() => {
-                if (!analytics) {
-                  toast.error('No data available to export');
-                  return;
-                }
-                const today = new Date().toISOString().split('T')[0];
-                const lines: string[] = [];
-
-                // Header
-                lines.push('--- DAILY REPORT ---');
-                lines.push(`Date,${today}`);
-                lines.push(`Generated At,${new Date().toLocaleString()}`);
-                lines.push('');
-
-                // KPI Summary
-                lines.push('--- KEY PERFORMANCE INDICATORS ---');
-                lines.push('Metric,Value');
-                lines.push(`Total Orders,${analytics.kpis.totalOrders}`);
-                lines.push(`Completed Deliveries,${analytics.kpis.completedDeliveries}`);
-                lines.push(`Pending COD,$${analytics.kpis.pendingCOD.toFixed(2)}`);
-                lines.push(`Total Drivers,${analytics.kpis.totalDrivers}`);
-                lines.push(`Total Customers,${analytics.kpis.totalMerchants}`);
-                lines.push('');
-
-                // COD Status
-                if (analytics.codStatus && analytics.codStatus.length > 0) {
-                  lines.push('--- COD COLLECTION STATUS ---');
-                  lines.push('Status,Amount ($)');
-                  analytics.codStatus.forEach((item: { name: string; value: number }) => {
-                    lines.push(`${item.name},$${item.value.toFixed(2)}`);
-                  });
-                  lines.push('');
-                }
-
-
-
-                // Top Drivers
-                if (analytics.driverPerformance && analytics.driverPerformance.length > 0) {
-                  lines.push('--- TOP DRIVERS ---');
-                  lines.push('Rank,Driver Name,Deliveries');
-                  analytics.driverPerformance.forEach((driver: { name: string; deliveries: number }, index: number) => {
-                    lines.push(`${index + 1},${driver.name},${driver.deliveries}`);
-                  });
-                }
-
-                const csvContent = lines.join('\n');
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `daily-report-${today}.csv`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-                toast.success('Daily report exported successfully!');
-              }}
+              onClick={() => exportOrders('daily')}
               className="w-full flex items-center gap-4 px-6 py-4 bg-destructive/10 dark:bg-destructive/10 hover:bg-destructive/20 dark:hover:bg-destructive/20 border border-destructive/30 dark:border-destructive/30 rounded-xl transition-all group shadow-sm hover:shadow-md"
             >
               <div className="w-12 h-12 rounded-xl bg-destructive dark:bg-destructive flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
@@ -347,71 +378,7 @@ export function Dashboard() {
             </button>
 
             <button
-              onClick={() => {
-                if (!analytics) {
-                  toast.error('No data available to export');
-                  return;
-                }
-                const month = new Date().toISOString().slice(0, 7);
-                const monthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-                const lines: string[] = [];
-
-                // Header
-                lines.push('--- MONTHLY REPORT ---');
-                lines.push(`Month,${monthName}`);
-                lines.push(`Generated At,${new Date().toLocaleString()}`);
-                lines.push('');
-
-                // Monthly KPIs
-                lines.push('--- MONTHLY KEY PERFORMANCE INDICATORS ---');
-                lines.push('Metric,Value');
-                lines.push(`Total Orders (MTD),${analytics.kpis.totalOrders}`);
-                lines.push(`Completed Deliveries (MTD),${analytics.kpis.completedDeliveries}`);
-                const completionRate = analytics.kpis.totalOrders > 0
-                  ? ((analytics.kpis.completedDeliveries / analytics.kpis.totalOrders) * 100).toFixed(1)
-                  : '0.0';
-                lines.push(`Completion Rate,${completionRate}%`);
-                lines.push(`Total Pending COD,$${analytics.kpis.pendingCOD.toFixed(2)}`);
-                lines.push(`Active Drivers,${analytics.kpis.totalDrivers}`);
-                lines.push(`Active Customers,${analytics.kpis.totalMerchants}`);
-                lines.push('');
-
-                // COD Summary
-                if (analytics.codStatus && analytics.codStatus.length > 0) {
-                  lines.push('--- COD SUMMARY ---');
-                  lines.push('Category,Amount ($)');
-                  let totalCOD = 0;
-                  analytics.codStatus.forEach((item: { name: string; value: number }) => {
-                    lines.push(`${item.name},$${item.value.toFixed(2)}`);
-                    totalCOD += item.value;
-                  });
-                  lines.push(`Total COD,$${totalCOD.toFixed(2)}`);
-                  lines.push('');
-                }
-
-
-
-                // Driver Performance Rankings
-                if (analytics.driverPerformance && analytics.driverPerformance.length > 0) {
-                  lines.push('--- DRIVER PERFORMANCE RANKINGS ---');
-                  lines.push('Rank,Driver Name,Deliveries,Performance Score');
-                  const maxDeliveries = Math.max(...analytics.driverPerformance.map((d: { deliveries: number }) => d.deliveries), 1);
-                  analytics.driverPerformance.forEach((driver: { name: string; deliveries: number }, index: number) => {
-                    const score = ((driver.deliveries / maxDeliveries) * 100).toFixed(0);
-                    lines.push(`${index + 1},${driver.name},${driver.deliveries},${score}%`);
-                  });
-                }
-
-                const csvContent = lines.join('\n');
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `monthly-report-${month}.csv`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-                toast.success('Monthly report exported successfully!');
-              }}
+              onClick={() => exportOrders('monthly')}
               className="w-full flex items-center gap-4 px-6 py-4 bg-primary/10 dark:bg-[#C1EEFA]/10 hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 border border-primary/30 dark:border-[#C1EEFA]/30 rounded-xl transition-all group shadow-sm hover:shadow-md"
             >
               <div className="w-12 h-12 rounded-xl bg-primary dark:bg-[#C1EEFA] flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">

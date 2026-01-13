@@ -16,7 +16,6 @@ const columnDefinitions = [
   { key: 'deliveryAddress', label: 'Delivery Address' },
   { key: 'cod', label: 'COD' },
   { key: 'fee', label: 'Order Fees' },
-  { key: 'orderId', label: 'Order ID' },
 ];
 
 export function ReportsPanel() {
@@ -253,7 +252,6 @@ export function ReportsPanel() {
           'Delivery Address': order.delivery_address || order.deliveryAddress || '',
           'COD': typeof (order.cod_amount || order.codAmount) === 'number' ? (order.cod_amount || order.codAmount).toFixed(2) : '0.00',
           'Order Fees': typeof (order.order_fees || order.orderFees) === 'number' ? (order.order_fees || order.orderFees).toFixed(2) : '0.00',
-          'Order ID': order.order_id || '',
           'Status': mapStatus(order.status),
           'Tags': order.tags || order.tag || ''
         }));
@@ -634,7 +632,6 @@ export function ReportsPanel() {
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Delivery Address</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order ID</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tags</th>
 
@@ -675,7 +672,6 @@ export function ReportsPanel() {
                       <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate" title={deliveryAddress}>{deliveryAddress}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof cod === 'number' ? cod.toFixed(2) : cod}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{typeof orderFees === 'number' ? orderFees.toFixed(2) : orderFees}</td>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">{orderId}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
                         <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${order.status === 2 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                           order.status === 3 || order.status === 9 || order.status === 8 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
