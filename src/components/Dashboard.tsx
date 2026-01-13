@@ -147,34 +147,63 @@ export function Dashboard() {
 
   const exportOrders = async (range: 'daily' | 'monthly') => {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      let dateFrom = today;
-      let dateTo = today;
+      const now = new Date();
+      let dateFromStr: string;
+      let dateToStr: string;
 
-      if (range === 'monthly') {
-        const thirtyOneDaysAgo = new Date();
-        thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31);
-        dateFrom = thirtyOneDaysAgo.toISOString().split('T')[0];
+      if (range === 'daily') {
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        dateFromStr = startOfDay.toISOString();
+        dateToStr = endOfDay.toISOString();
+      } else {
+        const startOfPeriod = new Date();
+        startOfPeriod.setDate(now.getDate() - 31);
+        startOfPeriod.setHours(0, 0, 0, 0);
+
+        const endOfPeriod = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+        dateFromStr = startOfPeriod.toISOString();
+        dateToStr = endOfPeriod.toISOString();
       }
 
       const toastId = toast.loading(`Fetching orders for ${range} report...`);
 
-      const result = await fetchAllOrders({
-        dateFrom,
-        dateTo,
-        limit: 10000 // High limit for export
-      });
+      // Recursive function to fetch all pages
+      const fetchAllPages = async (accumulatedOrders: any[] = [], page = 1): Promise<any[]> => {
+        const result = await fetchAllOrders({
+          dateFrom: dateFromStr,
+          dateTo: dateToStr,
+          limit: 1000, // Fetch in chunks of 1000 (Supabase max)
+          page: page
+        });
 
-      if (result.status !== 'success' || !result.data) {
-        toast.error('Failed to fetch orders for export', { id: toastId });
-        return;
-      }
+        if (result.status !== 'success' || !result.data) {
+          throw new Error('Failed to fetch orders');
+        }
 
-      const orders = result.data.orders;
+        const newOrders = result.data.orders || [];
+        const allOrders = [...accumulatedOrders, ...newOrders];
+
+        // Check if we need to fetch more
+        // result.data.total contains the total count if available
+        // Or we can check if we got a full page
+        const hasMore = newOrders.length === 1000 && (result.data.total ? allOrders.length < result.data.total : true);
+
+        if (hasMore) {
+          return fetchAllPages(allOrders, page + 1);
+        }
+
+        return allOrders;
+      };
+
+      const orders = await fetchAllPages();
+
       if (orders.length === 0) {
         toast.error('No orders found for this period', { id: toastId });
         return;
       }
+
 
       const exportData = orders.map((order: any) => ({
         'Task ID': order.jobId || order.job_id || '',
@@ -199,7 +228,7 @@ export function Dashboard() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${range}-report-${today}.csv`;
+      a.download = `${range}-report-${now.toISOString().split('T')[0]}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
 
