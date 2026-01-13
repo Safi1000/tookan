@@ -325,21 +325,68 @@ export function Dashboard() {
           <h3 className="text-heading dark:text-foreground mb-6 font-semibold">Quick Actions</h3>
           <div className="space-y-4">
             <button
-              onClick={async () => {
-                try {
-                  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/reports/daily?format=excel`);
-                  if (!response.ok) throw new Error('Export failed');
-                  const blob = await response.blob();
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `daily-report-${new Date().toISOString().split('T')[0]}.xlsx`;
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                } catch (error) {
-                  console.error('Export error:', error);
-                  alert('Failed to export daily report');
+              onClick={() => {
+                if (!analytics) {
+                  toast.error('No data available to export');
+                  return;
                 }
+                const today = new Date().toISOString().split('T')[0];
+                const lines: string[] = [];
+
+                // Header
+                lines.push('--- DAILY REPORT ---');
+                lines.push(`Date,${today}`);
+                lines.push(`Generated At,${new Date().toLocaleString()}`);
+                lines.push('');
+
+                // KPI Summary
+                lines.push('--- KEY PERFORMANCE INDICATORS ---');
+                lines.push('Metric,Value');
+                lines.push(`Total Orders,${analytics.kpis.totalOrders}`);
+                lines.push(`Completed Deliveries,${analytics.kpis.completedDeliveries}`);
+                lines.push(`Pending COD,$${analytics.kpis.pendingCOD.toFixed(2)}`);
+                lines.push(`Total Drivers,${analytics.kpis.totalDrivers}`);
+                lines.push(`Total Customers,${analytics.kpis.totalMerchants}`);
+                lines.push('');
+
+                // COD Status
+                if (analytics.codStatus && analytics.codStatus.length > 0) {
+                  lines.push('--- COD COLLECTION STATUS ---');
+                  lines.push('Status,Amount ($)');
+                  analytics.codStatus.forEach((item: { name: string; value: number }) => {
+                    lines.push(`${item.name},$${item.value.toFixed(2)}`);
+                  });
+                  lines.push('');
+                }
+
+                // Order Volume (Last 7 Days)
+                if (analytics.orderVolume && analytics.orderVolume.length > 0) {
+                  lines.push('--- ORDER VOLUME (LAST 7 DAYS) ---');
+                  lines.push('Day,Orders');
+                  analytics.orderVolume.forEach((item: { day: string; orders: number }) => {
+                    lines.push(`${item.day},${item.orders}`);
+                  });
+                  lines.push('');
+                }
+
+                // Top Drivers
+                if (analytics.driverPerformance && analytics.driverPerformance.length > 0) {
+                  lines.push('--- TOP DRIVERS ---');
+                  lines.push('Rank,Driver Name,Deliveries');
+                  analytics.driverPerformance.forEach((driver: { name: string; deliveries: number }, index: number) => {
+                    lines.push(`${index + 1},${driver.name},${driver.deliveries}`);
+                  });
+                }
+
+                const csvContent = lines.join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `daily-report-${today}.csv`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                toast.success('Daily report exported successfully!');
               }}
               className="w-full flex items-center gap-4 px-6 py-4 bg-destructive/10 dark:bg-destructive/10 hover:bg-destructive/20 dark:hover:bg-destructive/20 border border-destructive/30 dark:border-destructive/30 rounded-xl transition-all group shadow-sm hover:shadow-md"
             >
@@ -348,27 +395,87 @@ export function Dashboard() {
               </div>
               <div className="flex-1 text-left">
                 <p className="text-heading dark:text-[#C1EEFA] font-semibold">Export Daily Report</p>
-                <p className="text-subheading dark:text-[#99BFD1] text-muted-light text-sm">Download today's summary</p>
+                <p className="text-subheading dark:text-[#99BFD1] text-muted-light text-sm">Download today&apos;s summary (CSV)</p>
               </div>
             </button>
 
             <button
-              onClick={async () => {
-                try {
-                  const month = new Date().toISOString().slice(0, 7);
-                  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/reports/monthly?format=excel&month=${month}`);
-                  if (!response.ok) throw new Error('Export failed');
-                  const blob = await response.blob();
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `monthly-report-${month}.xlsx`;
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                } catch (error) {
-                  console.error('Export error:', error);
-                  alert('Failed to export monthly report');
+              onClick={() => {
+                if (!analytics) {
+                  toast.error('No data available to export');
+                  return;
                 }
+                const month = new Date().toISOString().slice(0, 7);
+                const monthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                const lines: string[] = [];
+
+                // Header
+                lines.push('--- MONTHLY REPORT ---');
+                lines.push(`Month,${monthName}`);
+                lines.push(`Generated At,${new Date().toLocaleString()}`);
+                lines.push('');
+
+                // Monthly KPIs
+                lines.push('--- MONTHLY KEY PERFORMANCE INDICATORS ---');
+                lines.push('Metric,Value');
+                lines.push(`Total Orders (MTD),${analytics.kpis.totalOrders}`);
+                lines.push(`Completed Deliveries (MTD),${analytics.kpis.completedDeliveries}`);
+                const completionRate = analytics.kpis.totalOrders > 0
+                  ? ((analytics.kpis.completedDeliveries / analytics.kpis.totalOrders) * 100).toFixed(1)
+                  : '0.0';
+                lines.push(`Completion Rate,${completionRate}%`);
+                lines.push(`Total Pending COD,$${analytics.kpis.pendingCOD.toFixed(2)}`);
+                lines.push(`Active Drivers,${analytics.kpis.totalDrivers}`);
+                lines.push(`Active Customers,${analytics.kpis.totalMerchants}`);
+                lines.push('');
+
+                // COD Summary
+                if (analytics.codStatus && analytics.codStatus.length > 0) {
+                  lines.push('--- COD SUMMARY ---');
+                  lines.push('Category,Amount ($)');
+                  let totalCOD = 0;
+                  analytics.codStatus.forEach((item: { name: string; value: number }) => {
+                    lines.push(`${item.name},$${item.value.toFixed(2)}`);
+                    totalCOD += item.value;
+                  });
+                  lines.push(`Total COD,$${totalCOD.toFixed(2)}`);
+                  lines.push('');
+                }
+
+                // Weekly Trend (Order Volume)
+                if (analytics.orderVolume && analytics.orderVolume.length > 0) {
+                  lines.push('--- WEEKLY ORDER TREND ---');
+                  lines.push('Day,Orders');
+                  let weeklyTotal = 0;
+                  analytics.orderVolume.forEach((item: { day: string; orders: number }) => {
+                    lines.push(`${item.day},${item.orders}`);
+                    weeklyTotal += item.orders;
+                  });
+                  lines.push(`Weekly Total,${weeklyTotal}`);
+                  lines.push(`Daily Average,${(weeklyTotal / analytics.orderVolume.length).toFixed(1)}`);
+                  lines.push('');
+                }
+
+                // Driver Performance Rankings
+                if (analytics.driverPerformance && analytics.driverPerformance.length > 0) {
+                  lines.push('--- DRIVER PERFORMANCE RANKINGS ---');
+                  lines.push('Rank,Driver Name,Deliveries,Performance Score');
+                  const maxDeliveries = Math.max(...analytics.driverPerformance.map((d: { deliveries: number }) => d.deliveries), 1);
+                  analytics.driverPerformance.forEach((driver: { name: string; deliveries: number }, index: number) => {
+                    const score = ((driver.deliveries / maxDeliveries) * 100).toFixed(0);
+                    lines.push(`${index + 1},${driver.name},${driver.deliveries},${score}%`);
+                  });
+                }
+
+                const csvContent = lines.join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `monthly-report-${month}.csv`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                toast.success('Monthly report exported successfully!');
               }}
               className="w-full flex items-center gap-4 px-6 py-4 bg-primary/10 dark:bg-[#C1EEFA]/10 hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 border border-primary/30 dark:border-[#C1EEFA]/30 rounded-xl transition-all group shadow-sm hover:shadow-md"
             >
@@ -377,7 +484,7 @@ export function Dashboard() {
               </div>
               <div className="flex-1 text-left">
                 <p className="text-heading dark:text-[#C1EEFA] font-semibold">Export Monthly Report</p>
-                <p className="text-subheading dark:text-[#99BFD1] text-muted-light text-sm">Download this month's data</p>
+                <p className="text-subheading dark:text-[#99BFD1] text-muted-light text-sm">Download this month&apos;s data (CSV)</p>
               </div>
             </button>
 

@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Wallet, 
-  Edit3, 
-  CreditCard, 
-  Package, 
-  Shield, 
-  Activity, 
+import {
+  LayoutDashboard,
+  FileText,
+  Wallet,
+  Edit3,
+  CreditCard,
+  Package,
+  Shield,
+  Activity,
   Settings,
   ChevronDown,
   LogOut,
@@ -32,6 +32,14 @@ interface NavigationProps {
   user?: UserData | null;
 }
 
+// Superadmin email consistent with backend
+const SUPERADMIN_EMAIL = 'ahmedhassan123.ah83@gmail.com';
+
+function isSuperadmin(user?: UserData | null) {
+  if (!user || !user.email) return false;
+  return user.email.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
+}
+
 // Menu items - Per SRS: No fixed roles, permissions are assigned individually
 // All panels visible, access is controlled by permission-based system
 const menuItems = [
@@ -49,7 +57,7 @@ const menuItems = [
 export function Navigation({ activeMenu, setActiveMenu, onLogout, user }: NavigationProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { theme, toggleTheme } = useTheme();
-  
+
   // Get user display info
   const userName = user?.name || user?.email?.split('@')[0] || 'User';
   const userEmail = user?.email || 'user@example.com';
@@ -65,13 +73,13 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout, user }: Naviga
       {/* Logo */}
       <div className="p-6 border-b border-sidebar-border flex items-center justify-between">
         <div className="flex items-center gap-3">
-         
+
           <div>
             <h1 className="text-heading">TD Admin</h1>
             <p className="text-xs text-muted-light dark:text-[#99BFD1]">Internal System</p>
           </div>
         </div>
-        
+
         {/* Theme Toggle Button */}
         <button
           onClick={toggleTheme}
@@ -88,30 +96,38 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout, user }: Naviga
 
       {/* Menu Items - All visible, access controlled by permissions */}
       <div className="flex-1 overflow-y-auto py-4 px-3">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeMenu === item.id;
-          
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveMenu(item.id)}
-              className={`
-                w-full flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all relative group
-                ${isActive 
-                  ? 'bg-[#DE3544]/10 dark:bg-[#DE3544]/10 text-[#DE3544] dark:text-[#C1EEFA] border border-[#DE3544]/30 dark:border-[#DE3544]/30' 
-                  : 'text-icon-default dark:text-[#99BFD1] hover:bg-hover-bg-light dark:hover:bg-[#223560] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
-                }
-              `}
-            >
-              {isActive && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#DE3544] rounded-r-full shadow-[0_0_12px_rgba(222,53,68,0.6)]" />
-              )}
-              <Icon className={`w-5 h-5 ${isActive ? 'text-[#DE3544]' : 'icon-default dark:text-[#99BFD1]'}`} />
-              <span className="text-sm">{item.label}</span>
-            </button>
-          );
-        })}
+        {menuItems
+          .filter(item => {
+            // Restrict permissions and logs to superadmin only
+            if (['permissions', 'logs'].includes(item.id)) {
+              return isSuperadmin(user);
+            }
+            return true;
+          })
+          .map((item) => {
+            const Icon = item.icon;
+            const isActive = activeMenu === item.id;
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveMenu(item.id)}
+                className={`
+                  w-full flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all relative group
+                  ${isActive
+                    ? 'bg-[#DE3544]/10 dark:bg-[#DE3544]/10 text-[#DE3544] dark:text-[#C1EEFA] border border-[#DE3544]/30 dark:border-[#DE3544]/30'
+                    : 'text-icon-default dark:text-[#99BFD1] hover:bg-hover-bg-light dark:hover:bg-[#223560] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
+                  }
+                `}
+              >
+                {isActive && (
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#DE3544] rounded-r-full shadow-[0_0_12px_rgba(222,53,68,0.6)]" />
+                )}
+                <Icon className={`w-5 h-5 ${isActive ? 'text-[#DE3544]' : 'icon-default dark:text-[#99BFD1]'}`} />
+                <span className="text-sm">{item.label}</span>
+              </button>
+            );
+          })}
       </div>
 
       {/* User Profile */}
