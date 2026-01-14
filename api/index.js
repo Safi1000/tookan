@@ -505,8 +505,7 @@ function getApp() {
           customer_name: payload.customer_name || payload.name || payload.first_name || '',
           customer_phone: payload.customer_phone || payload.phone || '',
           customer_address: payload.customer_address || payload.address || '',
-          customer_email: payload.customer_email || payload.email || '',
-          last_synced_at: new Date().toISOString()
+          customer_email: payload.customer_email || payload.email || ''
         };
 
         console.log('Upserting record:', JSON.stringify(record, null, 2));
