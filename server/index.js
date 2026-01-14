@@ -19,7 +19,9 @@ const auditLogger = require('./middleware/auditLogger');
 const orderSyncService = require('./services/orderSyncService');
 // Agent sync service for caching drivers/fleets
 const agentSyncService = require('./services/agentSyncService');
+const customerSyncService = require('./services/customerSyncService');
 const agentModel = require('./db/models/agents');
+const customerModel = require('./db/models/customers');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -5268,11 +5270,24 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
       console.log('⚠️  No orders found, but drivers/customers exist. This may indicate a Tookan API issue with order fetching.');
     }
 
+    // Get customer count from Supabase database (instead of Tookan API)
+    let totalCustomers = 0;
+    if (isConfigured()) {
+      try {
+        totalCustomers = await customerModel.getCustomerCount();
+        console.log(`📊 Customers from database: ${totalCustomers}`);
+      } catch (err) {
+        console.error('Error getting customer count from DB:', err.message);
+        totalCustomers = customers.length; // Fallback to API result
+      }
+    } else {
+      totalCustomers = customers.length; // Fallback if Supabase not configured
+    }
+
     // Calculate KPIs - Match Reports Panel (Total Orders, Drivers, Customers, Deliveries)
     const totalOrders = orders.length;
     const totalDrivers = drivers.length;
-    const totalMerchants = customers.length; // Use all customers to match Reports Panel "Total Customers"
-    const totalCustomers = customers.length;
+    const totalMerchants = totalCustomers; // Use DB count
 
     // Calculate COD metrics
     const pendingCOD = orders
@@ -7704,6 +7719,91 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'API server is running' });
 });
 
+// Reports Summary - Returns counts from database
+app.get('/api/reports/summary', optionalAuth, async (req, res) => {
+  try {
+    const { dateFrom, dateTo } = req.query;
+
+    // Get counts from database
+    let customerCount = 0;
+    let driverCount = 0;
+
+    if (isConfigured()) {
+      try {
+        customerCount = await customerModel.getCustomerCount();
+        driverCount = await agentModel.getAgentCount();
+      } catch (err) {
+        console.error('Error getting counts from DB:', err.message);
+      }
+    }
+
+    res.json({
+      status: 'success',
+      data: {
+        orders: [],
+        drivers: [],
+        customers: [],
+        driverSummaries: [],
+        merchantSummaries: [],
+        totals: {
+          orders: 0, // Will be calculated from orders if needed
+          drivers: driverCount,
+          customers: customerCount,
+          deliveries: 0
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Reports summary error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to get reports summary'
+    });
+  }
+});
+
+// =====================================
+// CUSTOMER WEBHOOK ENDPOINT
+// =====================================
+// URL to configure in Tookan: POST /api/webhooks/tookan/customer
+// Header: x-webhook-secret: YOUR_TOOKAN_WEBHOOK_SECRET
+app.post('/api/webhooks/tookan/customer', async (req, res) => {
+  try {
+    console.log('\n=== CUSTOMER WEBHOOK RECEIVED ===');
+    console.log('Timestamp:', new Date().toISOString());
+
+    // Validate webhook secret
+    const secretHeader = req.headers['x-webhook-secret'];
+    const expectedSecret = getWebhookSecret();
+    const bodySecret = req.body?.tookan_shared_secret;
+
+    if (expectedSecret && (secretHeader !== expectedSecret && bodySecret !== expectedSecret)) {
+      console.warn('⚠️  Unauthorized webhook attempt');
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+
+    const payload = req.body || {};
+    console.log('Payload keys:', Object.keys(payload));
+
+    // Handle the webhook
+    const result = await customerSyncService.handleCustomerWebhook(payload);
+
+    console.log('=== END CUSTOMER WEBHOOK ===\n');
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Customer webhook processed',
+      data: result
+    });
+  } catch (error) {
+    console.error('❌ Customer webhook error:', error.message);
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+});
+
 app.listen(PORT, async () => {
   console.log(`🚀 Tookan API Proxy Server running on http://localhost:${PORT}`);
   console.log(`📡 Proxying requests to Tookan API`);
@@ -7722,8 +7822,22 @@ app.listen(PORT, async () => {
       .catch(err => {
         console.error('❌ Agent sync error:', err.message);
       });
+
+    // Auto-sync customers on startup (non-blocking)
+    console.log('🔄 Starting automatic customer sync (if table empty)...');
+    customerSyncService.syncAllCustomers({ ifEmptyOnly: true })
+      .then(result => {
+        if (result.success) {
+          console.log(`✅ Customer sync completed: ${result.synced} customers synced`);
+        } else {
+          console.log(`⚠️  Customer sync failed: ${result.message}`);
+        }
+      })
+      .catch(err => {
+        console.error('❌ Customer sync error:', err.message);
+      });
   } else {
-    console.log('⚠️  Supabase not configured, skipping agent auto-sync');
+    console.log('⚠️  Supabase not configured, skipping auto-sync');
   }
 });
 

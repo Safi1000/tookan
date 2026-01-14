@@ -127,17 +127,17 @@ export function ReportsPanel() {
         setDriverPerformanceData([]);
       }
 
-      // Fetch reports summary (now returns real data from backend)
+      // Fetch reports summary (returns counts from database)
       const summaryResult = await fetchReportsSummary({
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined
       });
       if (summaryResult.status === 'success' && summaryResult.data) {
         if (summaryResult.data.totals) {
+          // Use database counts from backend (don't overwrite with API-limited values)
           setTotals({
             ...summaryResult.data.totals,
-            drivers: driversResult.status === 'success' ? (driversResult.data?.fleets?.length || 0) : 0,
-            merchants: customersResult.status === 'success' ? (customersResult.data?.customers?.length || 0) : 0
+            merchants: summaryResult.data.totals.customers // Map customers to merchants for display
           });
         }
       }
