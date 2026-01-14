@@ -469,6 +469,50 @@ function getApp() {
       }
     });
 
+    // Tookan customer webhook
+    app.post('/api/webhooks/tookan/customer', async (req, res) => {
+      try {
+        console.log('\n=== CUSTOMER WEBHOOK RECEIVED (VERCEL) ===');
+        const expected = getWebhookSecret();
+        const secretHeader = req.headers['x-webhook-secret'];
+        if (expected && secretHeader !== expected) {
+          return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+        }
+
+        const payload = req.body || {};
+        const customerId = payload.vendor_id || payload.customer_id || payload.id;
+
+        if (!customerId) {
+          return res.status(400).json({ status: 'error', message: 'vendor_id is required' });
+        }
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+        }
+
+        const record = {
+          vendor_id: parseInt(customerId),
+          customer_name: payload.customer_name || payload.name || payload.first_name || '',
+          customer_phone: payload.customer_phone || payload.phone || '',
+          customer_address: payload.customer_address || payload.address || '',
+          customer_email: payload.customer_email || payload.email || '',
+          last_synced_at: new Date().toISOString()
+        };
+
+        const { error } = await supabase
+          .from('customers')
+          .upsert(record, { onConflict: 'vendor_id' });
+
+        if (error) throw error;
+
+        console.log(`✅ Customer ${customerId} synced via webhook (Vercel)`);
+        res.json({ status: 'success', message: 'Customer synced' });
+      } catch (error) {
+        console.error('Customer webhook error (Vercel):', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
     // Tookan task webhook (body or header secret)
     app.post('/api/webhooks/tookan/task', async (req, res) => {
       try {
@@ -895,35 +939,24 @@ function getApp() {
       }
     });
 
-    // Get all customers (merchants)
+    // Get all customers (merchants) from Supabase
     app.get('/api/tookan/customers', async (req, res) => {
       try {
-        const apiKey = getApiKey();
-        const response = await fetch('https://api.tookanapp.com/v2/get_all_customers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_key: apiKey })
-        });
-        const data = await response.json();
-
-        // Ensure customers is always an array
-        const customers = Array.isArray(data.data) ? data.data :
-          Array.isArray(data.customers) ? data.customers :
-            Array.isArray(data) ? data : [];
-
-        if (data.status === 200 || customers.length > 0) {
-          res.json({
-            status: 'success',
-            message: 'Customers fetched successfully',
-            data: { customers: customers }
-          });
-        } else {
-          res.json({
-            status: 'error',
-            message: data.message || 'Failed to fetch customers',
-            data: { customers: [] }
-          });
+        if (!isSupabaseConfigured || !supabase) {
+          throw new Error('Database not configured');
         }
+        const { data: customers, error } = await supabase
+          .from('customers')
+          .select('*')
+          .order('customer_name', { ascending: true });
+
+        if (error) throw error;
+
+        res.json({
+          status: 'success',
+          message: 'Customers fetched successfully',
+          data: { customers: customers || [] }
+        });
       } catch (error) {
         res.status(500).json({
           status: 'error',
@@ -1106,13 +1139,10 @@ function getApp() {
         // Fetch data from Tookan - always use get_all_customers for consistency
         // NOTE: We use small task limits here because RPC provides accurate totals
         // Tasks are only used for charts/trends which only need recent data
-        const [fleetsRes, customersRes, tasksRes] = await Promise.all([
+        // Fetch data from Tookan - only fleets and tasks
+        // NOTE: Customers now come from Supabase
+        const [fleetsRes, tasksRes] = await Promise.all([
           fetch('https://api.tookanapp.com/v2/get_all_fleets', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_key: apiKey })
-          }),
-          fetch('https://api.tookanapp.com/v2/get_all_customers', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ api_key: apiKey })
@@ -1130,9 +1160,8 @@ function getApp() {
           })
         ]);
 
-        const [fleetsData, customersData, tasksData] = await Promise.all([
+        const [fleetsData, tasksData] = await Promise.all([
           fleetsRes.json(),
-          customersRes.json(),
           tasksRes.json()
         ]);
 
@@ -1140,9 +1169,6 @@ function getApp() {
         const fleets = Array.isArray(fleetsData.data) ? fleetsData.data :
           Array.isArray(fleetsData.fleets) ? fleetsData.fleets :
             Array.isArray(fleetsData) ? fleetsData : [];
-        const customers = Array.isArray(customersData.data) ? customersData.data :
-          Array.isArray(customersData.customers) ? customersData.customers :
-            Array.isArray(customersData) ? customersData : [];
 
         const tasks = Array.isArray(tasksData.data) ? tasksData.data :
           Array.isArray(tasksData.tasks) ? tasksData.tasks :
@@ -1197,12 +1223,23 @@ function getApp() {
           .filter(t => (t.order_payment || t.total_amount) && parseInt(t.job_status) === 2)
           .reduce((sum, t) => sum + (parseFloat(t.order_payment || t.total_amount) || 0), 0);
 
-        // Tookan terminology:
-        // - Customers: delivery recipients (all entries from get_all_customers)
-        // - Merchants: registered businesses with vendor_id (subset of customers)
-        // - Agents/Drivers: delivery personnel (from get_all_fleets)
-        const totalCustomers = customers.length;
-        const totalMerchants = customers.length; // Per user request, match Reports Panel which uses all customers
+        // Get customer count from Supabase
+        let dbCustomerCount = 0;
+        if (isSupabaseConfigured && supabase) {
+          try {
+            const { count } = await supabase
+              .from('customers')
+              .select('*', { count: 'exact', head: true });
+            dbCustomerCount = count || 0;
+          } catch (e) {
+            console.log('Customer count check failed in analytics:', e.message);
+          }
+        }
+
+        const totalCustomers = dbCustomerCount;
+        const totalMerchants = dbCustomerCount; // Per user request, match Reports Panel which uses all customers
+
+        console.log(`🚀 [VERCEL-BACKEND] Analytics: totalCustomers=${totalCustomers}, totalMerchants=${totalMerchants}`);
 
         res.json({
           status: 'success',
@@ -3371,25 +3408,40 @@ function getApp() {
     // REPORTS & SEARCH ENDPOINTS
     // ============================================
 
-    // GET Reports Summary (Aggregated Data - Wrapper around Totals for now)
+    // GET Reports Summary (Aggregated Data)
     app.get('/api/reports/summary', authenticate, async (req, res) => {
       try {
         // 1. Get Totals via RPC
-        const { data: orderStats, error } = (isSupabaseConfigured && supabase)
+        const { data: orderStats } = (isSupabaseConfigured && supabase)
           ? await supabase.rpc('get_order_stats')
-          : { data: null, error: null };
+          : { data: null };
+
+        // 2. Get Drivers via API
+        const fleetsRes = await fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: getApiKey() })
+        }).then(r => r.json()).catch(() => ({ data: [] }));
+        const fleets = fleetsRes.data || [];
+
+        // 3. Get Customers count from Supabase
+        let dbCustomerCount = 0;
+        if (isSupabaseConfigured && supabase) {
+          const { count } = await supabase
+            .from('customers')
+            .select('*', { count: 'exact', head: true });
+          dbCustomerCount = count || 0;
+        }
 
         const totals = {
-          orders: 0,
-          drivers: 0,
-          customers: 0,
-          deliveries: 0
+          orders: orderStats?.[0]?.total_orders || 0,
+          drivers: fleets.length,
+          customers: dbCustomerCount,
+          merchants: dbCustomerCount,
+          deliveries: orderStats?.[0]?.completed_deliveries || 0
         };
 
-        if (orderStats && orderStats.length > 0) {
-          totals.orders = orderStats[0].total_orders || 0;
-          totals.deliveries = orderStats[0].completed_deliveries || 0;
-        }
+        console.log(`🚀 [VERCEL-BACKEND] Summary: customers=${totals.customers}`);
 
         res.json({
           status: 'success',
@@ -3433,16 +3485,14 @@ function getApp() {
           }).then(r => r.json()).catch(() => ({ status: 200, data: [] }))
         );
 
-        // 3. Tookan API for customers count (lightweight - just need count)
-        promises.push(
-          fetch('https://api.tookanapp.com/v2/get_all_customers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_key: getApiKey() })
-          }).then(r => r.json()).catch(() => ({ status: 200, data: [] }))
-        );
+        // 3. Supabase for customers count
+        if (isSupabaseConfigured && supabase) {
+          promises.push(supabase.from('customers').select('*', { count: 'exact', head: true }));
+        } else {
+          promises.push(Promise.resolve({ count: 0 }));
+        }
 
-        const [orderStats, driversResp, customersResp] = await Promise.all(promises);
+        const [orderStats, driversResp, customersCountResp] = await Promise.all(promises);
 
         // Extract totals
         const totals = {
@@ -3458,9 +3508,9 @@ function getApp() {
           totals.deliveries = orderStats.data[0].completed_deliveries || 0;
         }
 
-        // From Tookan API
+        // From Tookan API and Supabase
         totals.drivers = driversResp.data?.length || 0;
-        totals.customers = customersResp.data?.length || 0;
+        totals.customers = customersCountResp.count || 0;
 
         const elapsed = Date.now() - startTime;
         console.log(`📊 Totals fetched in ${elapsed}ms: orders=${totals.orders}, drivers=${totals.drivers}, customers=${totals.customers}, deliveries=${totals.deliveries}`);
@@ -3662,31 +3712,18 @@ function getApp() {
         }
 
         const searchTerm = q.toString().trim();
+        const isNumeric = /^\d+$/.test(searchTerm);
 
-        // Search in tasks for customer info
+        // Search in customers table
         const { data, error } = await supabase
-          .from('tasks')
+          .from('customers')
           .select('vendor_id, customer_name, customer_phone, customer_address')
-          .or(`vendor_id.eq.${searchTerm},customer_name.ilike.%${searchTerm}%,customer_phone.ilike.%${searchTerm}%`)
+          .or(`vendor_id.eq.${isNumeric ? searchTerm : -1},customer_name.ilike.%${searchTerm}%,customer_phone.ilike.%${searchTerm}%`)
           .limit(50);
 
         if (error) throw error;
 
-        // Deduplicate by vendor_id
-        const uniqueCustomers = new Map();
-        (data || []).forEach(task => {
-          const id = task.vendor_id || task.customer_name;
-          if (id && !uniqueCustomers.has(id)) {
-            uniqueCustomers.set(id, {
-              id: task.vendor_id,
-              name: task.customer_name,
-              phone: task.customer_phone,
-              address: task.customer_address
-            });
-          }
-        });
-
-        res.json({ status: 'success', data: Array.from(uniqueCustomers.values()) });
+        res.json({ status: 'success', data: data || [] });
       } catch (error) {
         console.error('Search customers error:', error);
         res.status(500).json({ status: 'error', message: error.message });
@@ -3849,22 +3886,19 @@ function getApp() {
     });
 
 
-    // GET All Customers (via Tookan API)
+    // GET All Customers (via Supabase)
     app.get('/api/tookan/customers', authenticate, async (req, res) => {
       try {
-        const response = await fetch('https://api.tookanapp.com/v2/get_all_customers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_key: getApiKey() })
-        });
-
-        const data = await response.json();
-
-        if (data.status === 200) {
-          res.json({ status: 'success', data: { customers: data.data || [] } });
-        } else {
-          throw new Error(data.message || 'Failed to fetch customers');
+        if (!isSupabaseConfigured || !supabase) {
+          throw new Error('Database not configured');
         }
+        const { data: customers, error } = await supabase
+          .from('customers')
+          .select('*')
+          .order('customer_name', { ascending: true });
+
+        if (error) throw error;
+        res.json({ status: 'success', data: { customers: customers || [] } });
       } catch (error) {
         console.error('Fetch all customers error:', error);
         res.status(500).json({ status: 'error', message: error.message, data: { customers: [] } });
