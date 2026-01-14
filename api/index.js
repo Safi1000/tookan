@@ -473,20 +473,30 @@ function getApp() {
     app.post('/api/webhooks/tookan/customer', async (req, res) => {
       try {
         console.log('\n=== CUSTOMER WEBHOOK RECEIVED (VERCEL) ===');
+        console.log('Body:', JSON.stringify(req.body, null, 2));
+
+        const payload = req.body || {};
+
+        // Tookan sends the shared secret in the body as tookan_shared_secret
         const expected = getWebhookSecret();
-        const secretHeader = req.headers['x-webhook-secret'];
-        if (expected && secretHeader !== expected) {
+        const bodySecret = payload.tookan_shared_secret || null;
+        if (expected && bodySecret !== expected) {
+          console.log('❌ Webhook secret mismatch. Expected:', expected, 'Got:', bodySecret);
           return res.status(401).json({ status: 'error', message: 'Unauthorized' });
         }
 
-        const payload = req.body || {};
-        const customerId = payload.vendor_id || payload.customer_id || payload.id;
+        // Tookan uses customer_id, we map it to vendor_id in our database
+        const customerId = payload.customer_id || payload.vendor_id || payload.id || payload.user_id;
+
+        console.log('Extracted customer ID:', customerId);
 
         if (!customerId) {
+          console.log('❌ No customer ID found in payload');
           return res.status(400).json({ status: 'error', message: 'vendor_id is required' });
         }
 
         if (!isSupabaseConfigured || !supabase) {
+          console.log('❌ Supabase not configured');
           return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
         }
 
@@ -499,14 +509,19 @@ function getApp() {
           last_synced_at: new Date().toISOString()
         };
 
+        console.log('Upserting record:', JSON.stringify(record, null, 2));
+
         const { error } = await supabase
           .from('customers')
           .upsert(record, { onConflict: 'vendor_id' });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase upsert error:', error);
+          throw error;
+        }
 
         console.log(`✅ Customer ${customerId} synced via webhook (Vercel)`);
-        res.json({ status: 'success', message: 'Customer synced' });
+        res.json({ status: 'success', message: 'Customer synced', customer_id: customerId });
       } catch (error) {
         console.error('Customer webhook error (Vercel):', error);
         res.status(500).json({ status: 'error', message: error.message });
