@@ -107,11 +107,12 @@ export function ReportsPanel() {
         setDrivers(driversResult.data.fleets || []);
       }
 
-      // Fetch customers
-      const customersResult = await fetchAllCustomers();
-      if (customersResult.status === 'success' && customersResult.data) {
-        setCustomers(customersResult.data.customers || []);
-      }
+      // Customers are now fetched from database via reports summary endpoint
+      // No need to call Tookan API for customer count
+      // const customersResult = await fetchAllCustomers();
+      // if (customersResult.status === 'success' && customersResult.data) {
+      //   setCustomers(customersResult.data.customers || []);
+      // }
 
       // Fetch Driver Performance if search is active
       if (unifiedDriverSearch.trim()) {
@@ -133,11 +134,14 @@ export function ReportsPanel() {
         dateTo: dateTo || undefined
       });
       if (summaryResult.status === 'success' && summaryResult.data) {
+        console.log('🚀 [FRONTEND] Reports Summary Result:', summaryResult.data);
         if (summaryResult.data.totals) {
-          // Use database counts from backend (don't overwrite with API-limited values)
+          console.log('🚀 [FRONTEND] Customer Count from Summary:', summaryResult.data.totals.customers);
+          // Use database customer count, but API for drivers (as requested)
           setTotals({
             ...summaryResult.data.totals,
-            merchants: summaryResult.data.totals.customers // Map customers to merchants for display
+            drivers: driversResult.status === 'success' ? (driversResult.data?.fleets?.length || 0) : 0,
+            merchants: summaryResult.data.totals.customers // Map customers from DB to merchants for display
           });
         }
       }

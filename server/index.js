@@ -4918,60 +4918,8 @@ app.get('/api/tookan/fleets', authenticate, async (req, res) => {
 
 // GET All Customers/Merchants
 // Note: In Tookan API, Merchants are called "Customers" (vendor_id)
-app.get('/api/tookan/customers', authenticate, async (req, res) => {
-  try {
-    console.log('\n=== GET ALL CUSTOMERS (MERCHANTS) REQUEST ===');
-    console.log('Request received at:', new Date().toISOString());
+// Duplicate /api/tookan/customers removed in favor of consolidated implementation at line 5648
 
-    const apiKey = getApiKey();
-
-    console.log('Calling Tookan API: https://api.tookanapp.com/v2/get_all_customers');
-
-    const response = await fetch('https://api.tookanapp.com/v2/get_all_customers', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ api_key: apiKey }),
-    });
-
-    const data = await response.json();
-
-    // Ensure customers is always an array
-    const customers = Array.isArray(data.data) ? data.data :
-      Array.isArray(data.customers) ? data.customers :
-        Array.isArray(data) ? data : [];
-
-    if (data.status === 200 || customers.length > 0) {
-      console.log('✅ Customers (Merchants) fetched successfully:', customers.length);
-      console.log('=== END REQUEST (SUCCESS) ===\n');
-
-      res.json({
-        status: 'success',
-        action: 'fetch_customers',
-        entity: 'customer',
-        message: 'Customers fetched successfully',
-        data: { customers: customers }
-      });
-    } else {
-      console.log('❌ Failed to fetch customers:', data.message);
-      console.log('=== END REQUEST (ERROR) ===\n');
-
-      res.json({
-        status: 'error',
-        message: data.message || 'Failed to fetch customers',
-        data: { customers: [] }
-      });
-    }
-  } catch (error) {
-    console.error('❌ Get customers error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message || 'Network error occurred',
-      data: { customers: [] }
-    });
-  }
-});
 
 // ============================================
 // MERCHANT PLANS - PLAN MANAGEMENT
@@ -5232,13 +5180,13 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
       if (!endDate) endDate = end.toISOString().split('T')[0];
     }
 
-    // Fetch orders, drivers, and customers
+    // Fetch orders and drivers (customers count comes from database now)
     // Use localhost for internal API calls to avoid proxy/port issues
     const baseUrl = `http://localhost:${process.env.PORT || 3001}`;
 
     const authHeader = req.headers.authorization || '';
 
-    const [ordersResult, driversResult, customersResult] = await Promise.all([
+    const [ordersResult, driversResult] = await Promise.all([
       fetch(`${baseUrl}/api/tookan/orders?dateFrom=${startDate}&dateTo=${endDate}&limit=500`, {
         headers: authHeader ? { Authorization: authHeader } : {}
       }).then(r => r.json()).catch(err => {
@@ -5250,38 +5198,28 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
       }).then(r => r.json()).catch(err => {
         console.error('Error fetching drivers for analytics:', err);
         return { status: 'error', data: { fleets: [] } };
-      }),
-      fetch(`${baseUrl}/api/tookan/customers`, {
-        headers: authHeader ? { Authorization: authHeader } : {}
-      }).then(r => r.json()).catch(err => {
-        console.error('Error fetching customers for analytics:', err);
-        return { status: 'error', data: { customers: [] } };
       })
+      // Customers count is now fetched from database, no API call needed
     ]);
 
     const orders = ordersResult.status === 'success' ? (ordersResult.data?.orders || []) : [];
     const drivers = driversResult.status === 'success' ? (driversResult.data?.fleets || []) : [];
-    const customers = customersResult.status === 'success' ? (customersResult.data?.customers || []) : [];
-
-    console.log(`📊 Processing analytics for ${orders.length} orders, ${drivers.length} drivers, ${customers.length} customers`);
-
-    // Log if orders are empty but we have drivers/customers (indicates API issue)
-    if (orders.length === 0 && (drivers.length > 0 || customers.length > 0)) {
-      console.log('⚠️  No orders found, but drivers/customers exist. This may indicate a Tookan API issue with order fetching.');
-    }
 
     // Get customer count from Supabase database (instead of Tookan API)
     let totalCustomers = 0;
     if (isConfigured()) {
       try {
         totalCustomers = await customerModel.getCustomerCount();
-        console.log(`📊 Customers from database: ${totalCustomers}`);
       } catch (err) {
         console.error('Error getting customer count from DB:', err.message);
-        totalCustomers = customers.length; // Fallback to API result
       }
-    } else {
-      totalCustomers = customers.length; // Fallback if Supabase not configured
+    }
+
+    console.log(`📊 Processing analytics for ${orders.length} orders, ${drivers.length} drivers, ${totalCustomers} customers (from DB)`);
+
+    // Log if orders are empty but we have drivers (indicates API issue)
+    if (orders.length === 0 && drivers.length > 0) {
+      console.log('⚠️  No orders found, but drivers exist. This may indicate a Tookan API issue with order fetching.');
     }
 
     // Calculate KPIs - Match Reports Panel (Total Orders, Drivers, Customers, Deliveries)
@@ -5448,22 +5386,20 @@ app.get('/api/reports/totals', authenticate, async (req, res) => {
       }).then(r => r.json()).catch(() => ({ status: 200, data: [] }))
     );
 
-    // 3. Tookan API for customers count (lightweight - just need count)
-    promises.push(
-      fetch('https://api.tookanapp.com/v2/get_all_customers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: getApiKey() })
-      }).then(r => r.json()).catch(() => ({ status: 200, data: [] }))
-    );
+    // 3. Supabase database for customers count
+    if (isConfigured()) {
+      promises.push(customerModel.getCustomerCount());
+    } else {
+      promises.push(Promise.resolve(0));
+    }
 
-    const [orderStats, driversResp, customersResp] = await Promise.all(promises);
+    const [orderStats, driversResp, customerCount] = await Promise.all(promises);
 
     // Extract totals
     const totals = {
       orders: 0,
       drivers: 0,
-      customers: 0,
+      customers: customerCount || 0,
       deliveries: 0
     };
 
@@ -5475,7 +5411,6 @@ app.get('/api/reports/totals', authenticate, async (req, res) => {
 
     // From Tookan API
     totals.drivers = driversResp.data?.length || 0;
-    totals.customers = customersResp.data?.length || 0;
 
     const elapsed = Date.now() - startTime;
     console.log(`📊 Totals fetched in ${elapsed}ms: orders=${totals.orders}, drivers=${totals.drivers}, customers=${totals.customers}, deliveries=${totals.deliveries}`);
@@ -5587,30 +5522,16 @@ app.get('/api/search/customers', authenticate, async (req, res) => {
 
     const searchTerm = q.toString().trim();
 
-    // Search in tasks for customer info
+    // Search in customers table
     const { data, error } = await supabase
-      .from('tasks')
+      .from('customers')
       .select('vendor_id, customer_name, customer_phone, customer_address')
-      .or(`vendor_id.eq.${searchTerm},customer_name.ilike.%${searchTerm}%,customer_phone.ilike.%${searchTerm}%`)
+      .or(`vendor_id.eq.${isNumeric ? searchTerm : -1},customer_name.ilike.%${searchTerm}%,customer_phone.ilike.%${searchTerm}%`)
       .limit(50);
 
     if (error) throw error;
 
-    // Deduplicate by vendor_id
-    const uniqueCustomers = new Map();
-    (data || []).forEach(task => {
-      const id = task.vendor_id || task.customer_name;
-      if (id && !uniqueCustomers.has(id)) {
-        uniqueCustomers.set(id, {
-          id: task.vendor_id,
-          name: task.customer_name,
-          phone: task.customer_phone,
-          address: task.customer_address
-        });
-      }
-    });
-
-    res.json({ status: 'success', data: Array.from(uniqueCustomers.values()) });
+    res.json({ status: 'success', data: data || [] });
   } catch (error) {
     console.error('Search customers error:', error);
     res.status(500).json({ status: 'error', message: error.message });
@@ -5654,25 +5575,41 @@ app.get('/api/search/drivers', authenticate, async (req, res) => {
   }
 });
 
-// GET All Customers (via Tookan API)
+// GET All Customers (from Database)
 app.get('/api/tookan/customers', authenticate, async (req, res) => {
   try {
-    const response = await fetch('https://api.tookanapp.com/v2/get_all_customers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: getApiKey() })
-    });
+    console.log('\n=== GET ALL CUSTOMERS (FROM DATABASE) ===');
+    console.log('Request received at:', new Date().toISOString());
 
-    const data = await response.json();
-
-    if (data.status === 200) {
-      res.json({ status: 'success', data: { customers: data.data || [] } });
-    } else {
-      throw new Error(data.message || 'Failed to fetch customers');
+    if (!isConfigured()) {
+      return res.status(400).json({ status: 'error', message: 'Database not configured' });
     }
+
+    const { data: customers, error } = await supabase
+      .from('customers')
+      .select('*')
+      .order('customer_name', { ascending: true });
+
+    if (error) throw error;
+
+    console.log('✅ Customers fetched from database:', customers?.length || 0);
+    console.log('=== END REQUEST (SUCCESS) ===\n');
+
+    res.json({
+      status: 'success',
+      data: {
+        customers: customers || []
+      }
+    });
   } catch (error) {
-    console.error('Fetch all customers error:', error);
-    res.status(500).json({ status: 'error', message: error.message, data: { customers: [] } });
+    console.error('❌ Fetch all customers error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Network error occurred',
+      data: {
+        customers: []
+      }
+    });
   }
 });
 
@@ -5731,14 +5668,14 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
       console.error('Error fetching drivers for summary:', err);
     }
 
-    try {
-      const customersResponse = await fetch(`${baseUrl}/api/tookan/customers`, {
-        headers: authHeader ? { Authorization: authHeader } : {}
-      });
-      const customersData = await customersResponse.json();
-      customers = customersData.status === 'success' ? (customersData.data?.customers || []) : [];
-    } catch (err) {
-      console.error('Error fetching customers for summary:', err);
+    // Get customer count from database instead of API
+    let dbCustomerCount = 0;
+    if (isConfigured()) {
+      try {
+        dbCustomerCount = await customerModel.getCustomerCount();
+      } catch (err) {
+        console.error('Error fetching customer count for summary:', err);
+      }
     }
 
     // Calculate driver summaries - Include ALL drivers from fleets
@@ -5850,15 +5787,17 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
         : '0'
     }));
 
-    // Calculate totals - Use RPC for orders/deliveries (already fetched above), API for drivers/customers
+    // Calculate totals - Use RPC for orders/deliveries, API for drivers, Database for customers
     let totals = {
       orders: rpcTotals?.total_orders || orders.length,
       drivers: drivers.length,
-      customers: customers.length,
-      merchants: customers.length,
+      customers: dbCustomerCount,
+      merchants: dbCustomerCount,
       deliveries: rpcTotals?.completed_deliveries || orders.filter(o => [2].includes(parseInt(o.status))).length
     };
 
+    console.log(`🚀 [BACKEND] Reports Summary: dbCustomerCount=${dbCustomerCount}, totals.merchants=${totals.merchants}`);
+    console.log('📊 Reports Summary Totals:', JSON.stringify(totals, null, 2));
     console.log('📊 Supabase RPC stats: orders=%d, deliveries=%d', totals.orders, totals.deliveries);
 
     console.log('✅ Reports summary calculated successfully');
@@ -7385,68 +7324,8 @@ app.put('/api/users/:id/role', authenticate, requireSuperadmin(), async (req, re
 // REPORTING ENDPOINTS
 // ============================================
 
-// GET Reports Summary (Totals)
-app.get('/api/reports/summary', authenticate, async (req, res) => {
-  try {
-    const { dateFrom, dateTo } = req.query; // (RPC get_order_stats currently doesn't use date, but user logic implies total)
+// Duplicate Reports Summary endpoint removed in favor of consolidate implementation at line 5670
 
-    if (!isConfigured()) {
-      return res.json({
-        status: 'success',
-        data: {
-          orders: [],
-          drivers: [],
-          customers: [],
-          totals: {
-            orders: 0,
-            drivers: 0,
-            customers: 0,
-            deliveries: 0
-          }
-        }
-      });
-    }
-
-    // Call RPC get_order_stats for ultra-fast counting
-    // Drivers and Customers are fetched via API calls on frontend as requested
-    const { data: stats, error } = await supabase.rpc('get_order_stats');
-
-    if (error) {
-      throw error;
-    }
-
-    const totalOrders = stats && stats[0] ? stats[0].total_orders : 0;
-    const completedDeliveries = stats && stats[0] ? stats[0].completed_deliveries : 0;
-
-    console.log('📊 Reports Summary (RPC): orders=%d, deliveries=%d', totalOrders, completedDeliveries);
-
-    res.json({
-      status: 'success',
-      message: 'Reports summary fetched successfully',
-      data: {
-        orders: [],
-        drivers: [],
-        customers: [],
-        driverSummaries: [],
-        customerSummaries: [],
-        totals: {
-          orders: totalOrders,
-          drivers: 0, // Frontend fetches this via API
-          customers: 0, // Frontend fetches this via API
-          deliveries: completedDeliveries
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Reports summary error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message || 'Failed to fetch reports summary',
-      data: {}
-    });
-  }
-});
 
 // ============================================
 // AUDIT LOGS ENDPOINTS
@@ -7717,49 +7596,6 @@ app.delete('/api/admin/sync/cache', authenticate, requireRole('admin'), async (r
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'API server is running' });
-});
-
-// Reports Summary - Returns counts from database
-app.get('/api/reports/summary', optionalAuth, async (req, res) => {
-  try {
-    const { dateFrom, dateTo } = req.query;
-
-    // Get counts from database
-    let customerCount = 0;
-    let driverCount = 0;
-
-    if (isConfigured()) {
-      try {
-        customerCount = await customerModel.getCustomerCount();
-        driverCount = await agentModel.getAgentCount();
-      } catch (err) {
-        console.error('Error getting counts from DB:', err.message);
-      }
-    }
-
-    res.json({
-      status: 'success',
-      data: {
-        orders: [],
-        drivers: [],
-        customers: [],
-        driverSummaries: [],
-        merchantSummaries: [],
-        totals: {
-          orders: 0, // Will be calculated from orders if needed
-          drivers: driverCount,
-          customers: customerCount,
-          deliveries: 0
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Reports summary error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message || 'Failed to get reports summary'
-    });
-  }
 });
 
 // =====================================
