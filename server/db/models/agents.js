@@ -21,6 +21,21 @@ function normalizeTags(tags) {
 }
 
 /**
+ * Normalize a name for case-insensitive search
+ * - Trim leading/trailing spaces
+ * - Replace multiple spaces with single space
+ * - Convert to lowercase
+ */
+function normalizeName(name) {
+  if (!name) return '';
+  return name
+    .toString()
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+/**
  * Get agent by fleet_id
  */
 async function getAgent(fleetId) {
@@ -136,7 +151,7 @@ async function bulkUpsertAgents(agents) {
   const MAX_RETRIES = 3;
   let inserted = 0;
   let errors = 0;
-  
+
   for (let i = 0; i < records.length; i += CHUNK_SIZE) {
     const chunk = records.slice(i, i + CHUNK_SIZE);
     let success = false;
@@ -152,9 +167,9 @@ async function bulkUpsertAgents(agents) {
 
         if (error) {
           const isTransient = error.message.includes('fetch') ||
-                              error.message.includes('timeout') ||
-                              error.message.includes('500') ||
-                              error.message.includes('503');
+            error.message.includes('timeout') ||
+            error.message.includes('500') ||
+            error.message.includes('503');
 
           if (isTransient && attempt < MAX_RETRIES) {
             console.log(`   ⚠️  Retry ${attempt}/${MAX_RETRIES} for agents chunk due to: ${error.message.substring(0, 80)}`);
@@ -170,8 +185,8 @@ async function bulkUpsertAgents(agents) {
         success = true;
       } catch (err) {
         const isTransient = err.message.includes('fetch') ||
-                            err.message.includes('ECONNRESET') ||
-                            err.message.includes('timeout');
+          err.message.includes('ECONNRESET') ||
+          err.message.includes('timeout');
 
         if (isTransient && attempt < MAX_RETRIES) {
           console.log(`   ⚠️  Retry ${attempt}/${MAX_RETRIES} for agents chunk due to: ${err.message.substring(0, 80)}`);
@@ -293,9 +308,12 @@ async function getLastSyncTimestamp() {
  * Transform Tookan fleet data to agent record format
  */
 function transformFleetToAgent(fleet) {
+  const originalName = fleet.fleet_name || fleet.name || fleet.username || 'Unknown Agent';
+
   return {
     fleet_id: parseInt(fleet.fleet_id || fleet.id),
-    name: fleet.fleet_name || fleet.name || fleet.username || 'Unknown Agent',
+    name: originalName,
+    normalized_name: normalizeName(originalName),
     email: fleet.email || null,
     phone: fleet.phone || fleet.fleet_phone || null,
     username: fleet.username || null,

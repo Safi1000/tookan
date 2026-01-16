@@ -79,29 +79,38 @@ function getApp() {
       return [];
     };
 
-    const transformFleetToAgent = (fleet) => ({
-      fleet_id: parseInt(fleet.fleet_id || fleet.id),
-      name: fleet.fleet_name || fleet.name || fleet.username || 'Unknown Agent',
-      email: fleet.email || null,
-      phone: fleet.phone || fleet.fleet_phone || null,
-      username: fleet.username || null,
-      status: parseInt(fleet.status) || 1,
-      is_active: fleet.is_active !== false && fleet.status !== 0,
-      team_id: fleet.team_id ? parseInt(fleet.team_id) : null,
-      team_name: fleet.team_name || null,
-      tags: normalizeTags(fleet.tags),
-      latitude: fleet.latitude ? parseFloat(fleet.latitude) : null,
-      longitude: fleet.longitude ? parseFloat(fleet.longitude) : null,
-      battery_level: fleet.battery_level ? parseInt(fleet.battery_level) : null,
-      registration_status: fleet.registration_status ? parseInt(fleet.registration_status) : null,
-      transport_type: fleet.transport_type ? parseInt(fleet.transport_type) : null,
-      transport_desc: fleet.transport_desc || null,
-      license: fleet.license || null,
-      color: fleet.color || null,
-      raw_data: fleet,
-      last_synced_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    });
+    const normalizeName = (name) => {
+      if (!name) return '';
+      return name.toString().trim().replace(/\s+/g, ' ').toLowerCase();
+    };
+
+    const transformFleetToAgent = (fleet) => {
+      const originalName = fleet.fleet_name || fleet.name || fleet.username || 'Unknown Agent';
+      return {
+        fleet_id: parseInt(fleet.fleet_id || fleet.id),
+        name: originalName,
+        normalized_name: normalizeName(originalName),
+        email: fleet.email || null,
+        phone: fleet.phone || fleet.fleet_phone || null,
+        username: fleet.username || null,
+        status: parseInt(fleet.status) || 1,
+        is_active: fleet.is_active !== false && fleet.status !== 0,
+        team_id: fleet.team_id ? parseInt(fleet.team_id) : null,
+        team_name: fleet.team_name || null,
+        tags: normalizeTags(fleet.tags),
+        latitude: fleet.latitude ? parseFloat(fleet.latitude) : null,
+        longitude: fleet.longitude ? parseFloat(fleet.longitude) : null,
+        battery_level: fleet.battery_level ? parseInt(fleet.battery_level) : null,
+        registration_status: fleet.registration_status ? parseInt(fleet.registration_status) : null,
+        transport_type: fleet.transport_type ? parseInt(fleet.transport_type) : null,
+        transport_desc: fleet.transport_desc || null,
+        license: fleet.license || null,
+        color: fleet.color || null,
+        raw_data: fleet,
+        last_synced_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+    };
 
     const fetchFleetsFromTookan = async () => {
       const apiKey = getApiKey();
@@ -3762,12 +3771,16 @@ function getApp() {
         const searchTerm = q.toString().trim();
         const isNumeric = /^\d+$/.test(searchTerm);
 
+        // Normalize the search input (same rules as normalized_name column)
+        const normalizedSearch = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+
         let query = supabase.from('agents').select('*');
 
         if (isNumeric) {
           query = query.eq('fleet_id', parseInt(searchTerm));
         } else {
-          query = query.ilike('name', `%${searchTerm}%`);
+          // Search against normalized_name for case-insensitive matching
+          query = query.ilike('normalized_name', `%${normalizedSearch}%`);
         }
 
         const { data, error } = await query.limit(50);

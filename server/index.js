@@ -5556,12 +5556,16 @@ app.get('/api/search/drivers', authenticate, async (req, res) => {
     const searchTerm = q.toString().trim();
     const isNumeric = /^\d+$/.test(searchTerm);
 
+    // Normalize the search input (same rules as normalized_name column)
+    const normalizedSearch = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+
     let query = supabase.from('agents').select('*');
 
     if (isNumeric) {
       query = query.eq('fleet_id', parseInt(searchTerm));
     } else {
-      query = query.ilike('name', `%${searchTerm}%`);
+      // Search against normalized_name for case-insensitive matching
+      query = query.ilike('normalized_name', `%${normalizedSearch}%`);
     }
 
     const { data, error } = await query.limit(50);
