@@ -45,17 +45,21 @@ export function ReportsPanel() {
   const [showColumnManager, setShowColumnManager] = useState(false);
 
   // Combined search term for server-side filtering
-  // Combined search term for server-side filtering
+  // Priority: Order ID > Customer Search > Driver Search
   const combinedSearch = useMemo(() => {
     // For Order ID search, use ONLY that value (exact match required)
     if (orderIdSearch.trim()) {
       return orderIdSearch.trim();
     }
-    // For other searches, combine them
-    const searchTerms = [];
-    if (unifiedCustomerSearch.trim()) searchTerms.push(unifiedCustomerSearch.trim());
-    if (unifiedDriverSearch.trim()) searchTerms.push(unifiedDriverSearch.trim());
-    return searchTerms.join(' ') || undefined;
+    // For customer search, use that value
+    if (unifiedCustomerSearch.trim()) {
+      return unifiedCustomerSearch.trim();
+    }
+    // For driver search, use that value
+    if (unifiedDriverSearch.trim()) {
+      return unifiedDriverSearch.trim();
+    }
+    return undefined;
   }, [orderIdSearch, unifiedCustomerSearch, unifiedDriverSearch]);
 
   const hasActiveSearch = useMemo(() => {
