@@ -201,20 +201,24 @@ export function ReportsPanel() {
     // Filter by merchant (ID, name, or phone)
 
 
-    // Filter by driver (ID, name, or phone) - STRICT MATCH
+    // Filter by driver (ID, name, or phone) - Normalized search
     if (unifiedDriverSearch.trim()) {
       const searchTerm = unifiedDriverSearch.trim();
-      const normalizedSearch = searchTerm.replace(/\D/g, '');
-      const searchLower = searchTerm.toLowerCase();
+      // Normalize search: trim, collapse spaces, lowercase (same as normalized_name column)
+      const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+      const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
 
       filtered = filtered.filter(order => {
-        const orderDriverName = (order.driver || order.driverName || order.fleet_name || '').toLowerCase().trim();
+        // Normalize the order's driver name the same way
+        const orderDriverName = (order.driver || order.driverName || order.fleet_name || '')
+          .toString().trim().replace(/\s+/g, ' ').toLowerCase();
         const orderDriverId = String(order.driverId || order.fleet_id || '').trim();
         const orderDriverPhone = String(order.driverPhone || order.driver_phone || '').replace(/\D/g, '');
 
-        return orderDriverName === searchLower ||
+        // Match if normalized name contains search, or exact ID match, or exact phone match
+        return orderDriverName.includes(normalizedSearchName) ||
           orderDriverId === searchTerm ||
-          (normalizedSearch && orderDriverPhone === normalizedSearch);
+          (normalizedSearchPhone && orderDriverPhone === normalizedSearchPhone);
       });
     }
 

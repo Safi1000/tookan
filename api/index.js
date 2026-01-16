@@ -3568,22 +3568,26 @@ function getApp() {
         }
 
         let driverIds = [];
-        const isNumeric = /^\d+$/.test(search.toString().trim());
+        const searchTerm = search.toString().trim();
+        // Normalize search: trim, collapse spaces, lowercase (same as normalized_name column)
+        const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+        const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
+        const isNumeric = /^\d+$/.test(searchTerm);
 
         if (isNumeric) {
           // 1. Try exact match on fleet_id
-          let { data: agent, error: agentError } = await supabase
+          let { data: agent } = await supabase
             .from('agents')
             .select('fleet_id, name')
-            .eq('fleet_id', parseInt(search))
+            .eq('fleet_id', parseInt(searchTerm))
             .maybeSingle();
 
           // 2. If no fleet_id match, try exact match on phone
           if (!agent) {
-            const { data: phoneAgent, error: phoneError } = await supabase
+            const { data: phoneAgent } = await supabase
               .from('agents')
               .select('fleet_id, name')
-              .eq('phone', search.trim())
+              .eq('phone', searchTerm)
               .maybeSingle();
             agent = phoneAgent;
           }
@@ -3591,14 +3595,14 @@ function getApp() {
           if (agent) {
             driverIds = [{ id: agent.fleet_id, name: agent.name }];
           } else {
-            driverIds = [{ id: parseInt(search), name: 'Driver #' + search }];
+            driverIds = [{ id: parseInt(searchTerm), name: 'Driver #' + searchTerm }];
           }
         } else {
-          // Search agents table for names - STRICT MATCH
+          // Search agents table using normalized_name for case-insensitive contains match
           const { data: agents, error: agentsError } = await supabase
             .from('agents')
-            .select('fleet_id, name')
-            .ilike('name', search.trim()) // Removed % wildcards for strict match
+            .select('fleet_id, name, normalized_name')
+            .ilike('normalized_name', `%${normalizedSearchName}%`)
             .limit(10);
 
           if (agentsError) throw agentsError;

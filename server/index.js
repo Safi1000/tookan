@@ -4386,25 +4386,27 @@ app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
 
     let driverIds = [];
     const searchTerm = search.toString().trim();
-    const normalizedSearch = searchTerm.replace(/\D/g, '');
-    const searchLower = searchTerm.toLowerCase();
+    // Normalize search: trim, collapse spaces, lowercase (same as normalized_name column)
+    const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+    const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
 
     // Fetch all agents to perform robust matching in JS
     const { data: allAgents, error: agentsError } = await supabase
       .from('agents')
-      .select('fleet_id, name, phone');
+      .select('fleet_id, name, normalized_name, phone');
 
     if (agentsError) throw agentsError;
 
     if (allAgents && allAgents.length > 0) {
       const matchedAgents = allAgents.filter(agent => {
         const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
-        const agentNameLower = String(agent.name || '').toLowerCase();
+        // Use normalized_name for matching (contains, not exact)
+        const agentNormalizedName = agent.normalized_name || String(agent.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
         const agentIdStr = String(agent.fleet_id);
 
-        return agentNameLower === searchLower ||
+        return agentNormalizedName.includes(normalizedSearchName) ||
           agentIdStr === searchTerm ||
-          (normalizedSearch && agentPhoneDigits === normalizedSearch);
+          (normalizedSearchPhone && agentPhoneDigits === normalizedSearchPhone);
       });
 
       if (matchedAgents.length > 0) {
