@@ -4458,6 +4458,119 @@ app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
   }
 });
 
+// GET Customer Performance statistics
+app.get('/api/reports/customer-performance', authenticate, async (req, res) => {
+  try {
+    const { search, dateFrom, dateTo } = req.query;
+    console.log('\n=== GET CUSTOMER PERFORMANCE (LOCAL) ===');
+    console.log('Search:', search, 'From:', dateFrom, 'To:', dateTo);
+
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+    }
+
+    const { supabase } = require('./db/supabase');
+
+    if (!search) {
+      return res.json({ status: 'success', data: [] });
+    }
+
+    let customerIds = [];
+    const searchTerm = search.toString().trim();
+    // Normalize search: trim, collapse spaces, lowercase
+    const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+    const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
+
+    // Fetch all customers to perform robust matching in JS
+    const { data: allCustomers, error: customersError } = await supabase
+      .from('customers')
+      .select('vendor_id, customer_name, customer_phone');
+
+    if (customersError) throw customersError;
+
+    if (allCustomers && allCustomers.length > 0) {
+      const matchedCustomers = allCustomers.filter(customer => {
+        const customerPhoneDigits = String(customer.customer_phone || '').replace(/\D/g, '');
+        // Normalize customer name for matching
+        const customerNormalizedName = String(customer.customer_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+        const customerIdStr = String(customer.vendor_id);
+
+        const nameMatch = customerNormalizedName === normalizedSearchName;
+        const idMatch = customerIdStr === searchTerm;
+        const phoneMatch = normalizedSearchPhone && customerPhoneDigits === normalizedSearchPhone;
+
+        return nameMatch || idMatch || phoneMatch;
+      });
+
+      if (matchedCustomers.length > 0) {
+        customerIds = matchedCustomers.map(c => ({
+          id: c.vendor_id,
+          name: c.customer_name || 'Unknown Customer'
+        }));
+      } else if (/^\d+$/.test(searchTerm)) {
+        // Fallback for numeric ID if not found in table
+        customerIds = [{ id: parseInt(searchTerm, 10), name: 'Customer #' + searchTerm }];
+      }
+    }
+
+    if (customerIds.length === 0) {
+      return res.json({ status: 'success', data: [] });
+    }
+
+    // Get statistics for each customer from tasks table
+    const results = await Promise.all(customerIds.map(async (customer) => {
+      // Build query for tasks with this vendor_id
+      let query = supabase
+        .from('tasks')
+        .select('cod_amount, order_fees, status')
+        .eq('vendor_id', customer.id);
+
+      // Apply date filters if provided
+      if (dateFrom) {
+        query = query.gte('creation_datetime', dateFrom);
+      }
+      if (dateTo) {
+        query = query.lte('creation_datetime', dateTo);
+      }
+
+      const { data: tasks, error: tasksError } = await query;
+
+      if (tasksError) {
+        console.error(`Tasks query error for customer ${customer.id}:`, tasksError);
+        return {
+          vendor_id: customer.id,
+          customer_name: customer.name,
+          total_orders: 0,
+          cod_received: 0,
+          order_fees: 0,
+          revenue_distribution: 0
+        };
+      }
+
+      // Calculate statistics (only from completed orders - status 2)
+      const completedTasks = (tasks || []).filter(t => t.status === 2);
+      const totalOrders = (tasks || []).length;
+      const codReceived = completedTasks.reduce((sum, t) => sum + parseFloat(t.cod_amount || 0), 0);
+      const orderFees = completedTasks.reduce((sum, t) => sum + parseFloat(t.order_fees || 0), 0);
+      const revenueDistribution = codReceived - orderFees;
+
+      return {
+        vendor_id: customer.id,
+        customer_name: customer.name,
+        total_orders: totalOrders,
+        cod_received: codReceived,
+        order_fees: orderFees,
+        revenue_distribution: revenueDistribution
+      };
+    }));
+
+    res.json({ status: 'success', data: results });
+  } catch (error) {
+    console.error('Customer performance error:', error);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 // AGENT webhook (if enabled on Tookan side)
 app.post('/api/webhooks/tookan/agent', async (req, res) => {
   try {

@@ -806,9 +806,14 @@ function getApp() {
           const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
           const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
 
-          if (allAgents && allAgents.length > 0) {
-            const resolvedIds = new Set();
+          // Also fetch customers for matching
+          const { data: allCustomers } = await supabase.from('customers').select('vendor_id, customer_name, customer_phone');
 
+          const resolvedDriverIds = new Set();
+          const resolvedCustomerIds = new Set();
+
+          // Match agents
+          if (allAgents && allAgents.length > 0) {
             for (const agent of allAgents) {
               const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
               // Use normalized_name for matching (or fallback to normalizing name)
@@ -820,26 +825,51 @@ function getApp() {
               if (agentNormalizedName === normalizedSearchName ||
                 agentIdStr === searchTerm ||
                 (normalizedSearchPhone && agentPhoneDigits === normalizedSearchPhone)) {
-                resolvedIds.add(agent.fleet_id);
+                resolvedDriverIds.add(agent.fleet_id);
               }
             }
+          }
 
-            if (resolvedIds.size > 0) {
-              const idList = Array.from(resolvedIds).join(',');
-              query = query.or(`fleet_id.in.(${idList})`);
-            } else if (/^\d+$/.test(searchTerm)) {
-              const numericVal = parseInt(searchTerm, 10);
-              query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal}`);
-            } else {
-              query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+          // Match customers
+          if (allCustomers && allCustomers.length > 0) {
+            for (const customer of allCustomers) {
+              const customerPhoneDigits = String(customer.customer_phone || '').replace(/\D/g, '');
+              const customerNormalizedName = String(customer.customer_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+              const customerIdStr = String(customer.vendor_id);
+
+              if (customerNormalizedName === normalizedSearchName ||
+                customerIdStr === searchTerm ||
+                (normalizedSearchPhone && customerPhoneDigits === normalizedSearchPhone)) {
+                resolvedCustomerIds.add(customer.vendor_id);
+              }
             }
-          } else {
+          }
+
+          // Build OR conditions based on matches
+          const orConditions = [];
+
+          if (resolvedDriverIds.size > 0) {
+            const idList = Array.from(resolvedDriverIds).join(',');
+            orConditions.push(`fleet_id.in.(${idList})`);
+          }
+
+          if (resolvedCustomerIds.size > 0) {
+            const idList = Array.from(resolvedCustomerIds).join(',');
+            orConditions.push(`vendor_id.in.(${idList})`);
+          }
+
+          // If no matches found, try fallback searches
+          if (orConditions.length === 0) {
             if (/^\d+$/.test(searchTerm)) {
               const numericVal = parseInt(searchTerm, 10);
-              query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal}`);
+              orConditions.push(`job_id.eq.${numericVal}`, `fleet_id.eq.${numericVal}`, `vendor_id.eq.${numericVal}`);
             } else {
-              query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+              orConditions.push(`fleet_name.ilike.${searchTerm}`, `customer_name.ilike.${searchTerm}`);
             }
+          }
+
+          if (orConditions.length > 0) {
+            query = query.or(orConditions.join(','));
           }
         }
 
@@ -3646,6 +3676,112 @@ function getApp() {
         res.json({ status: 'success', data: results });
       } catch (error) {
         console.error('Driver performance error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Customer Performance statistics
+    app.get('/api/reports/customer-performance', authenticate, async (req, res) => {
+      try {
+        const { search, dateFrom, dateTo } = req.query;
+        console.log('\n=== GET CUSTOMER PERFORMANCE ===');
+        console.log('Search:', search, 'From:', dateFrom, 'To:', dateTo);
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(400).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        if (!search) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        let customerIds = [];
+        const searchTerm = search.toString().trim();
+        // Normalize search: trim, collapse spaces, lowercase
+        const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+        const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
+
+        // Fetch all customers to perform robust matching
+        const { data: allCustomers, error: customersError } = await supabase
+          .from('customers')
+          .select('vendor_id, customer_name, customer_phone');
+
+        if (customersError) throw customersError;
+
+        if (allCustomers && allCustomers.length > 0) {
+          const matchedCustomers = allCustomers.filter(customer => {
+            const customerPhoneDigits = String(customer.customer_phone || '').replace(/\D/g, '');
+            const customerNormalizedName = String(customer.customer_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+            const customerIdStr = String(customer.vendor_id);
+
+            const nameMatch = customerNormalizedName === normalizedSearchName;
+            const idMatch = customerIdStr === searchTerm;
+            const phoneMatch = normalizedSearchPhone && customerPhoneDigits === normalizedSearchPhone;
+
+            return nameMatch || idMatch || phoneMatch;
+          });
+
+          if (matchedCustomers.length > 0) {
+            customerIds = matchedCustomers.map(c => ({
+              id: c.vendor_id,
+              name: c.customer_name || 'Unknown Customer'
+            }));
+          } else if (/^\d+$/.test(searchTerm)) {
+            customerIds = [{ id: parseInt(searchTerm, 10), name: 'Customer #' + searchTerm }];
+          }
+        }
+
+        if (customerIds.length === 0) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        // Get statistics for each customer from tasks table
+        const results = await Promise.all(customerIds.map(async (customer) => {
+          let query = supabase
+            .from('tasks')
+            .select('cod_amount, order_fees, status')
+            .eq('vendor_id', customer.id);
+
+          if (dateFrom) {
+            query = query.gte('creation_datetime', dateFrom);
+          }
+          if (dateTo) {
+            query = query.lte('creation_datetime', dateTo);
+          }
+
+          const { data: tasks, error: tasksError } = await query;
+
+          if (tasksError) {
+            console.error(`Tasks query error for customer ${customer.id}:`, tasksError);
+            return {
+              vendor_id: customer.id,
+              customer_name: customer.name,
+              total_orders: 0,
+              cod_received: 0,
+              order_fees: 0,
+              revenue_distribution: 0
+            };
+          }
+
+          const completedTasks = (tasks || []).filter(t => t.status === 2);
+          const totalOrders = (tasks || []).length;
+          const codReceived = completedTasks.reduce((sum, t) => sum + parseFloat(t.cod_amount || 0), 0);
+          const orderFees = completedTasks.reduce((sum, t) => sum + parseFloat(t.order_fees || 0), 0);
+          const revenueDistribution = codReceived - orderFees;
+
+          return {
+            vendor_id: customer.id,
+            customer_name: customer.name,
+            total_orders: totalOrders,
+            cod_received: codReceived,
+            order_fees: orderFees,
+            revenue_distribution: revenueDistribution
+          };
+        }));
+
+        res.json({ status: 'success', data: results });
+      } catch (error) {
+        console.error('Customer performance error:', error);
         res.status(500).json({ status: 'error', message: error.message });
       }
     });

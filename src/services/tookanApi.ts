@@ -1746,3 +1746,53 @@ export async function fetchDriverPerformance(
   }
 }
 
+
+/**
+ * Fetch customer performance statistics via API
+ */
+export async function fetchCustomerPerformance(
+  search: string,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<TookanApiResponse<Array<{ vendor_id: number; customer_name: string; total_orders: number; cod_received: number; order_fees: number; revenue_distribution: number }>>> {
+  try {
+    const params = new URLSearchParams();
+    params.append('search', search);
+    if (dateFrom) params.append('dateFrom', dateFrom);
+    if (dateTo) params.append('dateTo', dateTo);
+
+    const response = await fetch(`${API_BASE_URL}/api/reports/customer-performance?${params.toString()}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        action: 'fetch_customer_performance',
+        entity: 'report',
+        message: data.message || 'Failed to fetch customer performance',
+        data: [],
+      };
+    }
+
+    return {
+      status: 'success',
+      action: 'fetch_customer_performance',
+      entity: 'report',
+      message: 'Customer performance fetched successfully',
+      data: data.data || [],
+    };
+  } catch (error) {
+    console.error('Fetch customer performance error:', error);
+    return {
+      status: 'error',
+      action: 'fetch_customer_performance',
+      entity: 'report',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: [],
+    };
+  }
+}

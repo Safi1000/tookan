@@ -68,31 +68,54 @@ async function getAllTasks(filters = {}) {
 
     if (isNumeric) {
       const numericVal = parseInt(searchTerm, 10);
-      // STRICT MATCH: Job ID OR Fleet ID
-      query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal}`);
+      // STRICT MATCH: Job ID OR Fleet ID OR Vendor ID
+      query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal},vendor_id.eq.${numericVal}`);
     } else {
       // Resolve agents by normalized_name first
       const { data: allAgents } = await supabase.from('agents').select('fleet_id, name, normalized_name, phone');
+      const { data: allCustomers } = await supabase.from('customers').select('vendor_id, customer_name, customer_phone');
 
+      const resolvedDriverIds = [];
+      const resolvedCustomerIds = [];
+
+      // Match agents
       if (allAgents && allAgents.length > 0) {
-        const resolvedIds = [];
         for (const agent of allAgents) {
           const agentNormalizedName = agent.normalized_name || String(agent.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
           const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
 
           if (agentNormalizedName === normalizedSearchName ||
             (normalizedSearchPhone && agentPhoneDigits === normalizedSearchPhone)) {
-            resolvedIds.push(agent.fleet_id);
+            resolvedDriverIds.push(agent.fleet_id);
           }
         }
+      }
 
-        if (resolvedIds.length > 0) {
-          query = query.or(`fleet_id.in.(${resolvedIds.join(',')})`);
-        } else {
-          // No agent match, try direct fleet_name or customer_name
-          query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+      // Match customers
+      if (allCustomers && allCustomers.length > 0) {
+        for (const customer of allCustomers) {
+          const customerNormalizedName = String(customer.customer_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+          const customerPhoneDigits = String(customer.customer_phone || '').replace(/\D/g, '');
+
+          if (customerNormalizedName === normalizedSearchName ||
+            (normalizedSearchPhone && customerPhoneDigits === normalizedSearchPhone)) {
+            resolvedCustomerIds.push(customer.vendor_id);
+          }
         }
+      }
+
+      const orConditions = [];
+      if (resolvedDriverIds.length > 0) {
+        orConditions.push(`fleet_id.in.(${resolvedDriverIds.join(',')})`);
+      }
+      if (resolvedCustomerIds.length > 0) {
+        orConditions.push(`vendor_id.in.(${resolvedCustomerIds.join(',')})`);
+      }
+
+      if (orConditions.length > 0) {
+        query = query.or(orConditions.join(','));
       } else {
+        // No match, try direct fleet_name or customer_name
         query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
       }
     }
@@ -159,8 +182,14 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
     // Resolve agents first, including normalized_name
     const { data: allAgents } = await supabase.from('agents').select('fleet_id, name, normalized_name, phone');
 
+    // Also resolve customers
+    const { data: allCustomers } = await supabase.from('customers').select('vendor_id, customer_name, customer_phone');
+
+    const resolvedDriverIds = new Set();
+    const resolvedCustomerIds = new Set();
+
+    // Match agents
     if (allAgents && allAgents.length > 0) {
-      const resolvedIds = new Set();
       for (const agent of allAgents) {
         const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
         // Use normalized_name for matching (or fallback to normalizing name)
@@ -170,27 +199,51 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
         if (agentNormalizedName === normalizedSearchName ||
           agentIdStr === searchTerm ||
           (normalizedSearchPhone && agentPhoneDigits === normalizedSearchPhone)) {
-          resolvedIds.add(agent.fleet_id);
+          resolvedDriverIds.add(agent.fleet_id);
         }
       }
+    }
 
-      if (resolvedIds.size > 0) {
-        const idList = Array.from(resolvedIds).join(',');
-        query = query.or(`fleet_id.in.(${idList})`);
-      } else if (/^\d+$/.test(searchTerm)) {
-        const numericVal = parseInt(searchTerm, 10);
-        query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal}`);
-      } else {
-        // No agent match found, try direct fleet_name or customer_name search
-        query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+    // Match customers
+    if (allCustomers && allCustomers.length > 0) {
+      for (const customer of allCustomers) {
+        const customerPhoneDigits = String(customer.customer_phone || '').replace(/\D/g, '');
+        const customerNormalizedName = String(customer.customer_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+        const customerIdStr = String(customer.vendor_id);
+
+        if (customerNormalizedName === normalizedSearchName ||
+          customerIdStr === searchTerm ||
+          (normalizedSearchPhone && customerPhoneDigits === normalizedSearchPhone)) {
+          resolvedCustomerIds.add(customer.vendor_id);
+        }
       }
-    } else {
+    }
+
+    // Build OR conditions based on matches
+    const orConditions = [];
+
+    if (resolvedDriverIds.size > 0) {
+      const idList = Array.from(resolvedDriverIds).join(',');
+      orConditions.push(`fleet_id.in.(${idList})`);
+    }
+
+    if (resolvedCustomerIds.size > 0) {
+      const idList = Array.from(resolvedCustomerIds).join(',');
+      orConditions.push(`vendor_id.in.(${idList})`);
+    }
+
+    // If no matches found, try fallback searches
+    if (orConditions.length === 0) {
       if (/^\d+$/.test(searchTerm)) {
         const numericVal = parseInt(searchTerm, 10);
-        query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal}`);
+        orConditions.push(`job_id.eq.${numericVal}`, `fleet_id.eq.${numericVal}`, `vendor_id.eq.${numericVal}`);
       } else {
-        query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+        orConditions.push(`fleet_name.ilike.${searchTerm}`, `customer_name.ilike.${searchTerm}`);
       }
+    }
+
+    if (orConditions.length > 0) {
+      query = query.or(orConditions.join(','));
     }
   }
 

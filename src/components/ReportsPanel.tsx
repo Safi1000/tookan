@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Calendar, Search, Filter, Download, ArrowUpDown, ChevronDown, CheckCircle, XCircle, RefreshCw, AlertCircle, Settings2, X } from 'lucide-react';
 import { DatePicker } from './ui/date-picker';
 import { toast } from 'sonner';
-import { fetchAllOrders, fetchAllDrivers, fetchAllCustomers, fetchReportsSummary, fetchDriverPerformance, type OrderFilters } from '../services/tookanApi';
+import { fetchAllOrders, fetchAllDrivers, fetchAllCustomers, fetchReportsSummary, fetchDriverPerformance, fetchCustomerPerformance, type OrderFilters } from '../services/tookanApi';
 import * as XLSX from 'xlsx';
 
 const columnDefinitions = [
@@ -32,6 +32,7 @@ export function ReportsPanel() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [totals, setTotals] = useState({ orders: 0, drivers: 0, merchants: 0, deliveries: 0 });
   const [driverPerformanceData, setDriverPerformanceData] = useState<any[]>([]);
+  const [customerPerformanceData, setCustomerPerformanceData] = useState<any[]>([]);
 
   // Loading and error states
   const [isLoading, setIsLoading] = useState(false);
@@ -126,6 +127,20 @@ export function ReportsPanel() {
         }
       } else {
         setDriverPerformanceData([]);
+      }
+
+      // Fetch Customer Performance if search is active
+      if (unifiedCustomerSearch.trim()) {
+        const custPerfResult = await fetchCustomerPerformance(
+          unifiedCustomerSearch.trim(),
+          dateFrom || undefined,
+          dateTo || undefined
+        );
+        if (custPerfResult.status === 'success') {
+          setCustomerPerformanceData(custPerfResult.data);
+        }
+      } else {
+        setCustomerPerformanceData([]);
       }
 
       // Fetch reports summary (returns counts from database)
@@ -267,6 +282,20 @@ export function ReportsPanel() {
         XLSX.utils.book_append_sheet(workbook, ordersSheet, 'Order List');
       }
 
+      // 3. Customer Summary sheet (if visible)
+      if (customerPerformanceData.length > 0) {
+        const customerData = customerPerformanceData.map((perf: any) => ({
+          'Customer ID': perf.vendor_id || '',
+          'Customer Name': perf.customer_name || '',
+          'Number of Orders': perf.total_orders || 0,
+          'COD Received': typeof perf.cod_received === 'number' ? perf.cod_received.toFixed(2) : '0.00',
+          'Order Fees': typeof perf.order_fees === 'number' ? perf.order_fees.toFixed(2) : '0.00',
+          'Revenue Distribution': typeof perf.revenue_distribution === 'number' ? perf.revenue_distribution.toFixed(2) : '0.00'
+        }));
+        const customerSheet = XLSX.utils.json_to_sheet(customerData);
+        XLSX.utils.book_append_sheet(workbook, customerSheet, 'Customer Summary');
+      }
+
       // Check if any data exists
       if (workbook.SheetNames.length === 0) {
         toast.error('No data to export');
@@ -300,7 +329,7 @@ export function ReportsPanel() {
       console.error('Export error:', error);
       toast.error('Failed to export data');
     }
-  }, [driverPerformanceData, filteredOrders, mapStatus]);
+  }, [driverPerformanceData, customerPerformanceData, filteredOrders, mapStatus]);
 
   // Mock validation states for auto-suggest
   const getValidationColor = (value: string) => {
@@ -602,6 +631,43 @@ export function ReportsPanel() {
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
                         {perf.avg_delivery_time > 0 ? `${perf.avg_delivery_time.toFixed(1)} mins` : 'N/A'}
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Customer Summary Table */}
+      {
+        customerPerformanceData.length > 0 && (
+          <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
+            <div className="px-6 py-4 border-b border-border dark:border-[#2A3C63] bg-muted/10 dark:bg-[#1A2C53]/30">
+              <h3 className="text-heading dark:text-[#C1EEFA] font-semibold">Customer Summary</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                  <tr>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer ID</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Name</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Number of Orders</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD Received</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Revenue Distribution</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customerPerformanceData.map((perf, idx) => (
+                    <tr key={perf.vendor_id || idx} className="border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors">
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">{perf.vendor_id}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{perf.customer_name}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{perf.total_orders}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof perf.cod_received === 'number' ? perf.cod_received.toFixed(2) : '0.00'}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{typeof perf.order_fees === 'number' ? perf.order_fees.toFixed(2) : '0.00'}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof perf.revenue_distribution === 'number' ? perf.revenue_distribution.toFixed(2) : '0.00'}</td>
                     </tr>
                   ))}
                 </tbody>
