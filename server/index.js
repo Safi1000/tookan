@@ -4397,8 +4397,6 @@ app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
 
     if (agentsError) throw agentsError;
 
-    console.log('🔍 Searching for driver with normalized name:', JSON.stringify(normalizedSearchName));
-
     if (allAgents && allAgents.length > 0) {
       const matchedAgents = allAgents.filter(agent => {
         const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
@@ -4410,9 +4408,6 @@ app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
         const idMatch = agentIdStr === searchTerm;
         const phoneMatch = normalizedSearchPhone && agentPhoneDigits === normalizedSearchPhone;
 
-        if (agentNormalizedName.includes('meelad')) {
-          console.log(`   Agent: "${agentNormalizedName}" vs search: "${normalizedSearchName}" => ${nameMatch}`);
-        }
 
         return nameMatch || idMatch || phoneMatch;
       });

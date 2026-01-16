@@ -61,15 +61,40 @@ async function getAllTasks(filters = {}) {
 
   if (filters.search) {
     const searchTerm = String(filters.search).trim();
+    // Normalize search: trim, collapse spaces, lowercase (same as normalized_name column)
+    const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+    const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
     const isNumeric = /^\d+$/.test(searchTerm);
 
     if (isNumeric) {
       const numericVal = parseInt(searchTerm, 10);
-      // STRICT MATCH: Job ID OR Fleet ID OR resolve phone to Fleet ID
-      query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal},fleet_id.in.(SELECT fleet_id FROM agents WHERE phone = '${searchTerm}')`);
+      // STRICT MATCH: Job ID OR Fleet ID
+      query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal}`);
     } else {
-      // STRICT MATCH: Fleet Name OR Customer Name
-      query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+      // Resolve agents by normalized_name first
+      const { data: allAgents } = await supabase.from('agents').select('fleet_id, name, normalized_name, phone');
+
+      if (allAgents && allAgents.length > 0) {
+        const resolvedIds = [];
+        for (const agent of allAgents) {
+          const agentNormalizedName = agent.normalized_name || String(agent.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+          const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
+
+          if (agentNormalizedName === normalizedSearchName ||
+            (normalizedSearchPhone && agentPhoneDigits === normalizedSearchPhone)) {
+            resolvedIds.push(agent.fleet_id);
+          }
+        }
+
+        if (resolvedIds.length > 0) {
+          query = query.or(`fleet_id.in.(${resolvedIds.join(',')})`);
+        } else {
+          // No agent match, try direct fleet_name or customer_name
+          query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+        }
+      } else {
+        query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
+      }
     }
   }
 
@@ -127,22 +152,24 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
   }
   if (filters.search) {
     const searchTerm = String(filters.search).trim();
-    const normalizedSearch = searchTerm.replace(/\D/g, '');
-    const searchLower = searchTerm.toLowerCase();
+    // Normalize search: trim, collapse spaces, lowercase (same as normalized_name column)
+    const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+    const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
 
-    // Resolve agents first
-    const { data: allAgents } = await supabase.from('agents').select('fleet_id, name, phone');
+    // Resolve agents first, including normalized_name
+    const { data: allAgents } = await supabase.from('agents').select('fleet_id, name, normalized_name, phone');
 
     if (allAgents && allAgents.length > 0) {
       const resolvedIds = new Set();
       for (const agent of allAgents) {
         const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
-        const agentNameLower = String(agent.name || '').toLowerCase();
+        // Use normalized_name for matching (or fallback to normalizing name)
+        const agentNormalizedName = agent.normalized_name || String(agent.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
         const agentIdStr = String(agent.fleet_id);
 
-        if (agentNameLower === searchLower ||
+        if (agentNormalizedName === normalizedSearchName ||
           agentIdStr === searchTerm ||
-          (normalizedSearch && agentPhoneDigits === normalizedSearch)) {
+          (normalizedSearchPhone && agentPhoneDigits === normalizedSearchPhone)) {
           resolvedIds.add(agent.fleet_id);
         }
       }
@@ -154,6 +181,7 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
         const numericVal = parseInt(searchTerm, 10);
         query = query.or(`job_id.eq.${numericVal},fleet_id.eq.${numericVal}`);
       } else {
+        // No agent match found, try direct fleet_name or customer_name search
         query = query.or(`fleet_name.ilike.${searchTerm},customer_name.ilike.${searchTerm}`);
       }
     } else {
