@@ -4400,11 +4400,11 @@ app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
     if (allAgents && allAgents.length > 0) {
       const matchedAgents = allAgents.filter(agent => {
         const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
-        // Use normalized_name for matching (contains, not exact)
+        // Use normalized_name for exact matching
         const agentNormalizedName = agent.normalized_name || String(agent.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
         const agentIdStr = String(agent.fleet_id);
 
-        return agentNormalizedName.includes(normalizedSearchName) ||
+        return agentNormalizedName === normalizedSearchName ||
           agentIdStr === searchTerm ||
           (normalizedSearchPhone && agentPhoneDigits === normalizedSearchPhone);
       });
@@ -5566,8 +5566,8 @@ app.get('/api/search/drivers', authenticate, async (req, res) => {
     if (isNumeric) {
       query = query.eq('fleet_id', parseInt(searchTerm));
     } else {
-      // Search against normalized_name for case-insensitive matching
-      query = query.ilike('normalized_name', `%${normalizedSearch}%`);
+      // Search against normalized_name for exact matching
+      query = query.eq('normalized_name', normalizedSearch);
     }
 
     const { data, error } = await query.limit(50);

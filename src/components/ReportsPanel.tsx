@@ -201,7 +201,7 @@ export function ReportsPanel() {
     // Filter by merchant (ID, name, or phone)
 
 
-    // Filter by driver (ID, name, or phone) - Normalized search
+    // Filter by driver (ID, name, or phone) - Exact match on normalized name
     if (unifiedDriverSearch.trim()) {
       const searchTerm = unifiedDriverSearch.trim();
       // Normalize search: trim, collapse spaces, lowercase (same as normalized_name column)
@@ -215,8 +215,8 @@ export function ReportsPanel() {
         const orderDriverId = String(order.driverId || order.fleet_id || '').trim();
         const orderDriverPhone = String(order.driverPhone || order.driver_phone || '').replace(/\D/g, '');
 
-        // Match if normalized name contains search, or exact ID match, or exact phone match
-        return orderDriverName.includes(normalizedSearchName) ||
+        // Exact match on normalized name, ID, or phone
+        return orderDriverName === normalizedSearchName ||
           orderDriverId === searchTerm ||
           (normalizedSearchPhone && orderDriverPhone === normalizedSearchPhone);
       });

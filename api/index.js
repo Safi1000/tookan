@@ -3598,11 +3598,11 @@ function getApp() {
             driverIds = [{ id: parseInt(searchTerm), name: 'Driver #' + searchTerm }];
           }
         } else {
-          // Search agents table using normalized_name for case-insensitive contains match
+          // Search agents table using normalized_name for exact match
           const { data: agents, error: agentsError } = await supabase
             .from('agents')
             .select('fleet_id, name, normalized_name')
-            .ilike('normalized_name', `%${normalizedSearchName}%`)
+            .eq('normalized_name', normalizedSearchName)
             .limit(10);
 
           if (agentsError) throw agentsError;
@@ -3783,8 +3783,8 @@ function getApp() {
         if (isNumeric) {
           query = query.eq('fleet_id', parseInt(searchTerm));
         } else {
-          // Search against normalized_name for case-insensitive matching
-          query = query.ilike('normalized_name', `%${normalizedSearch}%`);
+          // Search against normalized_name for exact matching
+          query = query.eq('normalized_name', normalizedSearch);
         }
 
         const { data, error } = await query.limit(50);
