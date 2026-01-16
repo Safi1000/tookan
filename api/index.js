@@ -781,7 +781,7 @@ function getApp() {
         const to = from + limitNum - 1;
 
         // Fetch all agents once to resolve driver phones efficiently
-        const { data: allAgents } = await supabase.from('agents').select('fleet_id, name, phone');
+        const { data: allAgents } = await supabase.from('agents').select('fleet_id, name, normalized_name, phone');
         const agentMap = {};
         if (allAgents) {
           allAgents.forEach(a => {
@@ -802,21 +802,24 @@ function getApp() {
         }
         if (search) {
           const searchTerm = String(search).trim();
-          const normalizedSearch = searchTerm.replace(/\D/g, '');
-          const searchLower = searchTerm.toLowerCase();
+          // Normalize search: trim, collapse spaces, lowercase (same as normalized_name column)
+          const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+          const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
 
           if (allAgents && allAgents.length > 0) {
             const resolvedIds = new Set();
 
             for (const agent of allAgents) {
               const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
-              const agentNameLower = String(agent.name || '').toLowerCase();
+              // Use normalized_name for matching (or fallback to normalizing name)
+              const agentNormalizedName = agent.normalized_name ||
+                String(agent.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
               const agentIdStr = String(agent.fleet_id);
 
               // Match by name, id, or normalized phone
-              if (agentNameLower === searchLower ||
+              if (agentNormalizedName === normalizedSearchName ||
                 agentIdStr === searchTerm ||
-                (normalizedSearch && agentPhoneDigits === normalizedSearch)) {
+                (normalizedSearchPhone && agentPhoneDigits === normalizedSearchPhone)) {
                 resolvedIds.add(agent.fleet_id);
               }
             }
