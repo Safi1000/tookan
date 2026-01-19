@@ -176,10 +176,11 @@ async function fetchTasksBatch(startDate, endDate, jobType, offset = 0) {
 }
 
 /**
- * Fetch tags for a batch of job IDs
+ * Fetch job details (tags and COD) for a batch of job IDs
  * Uses get_job_details with job_additional_info: 1
+ * Extracts COD from CASH_NEEDS_TO_BE_COLLECTED field in job_additional_info
  */
-async function fetchTagsForJobIds(jobIds) {
+async function fetchJobDetailsForJobIds(jobIds) {
   if (!jobIds || jobIds.length === 0) return {};
 
   const apiKey = getApiKey();
@@ -190,30 +191,69 @@ async function fetchTagsForJobIds(jobIds) {
       body: JSON.stringify({
         api_key: apiKey,
         job_ids: jobIds, // Array of job IDs
-        job_additional_info: 1
+        include_task_history: 0,
+        job_additional_info: 1,
+        include_job_report: 0
       }),
       timeout: 30000
     });
 
     const data = await response.json();
-    const tagsMap = {};
+    const detailsMap = {};
+
+    const extractCodFromCustomField = (job) => {
+      // COD is in custom_field array with label "CASH_NEEDS_TO_BE_COLLECTED"
+      // (Not in job_additional_info as previously thought)
+      const customFields = job.custom_field || [];
+      if (!Array.isArray(customFields)) return null;
+
+      const codField = customFields.find(field =>
+        field.label === 'CASH_NEEDS_TO_BE_COLLECTED' ||
+        field.display_name === 'CASH NEEDS TO BE COLLECTED'
+      );
+
+      if (codField && codField.data) {
+        const codValue = parseFloat(codField.data);
+        return isNaN(codValue) ? null : codValue;
+      }
+      return null;
+    };
 
     if (data.status === 200 && Array.isArray(data.data)) {
       data.data.forEach(job => {
         if (job.job_id) {
-          tagsMap[job.job_id] = job.tags || null;
+          detailsMap[job.job_id] = {
+            tags: job.tags || null,
+            cod_amount: extractCodFromCustomField(job)
+          };
         }
       });
     } else if (data.status === 200 && data.data && data.data.job_id) {
-      // Handle single result return case (though unlikely with job_ids array)
-      tagsMap[data.data.job_id] = data.data.tags || null;
+      // Handle single result return case
+      detailsMap[data.data.job_id] = {
+        tags: data.data.tags || null,
+        cod_amount: extractCodFromCustomField(data.data)
+      };
     }
 
-    return tagsMap;
+    return detailsMap;
   } catch (error) {
-    console.error(`❌ Error fetching tags for batch: ${error.message}`);
+    console.error(`❌ Error fetching job details for batch: ${error.message}`);
     return {};
   }
+}
+
+/**
+ * Legacy function for backward compatibility - calls fetchJobDetailsForJobIds
+ */
+async function fetchTagsForJobIds(jobIds) {
+  const detailsMap = await fetchJobDetailsForJobIds(jobIds);
+  // Convert to old format (just tags)
+  const tagsMap = {};
+  Object.keys(detailsMap).forEach(jobId => {
+    tagsMap[jobId] = detailsMap[jobId]?.tags || null;
+  });
+  return tagsMap;
 }
 
 /**
@@ -767,6 +807,8 @@ module.exports = {
   getSixMonthsAgo,
   formatDate,
   bulkUpsertTasks,
-  transformTaskToRecord
+  transformTaskToRecord,
+  fetchJobDetailsForJobIds,
+  fetchTagsForJobIds
 };
 

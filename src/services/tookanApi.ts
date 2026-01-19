@@ -1851,3 +1851,36 @@ export async function updateTookanFeeRate(feeRate: number): Promise<{ status: st
     };
   }
 }
+
+// Fetch Related Delivery Address for Pickup Tasks (Return Orders)
+export async function fetchRelatedDeliveryAddress(jobId: string | number): Promise<{
+  status: string;
+  hasRelatedTask: boolean;
+  deliveryAddress?: string;
+  deliveryJobId?: number;
+  deliveryCustomerName?: string;
+}> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/job/${jobId}/related-address`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (data.status === 'success' && data.data) {
+      return {
+        status: 'success',
+        hasRelatedTask: data.data.hasRelatedTask || false,
+        deliveryAddress: data.data.deliveryAddress,
+        deliveryJobId: data.data.deliveryJobId,
+        deliveryCustomerName: data.data.deliveryCustomerName,
+      };
+    }
+
+    return { status: 'error', hasRelatedTask: false };
+  } catch (error) {
+    console.error('Fetch related delivery address error:', error);
+    return { status: 'error', hasRelatedTask: false };
+  }
+}

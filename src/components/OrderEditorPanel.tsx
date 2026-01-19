@@ -7,6 +7,7 @@ import {
   returnOrder,
   updateOrder,
   fetchAllDrivers,
+  fetchRelatedDeliveryAddress,
 } from '../services/tookanApi';
 
 type OrderDetails = {
@@ -116,6 +117,20 @@ export function OrderEditorPanel() {
         toast.error('Order not found');
         return;
       }
+
+      let pickupAddr = first.pickupAddress || '';
+      let deliveryAddr = first.deliveryAddress || '';
+
+      // If pickup === delivery (pickup task), fetch the related delivery address
+      if (pickupAddr.trim().toLowerCase() === deliveryAddr.trim().toLowerCase() && first.jobId) {
+        console.log('Pickup task detected, fetching related delivery address...');
+        const relatedResult = await fetchRelatedDeliveryAddress(first.jobId);
+        if (relatedResult.status === 'success' && relatedResult.hasRelatedTask && relatedResult.deliveryAddress) {
+          console.log('Found related delivery address:', relatedResult.deliveryAddress);
+          deliveryAddr = relatedResult.deliveryAddress;
+        }
+      }
+
       setOrder({
         jobId: first.jobId,
         codAmount: first.codAmount || 0,
@@ -127,8 +142,8 @@ export function OrderEditorPanel() {
         customerName: first.customerName || '',
         customerPhone: first.customerPhone || '',
         customerEmail: first.customerEmail || '',
-        pickupAddress: first.pickupAddress || '',
-        deliveryAddress: first.deliveryAddress || '',
+        pickupAddress: pickupAddr,
+        deliveryAddress: deliveryAddr,
         status: typeof first.status === 'number' ? first.status : (typeof first.status === 'string' ? parseInt(first.status, 10) : null)
       });
       setEditCod((first.codAmount || 0).toString());

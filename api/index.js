@@ -2951,15 +2951,16 @@ function getApp() {
         const returnPickupAddr = originalDeliveryAddr;
         const returnDeliveryAddr = originalPickupAddr;
 
-        // Get assigned driver - MUST be assigned to both tasks
+        // Get assigned driver
         const assignedDriver = orderData.assignedDriver || null;
 
         // ========== TASK 1: PICKUP from customer ==========
+        // PICKUP tasks use job_pickup_* fields, not customer_* fields
         const pickupPayload = {
           api_key: apiKey,
-          customer_username: orderData.customerName || 'Customer',
-          customer_phone: orderData.customerPhone || '',
-          customer_email: orderData.customerEmail || '',
+          job_pickup_name: orderData.customerName || 'Customer',
+          job_pickup_phone: orderData.customerPhone || '',
+          job_pickup_email: orderData.customerEmail || '',
           job_pickup_address: returnPickupAddr,
           job_pickup_datetime: formatDateTime(pickupTime),
           has_pickup: 1,
@@ -2976,6 +2977,8 @@ function getApp() {
           pickupPayload.fleet_id = assignedDriver;
         }
 
+        console.log('Creating PICKUP task...');
+
         const pickupResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2983,7 +2986,6 @@ function getApp() {
         });
 
         const pickupData = await pickupResponse.json();
-        const pickupOrderId = pickupData.data?.job_id || null;
 
         if (pickupData.status !== 200) {
           return res.status(500).json({
@@ -2992,7 +2994,11 @@ function getApp() {
           });
         }
 
+        const pickupOrderId = pickupData.data?.job_id || null;
+        console.log('✅ Pickup task created:', pickupOrderId);
+
         // ========== TASK 2: DELIVERY to merchant ==========
+        // DELIVERY tasks only need customer_address
         const deliveryPayload = {
           api_key: apiKey,
           customer_username: orderData.customerName || 'Customer',
@@ -3014,6 +3020,8 @@ function getApp() {
           deliveryPayload.fleet_id = assignedDriver;
         }
 
+        console.log('Creating DELIVERY task...');
+
         const deliveryResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3021,12 +3029,22 @@ function getApp() {
         });
 
         const deliveryData = await deliveryResponse.json();
-        const deliveryOrderId = deliveryData.data?.job_id || null;
 
-        // Save BOTH tasks to Supabase
+        if (deliveryData.status !== 200) {
+          return res.status(500).json({
+            status: 'error',
+            message: deliveryData.message || 'Failed to create delivery return task'
+          });
+        }
+
+        const deliveryOrderId = deliveryData.data?.job_id || null;
+        console.log('✅ Delivery task created:', deliveryOrderId);
+        console.log('✅ Return order complete - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
+
+        // Save BOTH return tasks to Supabase
         if (isSupabaseConfigured && supabase) {
           try {
-            // Save pickup task
+            // Save PICKUP task - pickup_address = delivery_address (same location for pickup tasks)
             if (pickupOrderId) {
               await supabase.from('tasks').upsert({
                 job_id: pickupOrderId,
@@ -3034,7 +3052,7 @@ function getApp() {
                 customer_phone: orderData.customerPhone || '',
                 customer_email: orderData.customerEmail || null,
                 pickup_address: returnPickupAddr,
-                delivery_address: '',
+                delivery_address: returnPickupAddr, // SAME as pickup - Tookan pickup task format
                 cod_amount: 0,
                 order_fees: parseFloat(orderData.orderFees) || 0,
                 notes: orderData.notes || '',
@@ -3044,16 +3062,17 @@ function getApp() {
                 source: 'return_pickup',
                 last_synced_at: new Date().toISOString()
               }, { onConflict: 'job_id' });
+              console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
             }
 
-            // Save delivery task
+            // Save DELIVERY task
             if (deliveryOrderId) {
               await supabase.from('tasks').upsert({
                 job_id: deliveryOrderId,
                 customer_name: orderData.customerName || 'Customer',
                 customer_phone: orderData.customerPhone || '',
                 customer_email: orderData.customerEmail || null,
-                pickup_address: '',
+                pickup_address: returnPickupAddr,
                 delivery_address: returnDeliveryAddr,
                 cod_amount: 0,
                 order_fees: parseFloat(orderData.orderFees) || 0,
@@ -3064,6 +3083,7 @@ function getApp() {
                 source: 'return_delivery',
                 last_synced_at: new Date().toISOString()
               }, { onConflict: 'job_id' });
+              console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);
             }
           } catch (dbErr) {
             console.error('Failed to save return tasks to Supabase:', dbErr.message);
@@ -3071,7 +3091,7 @@ function getApp() {
         }
 
         res.json({
-          status: deliveryData.status === 200 ? 'success' : 'error',
+          status: 'success',
           message: 'Return order created successfully (Pickup + Delivery tasks)',
           data: {
             pickupOrderId,
@@ -3746,6 +3766,163 @@ function getApp() {
       }
     });
 
+    // GET Related Delivery Address for Pickup Tasks (Return Orders)
+    app.get('/api/tookan/job/:jobId/related-address', authenticate, async (req, res) => {
+      try {
+        const { jobId } = req.params;
+        console.log('\n=== GET RELATED DELIVERY ADDRESS ===');
+        console.log('Job ID:', jobId);
+
+        const apiKey = getApiKey();
+
+        // Step 1: Get job details to find pickup_delivery_relationship
+        const jobDetailsResponse = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            job_ids: [parseInt(jobId)],
+            include_task_history: 0,
+            job_additional_info: 1,
+            include_job_report: 0
+          })
+        });
+
+        const jobDetailsData = await jobDetailsResponse.json();
+
+        if (jobDetailsData.status !== 200 || !jobDetailsData.data || jobDetailsData.data.length === 0) {
+          return res.json({ status: 'error', message: 'Job details not found' });
+        }
+
+        const jobData = jobDetailsData.data[0];
+        const pickupDeliveryRelationship = jobData.pickup_delivery_relationship;
+
+        if (!pickupDeliveryRelationship) {
+          return res.json({ status: 'success', data: { hasRelatedTask: false } });
+        }
+
+        // Step 2: Get related tasks to find the delivery address
+        const relatedTasksResponse = await fetch('https://api.tookanapp.com/v2/get_related_tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            pickup_delivery_relationship: pickupDeliveryRelationship
+          })
+        });
+
+        const relatedTasksData = await relatedTasksResponse.json();
+
+        if (relatedTasksData.status !== 200 || !relatedTasksData.data || relatedTasksData.data.length === 0) {
+          return res.json({ status: 'success', data: { hasRelatedTask: false } });
+        }
+
+        const relatedTasks = relatedTasksData.data;
+        const deliveryTask = relatedTasks.find(task =>
+          String(task.job_id) !== String(jobId) && task.job_type === 1
+        ) || relatedTasks.find(task => String(task.job_id) !== String(jobId));
+
+        if (deliveryTask) {
+          return res.json({
+            status: 'success',
+            data: {
+              hasRelatedTask: true,
+              deliveryAddress: deliveryTask.job_address || '',
+              deliveryJobId: deliveryTask.job_id,
+              deliveryCustomerName: deliveryTask.customer_username || deliveryTask.customer_name || ''
+            }
+          });
+        }
+
+        return res.json({ status: 'success', data: { hasRelatedTask: false } });
+      } catch (error) {
+        console.error('Get related address error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET/Sync COD Amount for a single order
+    // Fetches COD from Tookan's get_job_details API (CASH_NEEDS_TO_BE_COLLECTED in job_additional_info)
+    app.get('/api/orders/:jobId/sync-cod', authenticate, async (req, res) => {
+      try {
+        const { jobId } = req.params;
+        console.log('\n=== SYNC COD AMOUNT ===');
+        console.log('Job ID:', jobId);
+
+        const apiKey = await getApiKey();
+
+        // Fetch job details with additional info
+        const response = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            job_ids: [parseInt(jobId)],
+            include_task_history: 0,
+            job_additional_info: 1,
+            include_job_report: 0
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.status !== 200 || !data.data || data.data.length === 0) {
+          console.log('Job details not found');
+          return res.json({ status: 'error', message: 'Job details not found' });
+        }
+
+        const jobData = data.data[0];
+
+        // Extract COD from custom_field array
+        const customFields = jobData.custom_field || [];
+        let codAmount = null;
+
+        if (Array.isArray(customFields)) {
+          const codField = customFields.find(field =>
+            field.label === 'CASH_NEEDS_TO_BE_COLLECTED' ||
+            field.display_name === 'CASH NEEDS TO BE COLLECTED'
+          );
+
+          if (codField && codField.data) {
+            const codValue = parseFloat(codField.data);
+            codAmount = isNaN(codValue) ? null : codValue;
+          }
+        }
+
+        console.log('Found COD amount:', codAmount);
+
+        // Update Supabase if configured
+        if (isSupabaseConfigured && supabase && codAmount !== null) {
+          const { error } = await supabase
+            .from('tasks')
+            .update({
+              cod_amount: codAmount,
+              updated_at: new Date().toISOString()
+            })
+            .eq('job_id', parseInt(jobId));
+
+          if (error) {
+            console.error('Failed to update COD in Supabase:', error.message);
+          } else {
+            console.log('✅ COD updated in Supabase');
+          }
+        }
+
+        res.json({
+          status: 'success',
+          data: {
+            jobId: parseInt(jobId),
+            codAmount: codAmount,
+            tags: jobData.tags || null
+          }
+        });
+
+      } catch (error) {
+        console.error('Sync COD error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
     // GET Customer Performance statistics
     app.get('/api/reports/customer-performance', authenticate, async (req, res) => {
       try {
@@ -4074,6 +4251,56 @@ function getApp() {
           console.error('⚠️ Vercel Webhook: Failed to fetch fresh details:', fetchError.message);
         }
 
+        // Fetch COD amount from get_job_details with job_additional_info
+        let codAmountFromApi = null;
+        let tagsFromApi = null;
+        try {
+          console.log(`💰 Vercel Webhook: Fetching COD amount for Job ID: ${jobId}`);
+          const apiKey = getApiKey();
+
+          const codResponse = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              api_key: apiKey,
+              job_ids: [parseInt(jobId)],
+              include_task_history: 0,
+              job_additional_info: 1,
+              include_job_report: 0
+            }),
+          });
+
+          if (codResponse.ok) {
+            const codData = await codResponse.json();
+            if (codData.status === 200 && codData.data && codData.data.length > 0) {
+              const jobData = codData.data[0];
+              const customFields = jobData.custom_field || [];
+
+              if (Array.isArray(customFields)) {
+                const codField = customFields.find(field =>
+                  field.label === 'CASH_NEEDS_TO_BE_COLLECTED' ||
+                  field.display_name === 'CASH NEEDS TO BE COLLECTED'
+                );
+
+                if (codField && codField.data) {
+                  const codValue = parseFloat(codField.data);
+                  if (!isNaN(codValue)) {
+                    codAmountFromApi = codValue;
+                    console.log('✅ Vercel Webhook: COD amount found:', codValue);
+                  }
+                }
+              }
+
+              // Also get tags if available
+              if (jobData.tags) {
+                tagsFromApi = jobData.tags;
+              }
+            }
+          }
+        } catch (codFetchError) {
+          console.error('⚠️ Vercel Webhook: Failed to fetch COD amount:', codFetchError.message);
+        }
+
         // Use fresh data if available, otherwise fallback to payload
         const sourceData = freshTask || payload;
 
@@ -4091,7 +4318,7 @@ function getApp() {
         const record = {
           job_id: parseInt(jobId) || jobId,
           order_id: sourceData.order_id || sourceData.job_pickup_name || payload.order_id || '',
-          cod_amount: parseFloat(sourceData.cod_amount || sourceData.cod || payload.cod_amount || 0),
+          cod_amount: codAmountFromApi !== null ? codAmountFromApi : parseFloat(sourceData.cod_amount || sourceData.cod || payload.cod_amount || 0),
           order_fees: parseFloat(sourceData.order_fees || sourceData.order_payment || payload.order_fees || 0),
           fleet_id: sourceData.fleet_id ? parseInt(sourceData.fleet_id) : (payload.fleet_id ? parseInt(payload.fleet_id) : null),
           fleet_name: sourceData.fleet_name || sourceData.driver_name || sourceData.username || payload.fleet_name || '',
@@ -4105,7 +4332,7 @@ function getApp() {
           creation_datetime: sourceData.creation_datetime || sourceData.job_time || sourceData.created_at || sourceData.timestamp || payload.creation_datetime || new Date().toISOString(),
           // Expanded completed_datetime lookup - check all possible Tookan field names
           completed_datetime: completedTime,
-          tags: sourceData.tags || sourceData.job_tags || payload.tags || '',
+          tags: tagsFromApi || sourceData.tags || sourceData.job_tags || payload.tags || '',
           raw_data: { ...payload, ...(freshTask || {}) },
           last_synced_at: new Date().toISOString(),
           updated_at: new Date().toISOString()

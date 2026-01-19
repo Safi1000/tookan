@@ -2025,15 +2025,16 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
     const returnPickupAddr = originalDeliveryAddr;
     const returnDeliveryAddr = originalPickupAddr;
 
-    // Get assigned driver - MUST be assigned to both tasks
+    // Get assigned driver
     const assignedDriver = orderData.assignedDriver || null;
 
     // ========== TASK 1: PICKUP from customer ==========
+    // PICKUP tasks use job_pickup_* fields, not customer_* fields
     const pickupPayload = {
       api_key: apiKey,
-      customer_username: orderData.customerName || 'Customer',
-      customer_phone: orderData.customerPhone || '',
-      customer_email: orderData.customerEmail || '',
+      job_pickup_name: orderData.customerName || 'Customer',
+      job_pickup_phone: orderData.customerPhone || '',
+      job_pickup_email: orderData.customerEmail || '',
       job_pickup_address: returnPickupAddr,
       job_pickup_datetime: formatDateTime(pickupTime),
       has_pickup: 1,
@@ -2089,6 +2090,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
     console.log('✅ Pickup task created:', pickupOrderId);
 
     // ========== TASK 2: DELIVERY to merchant ==========
+    // DELIVERY tasks only need customer_address
     const deliveryPayload = {
       api_key: apiKey,
       customer_username: orderData.customerName || 'Customer',
@@ -2154,7 +2156,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
     // Save BOTH return tasks to Supabase for caching
     if (isConfigured()) {
       try {
-        // Save PICKUP task
+        // Save PICKUP task - pickup_address = delivery_address (same location for pickup tasks)
         if (pickupOrderId) {
           const pickupTaskRecord = {
             job_id: pickupOrderId,
@@ -2163,7 +2165,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
             customer_phone: orderData.customerPhone || '',
             customer_email: orderData.customerEmail || null,
             pickup_address: returnPickupAddr,
-            delivery_address: '', // Pickup only
+            delivery_address: returnPickupAddr, // SAME as pickup - Tookan pickup task format
             cod_amount: 0,
             order_fees: parseFloat(orderData.orderFees) || 0,
             notes: orderData.notes || '',
@@ -2178,7 +2180,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
           console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
         }
 
-        // Save DELIVERY task
+        // Save DELIVERY task with both addresses
         if (deliveryOrderId) {
           const deliveryTaskRecord = {
             job_id: deliveryOrderId,
@@ -2186,7 +2188,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
             customer_name: orderData.customerName || 'Customer',
             customer_phone: orderData.customerPhone || '',
             customer_email: orderData.customerEmail || null,
-            pickup_address: '', // Delivery only
+            pickup_address: returnPickupAddr,
             delivery_address: returnDeliveryAddr,
             cod_amount: 0,
             order_fees: parseFloat(orderData.orderFees) || 0,
@@ -2639,6 +2641,55 @@ app.post('/api/tookan/webhook', async (req, res) => {
         } catch (fetchError) {
           console.error('⚠️ Failed to fetch fresh task details:', fetchError.message);
           // Fallback to original webhook data
+        }
+
+        // Fetch COD amount from get_job_details with job_additional_info
+        try {
+          console.log(`💰 Fetching COD amount for Job ID: ${orderId}`);
+          const apiKey = getApiKey();
+
+          const codResponse = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              api_key: apiKey,
+              job_ids: [parseInt(orderId)],
+              include_task_history: 0,
+              job_additional_info: 1,
+              include_job_report: 0
+            }),
+          });
+
+          if (codResponse.ok) {
+            const codData = await codResponse.json();
+            if (codData.status === 200 && codData.data && codData.data.length > 0) {
+              const jobData = codData.data[0];
+              const customFields = jobData.custom_field || [];
+
+              if (Array.isArray(customFields)) {
+                const codField = customFields.find(field =>
+                  field.label === 'CASH_NEEDS_TO_BE_COLLECTED' ||
+                  field.display_name === 'CASH NEEDS TO BE COLLECTED'
+                );
+
+                if (codField && codField.data) {
+                  const codValue = parseFloat(codField.data);
+                  if (!isNaN(codValue)) {
+                    taskDataToUpdate.cod_amount = codValue;
+                    console.log('✅ COD amount found:', codValue);
+                  }
+                }
+              }
+
+              // Also merge tags if available
+              if (jobData.tags) {
+                taskDataToUpdate.tags = jobData.tags;
+              }
+            }
+          }
+        } catch (codFetchError) {
+          console.error('⚠️ Failed to fetch COD amount:', codFetchError.message);
+          // Continue without COD
         }
       }
 
@@ -4533,6 +4584,174 @@ app.put('/api/settings/tookan-fee', authenticate, async (req, res) => {
     res.json({ status: 'success', data: { feeRate } });
   } catch (error) {
     console.error('Update tookan fee error:', error);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// GET Related Delivery Address for Pickup Tasks (Return Orders)
+// For pickup tasks where pickup_address = delivery_address, fetch the actual delivery address
+app.get('/api/tookan/job/:jobId/related-address', authenticate, async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    console.log('\n=== GET RELATED DELIVERY ADDRESS ===');
+    console.log('Job ID:', jobId);
+
+    const apiKey = getApiKey();
+
+    // Step 1: Get job details to find pickup_delivery_relationship
+    const jobDetailsResponse = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        job_ids: [parseInt(jobId)],
+        include_task_history: 0,
+        job_additional_info: 1,
+        include_job_report: 0
+      })
+    });
+
+    const jobDetailsData = await jobDetailsResponse.json();
+
+    if (jobDetailsData.status !== 200 || !jobDetailsData.data || jobDetailsData.data.length === 0) {
+      console.log('Job details not found');
+      return res.json({ status: 'error', message: 'Job details not found' });
+    }
+
+    const jobData = jobDetailsData.data[0];
+    const pickupDeliveryRelationship = jobData.pickup_delivery_relationship;
+
+    if (!pickupDeliveryRelationship) {
+      console.log('No pickup_delivery_relationship found');
+      return res.json({ status: 'success', data: { hasRelatedTask: false } });
+    }
+
+    console.log('Found pickup_delivery_relationship:', pickupDeliveryRelationship);
+
+    // Step 2: Get related tasks to find the delivery address
+    const relatedTasksResponse = await fetch('https://api.tookanapp.com/v2/get_related_tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        pickup_delivery_relationship: pickupDeliveryRelationship
+      })
+    });
+
+    const relatedTasksData = await relatedTasksResponse.json();
+
+    if (relatedTasksData.status !== 200 || !relatedTasksData.data || relatedTasksData.data.length === 0) {
+      console.log('Related tasks not found');
+      return res.json({ status: 'success', data: { hasRelatedTask: false } });
+    }
+
+    // Find the delivery task (the one that is NOT the current pickup task)
+    const relatedTasks = relatedTasksData.data;
+    const deliveryTask = relatedTasks.find(task =>
+      String(task.job_id) !== String(jobId) && task.job_type === 1 // job_type 1 = delivery
+    ) || relatedTasks.find(task => String(task.job_id) !== String(jobId));
+
+    if (deliveryTask) {
+      console.log('Found delivery task:', deliveryTask.job_id, 'Address:', deliveryTask.job_address);
+      return res.json({
+        status: 'success',
+        data: {
+          hasRelatedTask: true,
+          deliveryAddress: deliveryTask.job_address || '',
+          deliveryJobId: deliveryTask.job_id,
+          deliveryCustomerName: deliveryTask.customer_username || deliveryTask.customer_name || ''
+        }
+      });
+    }
+
+    console.log('No delivery task found in related tasks');
+    return res.json({ status: 'success', data: { hasRelatedTask: false } });
+
+  } catch (error) {
+    console.error('Get related address error:', error);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// GET/Sync COD Amount for a single order
+// Fetches COD from Tookan's get_job_details API (CASH_NEEDS_TO_BE_COLLECTED in job_additional_info)
+app.get('/api/orders/:jobId/sync-cod', authenticate, async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    console.log('\n=== SYNC COD AMOUNT ===');
+    console.log('Job ID:', jobId);
+
+    const apiKey = getApiKey();
+
+    // Fetch job details with additional info
+    const response = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        job_ids: [parseInt(jobId)],
+        include_task_history: 0,
+        job_additional_info: 1,
+        include_job_report: 0
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.status !== 200 || !data.data || data.data.length === 0) {
+      console.log('Job details not found');
+      return res.json({ status: 'error', message: 'Job details not found' });
+    }
+
+    const jobData = data.data[0];
+
+    // Extract COD from custom_field array
+    const customFields = jobData.custom_field || [];
+    let codAmount = null;
+
+    if (Array.isArray(customFields)) {
+      const codField = customFields.find(field =>
+        field.label === 'CASH_NEEDS_TO_BE_COLLECTED' ||
+        field.display_name === 'CASH NEEDS TO BE COLLECTED'
+      );
+
+      if (codField && codField.data) {
+        const codValue = parseFloat(codField.data);
+        codAmount = isNaN(codValue) ? null : codValue;
+      }
+    }
+
+    console.log('Found COD amount:', codAmount);
+
+    // Update Supabase if configured
+    if (isConfigured() && codAmount !== null) {
+      const { supabase } = require('./db/supabase');
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          cod_amount: codAmount,
+          updated_at: new Date().toISOString()
+        })
+        .eq('job_id', parseInt(jobId));
+
+      if (error) {
+        console.error('Failed to update COD in Supabase:', error.message);
+      } else {
+        console.log('✅ COD updated in Supabase');
+      }
+    }
+
+    res.json({
+      status: 'success',
+      data: {
+        jobId: parseInt(jobId),
+        codAmount: codAmount,
+        tags: jobData.tags || null
+      }
+    });
+
+  } catch (error) {
+    console.error('Sync COD error:', error);
     res.status(500).json({ status: 'error', message: error.message });
   }
 });
