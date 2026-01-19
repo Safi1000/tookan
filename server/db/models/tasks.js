@@ -156,7 +156,7 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
 
   let query = supabase
     .from('tasks')
-    .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' });
+    .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,vendor_id,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' });
 
   if (filters.dateFrom) {
     query = query.gte('creation_datetime', filters.dateFrom);

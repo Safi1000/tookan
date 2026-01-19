@@ -1796,3 +1796,58 @@ export async function fetchCustomerPerformance(
     };
   }
 }
+
+// Fetch Tookan Fee Rate
+export async function fetchTookanFeeRate(): Promise<{ status: string; feeRate: number }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/settings/tookan-fee`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+    return {
+      status: data.status || 'success',
+      feeRate: data.data?.feeRate ?? 0.05,
+    };
+  } catch (error) {
+    console.error('Fetch Tookan fee rate error:', error);
+    return { status: 'error', feeRate: 0.05 };
+  }
+}
+
+// Update Tookan Fee Rate
+export async function updateTookanFeeRate(feeRate: number): Promise<{ status: string; feeRate: number; message?: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/settings/tookan-fee`, {
+      method: 'PUT',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ feeRate }),
+    });
+
+    const data = await response.json();
+
+    if (data.status !== 'success') {
+      return {
+        status: 'error',
+        feeRate: feeRate,
+        message: data.message || 'Failed to update fee rate',
+      };
+    }
+
+    return {
+      status: 'success',
+      feeRate: data.data?.feeRate ?? feeRate,
+    };
+  } catch (error) {
+    console.error('Update Tookan fee rate error:', error);
+    return {
+      status: 'error',
+      feeRate: feeRate,
+      message: error instanceof Error ? error.message : 'Network error occurred',
+    };
+  }
+}

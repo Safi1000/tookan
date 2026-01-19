@@ -791,7 +791,7 @@ function getApp() {
 
         let query = supabase
           .from('tasks')
-          .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' });
+          .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,vendor_id,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' });
 
         if (dateFrom) query = query.gte('creation_datetime', dateFrom);
         if (dateTo) query = query.lte('creation_datetime', dateTo);
@@ -902,6 +902,7 @@ function getApp() {
             assignedDriver: task.fleet_id || null,
             fleet_name: task.fleet_name || '',
             assignedDriverName: task.fleet_name || '',
+            vendor_id: task.vendor_id || null,
             driver_phone: agentMap[fleetIdStr] || task.raw_data?.fleet_phone || '',
             driverPhone: agentMap[fleetIdStr] || task.raw_data?.fleet_phone || '',
             notes: task.notes || '',
@@ -3680,6 +3681,71 @@ function getApp() {
       }
     });
 
+    // GET Tookan Fee Rate setting
+    app.get('/api/settings/tookan-fee', authenticate, async (req, res) => {
+      try {
+        console.log('\n=== GET TOOKAN FEE SETTING ===');
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.json({ status: 'success', data: { feeRate: 0.05 } });
+        }
+
+        const { data, error } = await supabase
+          .from('tag_config')
+          .select('config')
+          .eq('id', 1)
+          .single();
+
+        if (error && error.code !== 'PGRST116') {
+          console.error('Error fetching tookan fee:', error);
+        }
+
+        const feeRate = data?.config?.tookanFeeRate ?? 0.05;
+        res.json({ status: 'success', data: { feeRate } });
+      } catch (error) {
+        console.error('Get tookan fee error:', error);
+        res.json({ status: 'success', data: { feeRate: 0.05 } });
+      }
+    });
+
+    // PUT Tookan Fee Rate setting
+    app.put('/api/settings/tookan-fee', authenticate, async (req, res) => {
+      try {
+        const { feeRate } = req.body;
+        console.log('\n=== UPDATE TOOKAN FEE SETTING ===');
+
+        if (typeof feeRate !== 'number' || feeRate < 0 || feeRate > 1) {
+          return res.status(400).json({ status: 'error', message: 'Fee rate must be a number between 0 and 1' });
+        }
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { data: existingData } = await supabase
+          .from('tag_config')
+          .select('config')
+          .eq('id', 1)
+          .single();
+
+        const existingConfig = existingData?.config || {};
+        const newConfig = { ...existingConfig, tookanFeeRate: feeRate };
+
+        const { error } = await supabase
+          .from('tag_config')
+          .upsert({ id: 1, config: newConfig }, { onConflict: 'id' });
+
+        if (error) {
+          return res.status(500).json({ status: 'error', message: error.message });
+        }
+
+        res.json({ status: 'success', data: { feeRate } });
+      } catch (error) {
+        console.error('Update tookan fee error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
     // GET Customer Performance statistics
     app.get('/api/reports/customer-performance', authenticate, async (req, res) => {
       try {
@@ -3695,88 +3761,91 @@ function getApp() {
           return res.json({ status: 'success', data: [] });
         }
 
-        let customerIds = [];
         const searchTerm = search.toString().trim();
         // Normalize search: trim, collapse spaces, lowercase
         const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
         const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
+        const isNumeric = /^\d+$/.test(searchTerm);
 
-        // Fetch all customers to perform robust matching
-        const { data: allCustomers, error: customersError } = await supabase
-          .from('customers')
-          .select('vendor_id, customer_name, customer_phone');
+        // Build query to find matching orders directly from tasks table
+        let query = supabase
+          .from('tasks')
+          .select('vendor_id, customer_name, customer_phone, cod_amount, order_fees, status');
 
-        if (customersError) throw customersError;
-
-        if (allCustomers && allCustomers.length > 0) {
-          const matchedCustomers = allCustomers.filter(customer => {
-            const customerPhoneDigits = String(customer.customer_phone || '').replace(/\D/g, '');
-            const customerNormalizedName = String(customer.customer_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
-            const customerIdStr = String(customer.vendor_id);
-
-            const nameMatch = customerNormalizedName === normalizedSearchName;
-            const idMatch = customerIdStr === searchTerm;
-            const phoneMatch = normalizedSearchPhone && customerPhoneDigits === normalizedSearchPhone;
-
-            return nameMatch || idMatch || phoneMatch;
-          });
-
-          if (matchedCustomers.length > 0) {
-            customerIds = matchedCustomers.map(c => ({
-              id: c.vendor_id,
-              name: c.customer_name || 'Unknown Customer'
-            }));
-          } else if (/^\d+$/.test(searchTerm)) {
-            customerIds = [{ id: parseInt(searchTerm, 10), name: 'Customer #' + searchTerm }];
-          }
+        // Apply date filters if provided
+        if (dateFrom) {
+          query = query.gte('creation_datetime', dateFrom);
+        }
+        if (dateTo) {
+          query = query.lte('creation_datetime', dateTo);
         }
 
-        if (customerIds.length === 0) {
+        // For numeric search, filter by vendor_id directly
+        if (isNumeric) {
+          query = query.eq('vendor_id', parseInt(searchTerm, 10));
+        }
+
+        const { data: tasks, error: tasksError } = await query;
+
+        if (tasksError) {
+          console.error('Tasks query error:', tasksError);
+          throw tasksError;
+        }
+
+        // Filter tasks in JS for name/phone matching (exact match)
+        let matchedTasks = tasks || [];
+
+        if (!isNumeric) {
+          matchedTasks = matchedTasks.filter(task => {
+            const taskCustomerName = String(task.customer_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+            const taskCustomerPhone = String(task.customer_phone || '').replace(/\D/g, '');
+
+            // Exact match on normalized name
+            const nameMatch = taskCustomerName === normalizedSearchName;
+            // Exact match on phone
+            const phoneMatch = normalizedSearchPhone && taskCustomerPhone === normalizedSearchPhone;
+
+            return nameMatch || phoneMatch;
+          });
+        }
+
+        if (matchedTasks.length === 0) {
           return res.json({ status: 'success', data: [] });
         }
 
-        // Get statistics for each customer from tasks table
-        const results = await Promise.all(customerIds.map(async (customer) => {
-          let query = supabase
-            .from('tasks')
-            .select('cod_amount, order_fees, status')
-            .eq('vendor_id', customer.id);
+        // Group tasks by customer_name (or vendor_id if name is null)
+        const customerMap = new Map();
 
-          if (dateFrom) {
-            query = query.gte('creation_datetime', dateFrom);
-          }
-          if (dateTo) {
-            query = query.lte('creation_datetime', dateTo);
-          }
+        for (const task of matchedTasks) {
+          // Normalize the customer name for grouping (trim spaces, collapse multiple spaces)
+          const normalizedName = String(task.customer_name || '').trim().replace(/\s+/g, ' ');
+          const customerKey = normalizedName.toLowerCase() || `vendor_${task.vendor_id}`;
+          const displayName = normalizedName || `Customer #${task.vendor_id}`;
 
-          const { data: tasks, error: tasksError } = await query;
-
-          if (tasksError) {
-            console.error(`Tasks query error for customer ${customer.id}:`, tasksError);
-            return {
-              vendor_id: customer.id,
-              customer_name: customer.name,
+          if (!customerMap.has(customerKey)) {
+            customerMap.set(customerKey, {
+              vendor_id: task.vendor_id,
+              customer_name: displayName,
               total_orders: 0,
               cod_received: 0,
-              order_fees: 0,
-              revenue_distribution: 0
-            };
+              order_fees: 0
+            });
           }
 
-          const completedTasks = (tasks || []).filter(t => t.status === 2);
-          const totalOrders = (tasks || []).length;
-          const codReceived = completedTasks.reduce((sum, t) => sum + parseFloat(t.cod_amount || 0), 0);
-          const orderFees = completedTasks.reduce((sum, t) => sum + parseFloat(t.order_fees || 0), 0);
-          const revenueDistribution = codReceived - orderFees;
+          const stats = customerMap.get(customerKey);
+          stats.total_orders++;
 
-          return {
-            vendor_id: customer.id,
-            customer_name: customer.name,
-            total_orders: totalOrders,
-            cod_received: codReceived,
-            order_fees: orderFees,
-            revenue_distribution: revenueDistribution
-          };
+          // Only count completed orders (status 2) for COD and fees
+          if (task.status === 2) {
+            stats.cod_received += parseFloat(task.cod_amount || 0);
+            stats.order_fees += parseFloat(task.order_fees || 0);
+          }
+        }
+
+        // Convert map to array and calculate revenue distribution
+        const results = Array.from(customerMap.values()).map(stats => ({
+          ...stats,
+          revenue_distribution: stats.cod_received - stats.order_fees
         }));
 
         res.json({ status: 'success', data: results });

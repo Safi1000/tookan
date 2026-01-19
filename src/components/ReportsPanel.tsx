@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Calendar, Search, Filter, Download, ArrowUpDown, ChevronDown, CheckCircle, XCircle, RefreshCw, AlertCircle, Settings2, X } from 'lucide-react';
 import { DatePicker } from './ui/date-picker';
 import { toast } from 'sonner';
-import { fetchAllOrders, fetchAllDrivers, fetchAllCustomers, fetchReportsSummary, fetchDriverPerformance, fetchCustomerPerformance, type OrderFilters } from '../services/tookanApi';
+import { fetchAllOrders, fetchAllDrivers, fetchAllCustomers, fetchReportsSummary, fetchDriverPerformance, fetchCustomerPerformance, fetchTookanFeeRate, updateTookanFeeRate, type OrderFilters } from '../services/tookanApi';
 import * as XLSX from 'xlsx';
 
 const columnDefinitions = [
@@ -16,6 +16,7 @@ const columnDefinitions = [
   { key: 'deliveryAddress', label: 'Delivery Address' },
   { key: 'cod', label: 'COD' },
   { key: 'fee', label: 'Order Fees' },
+  { key: 'tookanFees', label: 'Tookan Fees' },
 ];
 
 export function ReportsPanel() {
@@ -33,6 +34,9 @@ export function ReportsPanel() {
   const [totals, setTotals] = useState({ orders: 0, drivers: 0, merchants: 0, deliveries: 0 });
   const [driverPerformanceData, setDriverPerformanceData] = useState<any[]>([]);
   const [customerPerformanceData, setCustomerPerformanceData] = useState<any[]>([]);
+  const [tookanFeeRate, setTookanFeeRate] = useState(0.05);
+  const [showFeeSettings, setShowFeeSettings] = useState(false);
+  const [feeRateInput, setFeeRateInput] = useState('0.05');
 
   // Loading and error states
   const [isLoading, setIsLoading] = useState(false);
@@ -66,6 +70,17 @@ export function ReportsPanel() {
     return !!(combinedSearch || dateFrom || dateTo || statusFilter);
   }, [combinedSearch, dateFrom, dateTo, statusFilter]);
 
+  // Fetch Tookan fee rate on mount
+  useEffect(() => {
+    const loadFeeRate = async () => {
+      const result = await fetchTookanFeeRate();
+      if (result.status === 'success') {
+        setTookanFeeRate(result.feeRate);
+        setFeeRateInput(result.feeRate.toString());
+      }
+    };
+    loadFeeRate();
+  }, []);
 
   // Fetch data on mount and when filters change
   useEffect(() => {
@@ -209,12 +224,25 @@ export function ReportsPanel() {
 
     // Filter by customer (ID, name, or phone)
     if (unifiedCustomerSearch.trim()) {
-      const searchLower = unifiedCustomerSearch.toLowerCase();
-      filtered = filtered.filter(order =>
-        (order.customer || order.customerName || '').toLowerCase().includes(searchLower) ||
-        (order.customerNumber || order.customerPhone || '').toLowerCase().includes(searchLower) ||
-        (order.customerId || '').toLowerCase().includes(searchLower)
-      );
+      const searchTerm = unifiedCustomerSearch.trim();
+      const searchLower = searchTerm.toLowerCase();
+      const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
+
+      filtered = filtered.filter(order => {
+        // Customer name match (contains)
+        const customerName = (order.customer_name || order.customerName || order.customer || '').toLowerCase();
+        const nameMatch = customerName.includes(searchLower);
+
+        // Customer phone match (normalized digits)
+        const customerPhone = String(order.customer_phone || order.customerPhone || order.customerNumber || '').replace(/\D/g, '');
+        const phoneMatch = normalizedSearchPhone && customerPhone.includes(normalizedSearchPhone);
+
+        // Customer/vendor ID match (exact or contains)
+        const vendorId = String(order.vendor_id || order.customerId || order.merchantId || '');
+        const idMatch = vendorId === searchTerm || vendorId.includes(searchTerm);
+
+        return nameMatch || phoneMatch || idMatch;
+      });
     }
 
     // Filter by merchant (ID, name, or phone)
@@ -268,19 +296,17 @@ export function ReportsPanel() {
       // 2. Order List sheet (if there are filtered orders)
       if (filteredOrders.length > 0) {
         const ordersData = filteredOrders.map((order: any) => ({
-          'Task ID': order.jobId || order.job_id || '',
+          'Order ID': order.order_id || order.jobId || order.job_id || '',
           'Date/Time Delivered': order.completed_datetime || '',
-          'Driver ID': order.fleet_id || order.assignedDriver || '',
           'Driver Name': order.fleet_name || order.assignedDriverName || '',
-          'Driver Phone': order.driver_phone || order.driverPhone || '',
           'Customer Name': order.customer_name || order.customerName || '',
           'Customer Phone': order.customer_phone || order.customerPhone || '',
           'Pickup Address': order.pickup_address || order.pickupAddress || '',
           'Delivery Address': order.delivery_address || order.deliveryAddress || '',
           'COD': typeof (order.cod_amount || order.codAmount) === 'number' ? (order.cod_amount || order.codAmount).toFixed(2) : '0.00',
           'Order Fees': typeof (order.order_fees || order.orderFees) === 'number' ? (order.order_fees || order.orderFees).toFixed(2) : '0.00',
-          'Status': mapStatus(order.status),
-          'Tags': order.tags || order.tag || ''
+          'Tookan Fees': tookanFeeRate.toFixed(2),
+          'Status': mapStatus(order.status)
         }));
         const ordersSheet = XLSX.utils.json_to_sheet(ordersData);
         XLSX.utils.book_append_sheet(workbook, ordersSheet, 'Order List');
@@ -333,7 +359,7 @@ export function ReportsPanel() {
       console.error('Export error:', error);
       toast.error('Failed to export data');
     }
-  }, [driverPerformanceData, customerPerformanceData, filteredOrders, mapStatus]);
+  }, [driverPerformanceData, customerPerformanceData, filteredOrders, mapStatus, tookanFeeRate]);
 
   // Mock validation states for auto-suggest
   const getValidationColor = (value: string) => {
@@ -411,6 +437,16 @@ export function ReportsPanel() {
             <Download className="w-5 h-5" />
             Export CSV
           </button>
+          <button
+            onClick={() => {
+              setFeeRateInput(tookanFeeRate.toString());
+              setShowFeeSettings(true);
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-card border border-border rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#223560] transition-all text-heading dark:text-[#C1EEFA]"
+          >
+            <Settings2 className="w-5 h-5" />
+            Fee Settings
+          </button>
         </div>
       </div>
 
@@ -421,6 +457,64 @@ export function ReportsPanel() {
           <div className="flex-1">
             <h4 className="text-destructive font-semibold mb-1">Error Loading Data</h4>
             <p className="text-sm text-heading dark:text-[#C1EEFA]">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Fee Settings Modal */}
+      {showFeeSettings && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-heading dark:text-[#C1EEFA]">Tookan Fee Settings</h3>
+              <button onClick={() => setShowFeeSettings(false)} className="text-muted-light hover:text-heading">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm text-muted-light dark:text-[#99BFD1] mb-2">
+                Tookan Fee
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={feeRateInput}
+                onChange={(e) => setFeeRateInput(e.target.value)}
+                className="w-full px-4 py-3 bg-input border border-border rounded-xl text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="0.05"
+              />
+
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowFeeSettings(false)}
+                className="flex-1 px-4 py-3 border border-border rounded-xl text-heading dark:text-[#C1EEFA] hover:bg-hover-bg-light dark:hover:bg-[#223560]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const newRate = parseFloat(feeRateInput);
+                  if (isNaN(newRate) || newRate < 0 || newRate > 1) {
+                    toast.error('Fee rate must be between 0 and 1');
+                    return;
+                  }
+                  const result = await updateTookanFeeRate(newRate);
+                  if (result.status === 'success') {
+                    setTookanFeeRate(newRate);
+                    setShowFeeSettings(false);
+                    toast.success('Tookan fee rate updated successfully');
+                  } else {
+                    toast.error(result.message || 'Failed to update fee rate');
+                  }
+                }}
+                className="flex-1 px-4 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)]"
+              >
+                Save
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -700,19 +794,17 @@ export function ReportsPanel() {
             <table className="w-full">
               <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
                 <tr>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Task ID</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order ID</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date/Time Delivered</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Phone</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Name</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Phone</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pickup Address</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Delivery Address</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tookan Fees</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tags</th>
 
 
                 </tr>
@@ -748,7 +840,7 @@ export function ReportsPanel() {
                           >
                             {isPickup ? 'P' : 'D'}
                           </span>
-                          <span>{taskId}</span>
+                          <span>{orderId || taskId}</span>
                         </div>
                       </td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
@@ -758,15 +850,14 @@ export function ReportsPanel() {
                           ))
                         ) : ''}
                       </td>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{driverId}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{driverName}</td>
-                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{order.driver_phone || order.driverPhone || ''}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{customerName}</td>
                       <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{customerPhone}</td>
                       <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate" title={pickupAddress}>{pickupAddress}</td>
                       <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate" title={deliveryAddress}>{deliveryAddress}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof cod === 'number' ? cod.toFixed(2) : cod}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{typeof orderFees === 'number' ? orderFees.toFixed(2) : orderFees}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{tookanFeeRate.toFixed(2)}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
                         <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${order.status === 2 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                           order.status === 3 || order.status === 9 || order.status === 8 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
@@ -775,7 +866,6 @@ export function ReportsPanel() {
                           {mapStatus(order.status)}
                         </span>
                       </td>
-                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm italic">{order.tags || order.tag || ''}</td>
                     </tr>
                   );
                 })}
