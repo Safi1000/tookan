@@ -479,7 +479,6 @@ export function ReportsPanel() {
                 type="number"
                 step="0.01"
                 min="0"
-                max="1"
                 value={feeRateInput}
                 onChange={(e) => setFeeRateInput(e.target.value)}
                 className="w-full px-4 py-3 bg-input border border-border rounded-xl text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-primary"
@@ -497,8 +496,8 @@ export function ReportsPanel() {
               <button
                 onClick={async () => {
                   const newRate = parseFloat(feeRateInput);
-                  if (isNaN(newRate) || newRate < 0 || newRate > 1) {
-                    toast.error('Fee rate must be between 0 and 1');
+                  if (isNaN(newRate) || newRate < 0) {
+                    toast.error('Fee must be a positive number');
                     return;
                   }
                   const result = await updateTookanFeeRate(newRate);

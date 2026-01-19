@@ -3714,8 +3714,8 @@ function getApp() {
         const { feeRate } = req.body;
         console.log('\n=== UPDATE TOOKAN FEE SETTING ===');
 
-        if (typeof feeRate !== 'number' || feeRate < 0 || feeRate > 1) {
-          return res.status(400).json({ status: 'error', message: 'Fee rate must be a number between 0 and 1' });
+        if (typeof feeRate !== 'number' || feeRate < 0) {
+          return res.status(400).json({ status: 'error', message: 'Fee rate must be a positive number' });
         }
 
         if (!isSupabaseConfigured || !supabase) {
