@@ -800,7 +800,7 @@ export function ReportsPanel() {
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Phone</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pickup Address</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Delivery Address</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD (BHD)</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tookan Fees</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>

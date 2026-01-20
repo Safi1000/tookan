@@ -54,6 +54,8 @@ export function OrderEditorPanel() {
   const [showReorderModal, setShowReorderModal] = useState(false);
   const [reorderDriver, setReorderDriver] = useState<string>('');
   const [reorderNotes, setReorderNotes] = useState('');
+  const [reorderCod, setReorderCod] = useState('');
+  const [reorderFees, setReorderFees] = useState('');
   const [isCreatingReorder, setIsCreatingReorder] = useState(false);
 
   // Return Order modal state
@@ -190,6 +192,8 @@ export function OrderEditorPanel() {
   const openReorderModal = () => {
     setReorderDriver('');
     setReorderNotes('');
+    setReorderCod((order?.codAmount || 0).toString());
+    setReorderFees((order?.orderFees || 0).toString());
     setShowReorderModal(true);
     loadAgentsFromTookan(); // Fetch fresh agents from Tookan API
   };
@@ -214,8 +218,8 @@ export function OrderEditorPanel() {
         customerPhone: order.customerPhone,
         pickupAddress: order.pickupAddress,
         deliveryAddress: order.deliveryAddress,
-        codAmount: order.codAmount,
-        orderFees: order.orderFees,
+        codAmount: parseFloat(reorderCod) || 0,
+        orderFees: parseFloat(reorderFees) || 0,
         notes: effectiveNotes,
         assignedDriver: reorderDriver || null
       });
@@ -367,8 +371,8 @@ export function OrderEditorPanel() {
 
             {/* COD & Fees */}
             <div className="text-sm text-muted-foreground mt-2 sm:mt-0">
-              <span className="font-medium">COD:</span> ${order.codAmount.toFixed(2)} •{" "}
-              <span className="font-medium">Fees:</span> ${order.orderFees.toFixed(2)}
+              <span className="font-medium">COD:</span> BHD {order.codAmount.toFixed(2)} •{" "}
+              <span className="font-medium">Fees:</span> BHD {order.orderFees.toFixed(2)}
             </div>
           </div>
 
@@ -425,7 +429,7 @@ export function OrderEditorPanel() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <p className="text-subheading text-xs uppercase mb-1">COD Amount ($)</p>
+                <p className="text-subheading text-xs uppercase mb-1">COD Amount (BHD)</p>
                 <input
                   type="number"
                   value={editCod}
@@ -434,7 +438,7 @@ export function OrderEditorPanel() {
                 />
               </div>
               <div>
-                <p className="text-subheading text-xs uppercase mb-1">Order Delivery Fee ($)</p>
+                <p className="text-subheading text-xs uppercase mb-1">Order Delivery Fee (BHD)</p>
                 <input
                   type="number"
                   value={editFees}
@@ -544,14 +548,7 @@ export function OrderEditorPanel() {
                     <p className="text-muted-foreground text-xs uppercase mb-1">Delivery</p>
                     <p className="text-heading truncate">{order.deliveryAddress || 'N/A'}</p>
                   </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase mb-1">COD</p>
-                    <p className="text-heading font-mono">${order.codAmount.toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase mb-1">Fees</p>
-                    <p className="text-heading font-mono">${order.orderFees.toFixed(2)}</p>
-                  </div>
+                  {/* COD and Fees moved to editable section */}
                 </div>
               </div>
 
@@ -591,6 +588,27 @@ export function OrderEditorPanel() {
                     {isLoadingAgents && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
                   </div>
                   */}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-muted-foreground text-xs uppercase mb-1.5">COD Amount (BHD)</p>
+                      <input
+                        type="number"
+                        value={reorderCod}
+                        onChange={(e) => setReorderCod(e.target.value)}
+                        className={editableInputClass + ' py-2'}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs uppercase mb-1.5">Order Fees (BHD)</p>
+                      <input
+                        type="number"
+                        value={reorderFees}
+                        onChange={(e) => setReorderFees(e.target.value)}
+                        className={editableInputClass + ' py-2'}
+                      />
+                    </div>
+                  </div>
                   <div>
                     <p
                       className="text-muted-foreground text-xs uppercase mb-1.5"
