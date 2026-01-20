@@ -182,7 +182,7 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
     // Resolve agents first, including normalized_name
     const { data: allAgents } = await supabase.from('agents').select('fleet_id, name, normalized_name, phone');
 
-    // Also resolve customers
+    // Also resolve customers from customers table
     const { data: allCustomers } = await supabase.from('customers').select('vendor_id, customer_name, customer_phone');
 
     const resolvedDriverIds = new Set();
@@ -204,7 +204,7 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
       }
     }
 
-    // Match customers
+    // Match customers from customers table
     if (allCustomers && allCustomers.length > 0) {
       for (const customer of allCustomers) {
         const customerPhoneDigits = String(customer.customer_phone || '').replace(/\D/g, '');
@@ -215,6 +215,28 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
           customerIdStr === searchTerm ||
           (normalizedSearchPhone && customerPhoneDigits === normalizedSearchPhone)) {
           resolvedCustomerIds.add(customer.vendor_id);
+        }
+      }
+    }
+
+    // ALSO search directly in tasks table for customer_name and customer_phone
+    // This handles cases where customer exists in tasks but not in customers table
+    const { data: taskMatches } = await supabase
+      .from('tasks')
+      .select('vendor_id, customer_name, customer_phone')
+      .limit(1000); // Get a sample to find matching vendor_ids
+
+    if (taskMatches && taskMatches.length > 0) {
+      for (const task of taskMatches) {
+        const taskCustomerName = String(task.customer_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+        const taskCustomerPhone = String(task.customer_phone || '').replace(/\D/g, '');
+
+        // Exact match on name or phone
+        if (taskCustomerName === normalizedSearchName ||
+          (normalizedSearchPhone && taskCustomerPhone === normalizedSearchPhone)) {
+          if (task.vendor_id) {
+            resolvedCustomerIds.add(task.vendor_id);
+          }
         }
       }
     }
@@ -232,12 +254,13 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
       orConditions.push(`vendor_id.in.(${idList})`);
     }
 
-    // If no matches found, try fallback searches
+    // If still no matches found, try fallback searches
     if (orConditions.length === 0) {
       if (/^\d+$/.test(searchTerm)) {
         const numericVal = parseInt(searchTerm, 10);
         orConditions.push(`job_id.eq.${numericVal}`, `fleet_id.eq.${numericVal}`, `vendor_id.eq.${numericVal}`);
       } else {
+        // Also try direct customer_name search in tasks as final fallback
         orConditions.push(`fleet_name.ilike.${searchTerm}`, `customer_name.ilike.${searchTerm}`);
       }
     }

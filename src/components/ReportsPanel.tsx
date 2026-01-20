@@ -839,7 +839,7 @@ export function ReportsPanel() {
                           >
                             {isPickup ? 'P' : 'D'}
                           </span>
-                          <span>{orderId || taskId}</span>
+                          <span>{taskId || orderId}</span>
                         </div>
                       </td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">

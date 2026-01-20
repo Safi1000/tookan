@@ -3957,10 +3957,26 @@ function getApp() {
           query = query.lte('creation_datetime', dateTo);
         }
 
-        // For numeric search, filter by vendor_id directly
-        if (isNumeric) {
-          query = query.eq('vendor_id', parseInt(searchTerm, 10));
+        // Build robust search query
+        // 1. Search customer_name and customer_phone (always)
+        const orConditions = [
+          `customer_name.ilike.%${searchTerm}%`,
+          `customer_phone.ilike.%${searchTerm}%`
+        ];
+
+        // 2. Search vendor_id only if it's a valid integer within PostgreSQL integer range
+        if (/^\d+$/.test(searchTerm)) {
+          const numVal = parseInt(searchTerm, 10);
+          // Postgres integer max is 2147483647. Phone numbers often exceed this (overflow error).
+          if (numVal <= 2147483647) {
+            orConditions.push(`vendor_id.eq.${numVal}`);
+          }
         }
+
+        query = query.or(orConditions.join(','));
+
+        // Increase limit
+        query = query.limit(2000);
 
         const { data: tasks, error: tasksError } = await query;
 
@@ -3969,22 +3985,11 @@ function getApp() {
           throw tasksError;
         }
 
-        // Filter tasks in JS for name/phone matching (exact match)
+        // Filter tasks in JS - Relaxed since we now use DB filtering
         let matchedTasks = tasks || [];
 
-        if (!isNumeric) {
-          matchedTasks = matchedTasks.filter(task => {
-            const taskCustomerName = String(task.customer_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
-            const taskCustomerPhone = String(task.customer_phone || '').replace(/\D/g, '');
-
-            // Exact match on normalized name
-            const nameMatch = taskCustomerName === normalizedSearchName;
-            // Exact match on phone
-            const phoneMatch = normalizedSearchPhone && taskCustomerPhone === normalizedSearchPhone;
-
-            return nameMatch || phoneMatch;
-          });
-        }
+        // Removed strict JS filtering block
+        // if (!isNumeric) { ... }
 
         if (matchedTasks.length === 0) {
           return res.json({ status: 'success', data: [] });
