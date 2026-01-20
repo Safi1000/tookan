@@ -559,6 +559,8 @@ export function OrderEditorPanel() {
               <div className="bg-[#C1EEFA]/5  p-4 border border-[#C1EEFA]/15">
 
                 <div className="space-y-3">
+                  {/* Driver Assignment Removed as per request */}
+                  {/* 
                   <div>
                     <p
                       className="text-muted-foreground text-xs uppercase mb-1.5"
@@ -588,6 +590,7 @@ export function OrderEditorPanel() {
                     </select>
                     {isLoadingAgents && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
                   </div>
+                  */}
                   <div>
                     <p
                       className="text-muted-foreground text-xs uppercase mb-1.5"
@@ -695,6 +698,8 @@ export function OrderEditorPanel() {
               {/* Editable Fields for Return Order */}
               <div className="bg-[#C1EEFA]/5 p-4 border border-[#C1EEFA]/15">
                 <div className="space-y-3">
+                  {/* Driver Assignment Removed as per request */}
+                  {/* 
                   <div>
                     <p
                       className="text-muted-foreground text-xs uppercase mb-1.5"
@@ -724,6 +729,7 @@ export function OrderEditorPanel() {
                     </select>
                     {isLoadingAgents && <p className="text-xs text-muted-foreground mt-1">Loading drivers...</p>}
                   </div>
+                  */}
                   <div>
                     <p
                       className="text-muted-foreground text-xs uppercase mb-1.5"

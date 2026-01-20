@@ -825,10 +825,14 @@ export function ReportsPanel() {
 
                   const isPickup = pickupAddress.trim().toLowerCase() === deliveryAddress.trim().toLowerCase();
 
+                  // Commenting out pickup tasks logic as requested
+                  if (isPickup) return null;
+
                   return (
                     <tr key={taskId || index} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">
                         <div className="flex items-center gap-2">
+                          {/* 
                           <span
                             className="w-5 h-5 flex items-center justify-center rounded text-[10px] font-bold shrink-0 shadow-sm border border-black/5 dark:border-white/10"
                             style={{
@@ -839,6 +843,7 @@ export function ReportsPanel() {
                           >
                             {isPickup ? 'P' : 'D'}
                           </span>
+                          */}
                           <span>{taskId || orderId}</span>
                         </div>
                       </td>
