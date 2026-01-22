@@ -53,6 +53,11 @@ export function ReportsPanel() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const ordersPerPage = 1000; // Supabase max limit
+
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(
     columnDefinitions.reduce((acc, col) => ({ ...acc, [col.key]: true }), {})
@@ -81,6 +86,11 @@ export function ReportsPanel() {
     return !!(combinedSearch || dateFrom || dateTo || statusFilter);
   }, [combinedSearch, dateFrom, dateTo, statusFilter]);
 
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [dateFrom, dateTo, combinedSearch, statusFilter]);
+
   // Fetch Tookan fee rate on mount
   useEffect(() => {
     const loadFeeRate = async () => {
@@ -99,7 +109,7 @@ export function ReportsPanel() {
   // Fetch data on mount and when filters change
   useEffect(() => {
     loadData();
-  }, [dateFrom, dateTo, combinedSearch, statusFilter]); // Reload when date filters, search, or status change
+  }, [dateFrom, dateTo, combinedSearch, statusFilter, currentPage]); // Reload when date filters, search, status, or page change
 
   const loadData = async () => {
     setIsLoading(true);
@@ -118,8 +128,8 @@ export function ReportsPanel() {
           dateTo: dateTo || undefined,
           status: statusFilter || undefined,
           search: combinedSearch,
-          limit: 2000, // Search results limit
-          page: 1
+          limit: ordersPerPage, // Use pagination limit (max 1000)
+          page: currentPage
         };
         // @ts-ignore
         ordersResult = await fetchAllOrders(filters);
@@ -131,6 +141,9 @@ export function ReportsPanel() {
       if (ordersResult.status === 'success' && ordersResult.data) {
         console.log('📦 Orders received from API:', ordersResult.data.orders?.length || 0, ordersResult.data.orders);
         setOrders(ordersResult.data.orders || []);
+        // @ts-ignore - total is returned by backend but not in error type
+        // @ts-ignore
+        setTotalOrders(ordersResult.data.total || 0);
       }
 
       // Fetch drivers
@@ -153,7 +166,8 @@ export function ReportsPanel() {
         const perfResult = await fetchDriverPerformance(
           unifiedDriverSearch.trim(),
           dateFrom || undefined,
-          dateTo || undefined
+          dateTo || undefined,
+          statusFilter || undefined
         );
         if (perfResult.status === 'success') {
           setDriverPerformanceData(perfResult.data);
@@ -167,7 +181,8 @@ export function ReportsPanel() {
         const custPerfResult = await fetchCustomerPerformance(
           unifiedCustomerSearch.trim(),
           dateFrom || undefined,
-          dateTo || undefined
+          dateTo || undefined,
+          statusFilter || undefined
         );
         if (custPerfResult.status === 'success') {
           setCustomerPerformanceData(custPerfResult.data);
@@ -738,8 +753,8 @@ export function ReportsPanel() {
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">{perf.fleet_id}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{perf.name}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{perf.total_orders}</td>
-                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
-                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof perf.cod_total === 'number' ? perf.cod_total.toFixed(2) : '0.00'}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{typeof perf.order_fees === 'number' ? perf.order_fees.toFixed(2) : '0.00'}</td>
                       <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">—</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
                         {perf.avg_delivery_time > 0 ? `${perf.avg_delivery_time.toFixed(1)} mins` : 'N/A'}
@@ -780,7 +795,8 @@ export function ReportsPanel() {
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{perf.total_orders}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof perf.cod_received === 'number' ? perf.cod_received.toFixed(2) : '0.00'}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{typeof perf.order_fees === 'number' ? perf.order_fees.toFixed(2) : '0.00'}</td>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof perf.revenue_distribution === 'number' ? perf.revenue_distribution.toFixed(2) : '0.00'}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">-</td>
+
                     </tr>
                   ))}
                 </tbody>
@@ -805,64 +821,65 @@ export function ReportsPanel() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                <tr>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order ID</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date/Time Delivered</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Name</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Phone</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pickup Address</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Delivery Address</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD (BHD)</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tookan Fees</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>
-                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tags</th>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                  <tr>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order ID</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date/Time Delivered</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Name</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Phone</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pickup Address</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Delivery Address</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD (BHD)</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tookan Fees</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tags</th>
 
 
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOrders.map((order, index) => {
-                  // Extract values from tasks table columns
-                  const taskId = order.jobId || order.job_id || '';
-                  const dateDelivered = order.completed_datetime || '';
-                  const driverId = order.fleet_id || order.assignedDriver || '';
-                  const driverName = order.fleet_name || order.assignedDriverName || '';
-                  const customerName = order.customer_name || order.customerName || '';
-                  const customerPhone = order.customer_phone || order.customerPhone || '';
-                  const pickupAddress = order.pickup_address || order.pickupAddress || '';
-                  const deliveryAddress = order.delivery_address || order.deliveryAddress || '';
-                  const cod = order.cod_amount || order.codAmount || 0;
-                  const orderId = order.order_id || '';
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrders.map((order, index) => {
+                    // Extract values from tasks table columns
+                    const taskId = order.jobId || order.job_id || '';
+                    const dateDelivered = order.completed_datetime || '';
+                    const driverId = order.fleet_id || order.assignedDriver || '';
+                    const driverName = order.fleet_name || order.assignedDriverName || '';
+                    const customerName = order.customer_name || order.customerName || '';
+                    const customerPhone = order.customer_phone || order.customerPhone || '';
+                    const pickupAddress = order.pickup_address || order.pickupAddress || '';
+                    const deliveryAddress = order.delivery_address || order.deliveryAddress || '';
+                    const cod = order.cod_amount || order.codAmount || 0;
+                    const orderId = order.order_id || '';
 
-                  // Get tags from order
-                  const tags = order.tags || '';
+                    // Get tags from order
+                    const tags = order.tags || '';
 
-                  // Compute order fees based on tags
-                  let computedOrderFees = 0;
-                  if (tags) {
-                    const tagsLower = tags.toLowerCase();
-                    if (tagsLower.includes('same day delivery')) {
-                      computedOrderFees = sameDayFee;
-                    } else if (tagsLower.includes('express delivery')) {
-                      computedOrderFees = expressFee;
+                    // Compute order fees based on tags
+                    let computedOrderFees = 0;
+                    if (tags) {
+                      const tagsLower = tags.toLowerCase();
+                      if (tagsLower.includes('same day delivery')) {
+                        computedOrderFees = sameDayFee;
+                      } else if (tagsLower.includes('express delivery')) {
+                        computedOrderFees = expressFee;
+                      }
                     }
-                  }
 
-                  const isPickup = pickupAddress.trim().toLowerCase() === deliveryAddress.trim().toLowerCase();
+                    const isPickup = pickupAddress.trim().toLowerCase() === deliveryAddress.trim().toLowerCase();
 
-                  // Commenting out pickup tasks logic as requested
-                  if (isPickup) return null;
+                    // Commenting out pickup tasks logic as requested
+                    if (isPickup) return null;
 
-                  return (
-                    <tr key={taskId || index} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">
-                        <div className="flex items-center gap-2">
-                          {/* 
+                    return (
+                      <tr key={taskId || index} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                        <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">
+                          <div className="flex items-center gap-2">
+                            {/* 
                           <span
                             className="w-5 h-5 flex items-center justify-center rounded text-[10px] font-bold shrink-0 shadow-sm border border-black/5 dark:border-white/10"
                             style={{
@@ -874,39 +891,68 @@ export function ReportsPanel() {
                             {isPickup ? 'P' : 'D'}
                           </span>
                           */}
-                          <span>{taskId || orderId}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
-                        {dateDelivered ? (
-                          dateDelivered.replace('T', ' ').split(' ').map((part: string, i: number) => (
-                            <div key={i}>{part.replace('Z', '')}</div>
-                          ))
-                        ) : ''}
-                      </td>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{driverName}</td>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{customerName}</td>
-                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{customerPhone}</td>
-                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate" title={pickupAddress}>{pickupAddress}</td>
-                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate" title={deliveryAddress}>{deliveryAddress}</td>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof cod === 'number' ? cod.toFixed(2) : cod}</td>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{computedOrderFees > 0 ? computedOrderFees.toFixed(2) : '-'}</td>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{tookanFeeRate.toFixed(2)}</td>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
-                        <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${order.status === 2 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                          order.status === 3 || order.status === 9 || order.status === 8 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                            'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                          }`}>
-                          {mapStatus(order.status)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{tags || '-'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                            <span>{taskId || orderId}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
+                          {dateDelivered ? (
+                            dateDelivered.replace('T', ' ').split(' ').map((part: string, i: number) => (
+                              <div key={i}>{part.replace('Z', '')}</div>
+                            ))
+                          ) : ''}
+                        </td>
+                        <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{driverName}</td>
+                        <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{customerName}</td>
+                        <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{customerPhone}</td>
+                        <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate" title={pickupAddress}>{pickupAddress}</td>
+                        <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate" title={deliveryAddress}>{deliveryAddress}</td>
+                        <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof cod === 'number' ? cod.toFixed(2) : cod}</td>
+                        <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{computedOrderFees > 0 ? computedOrderFees.toFixed(2) : '-'}</td>
+                        <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{tookanFeeRate.toFixed(2)}</td>
+                        <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
+                          <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${order.status === 2 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                            order.status === 3 || order.status === 9 || order.status === 8 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                              'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                            }`}>
+                            {mapStatus(order.status)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{tags || '-'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            {totalOrders > ordersPerPage && (
+              <div className="px-6 py-4 border-t border-border dark:border-[#2A3C63] flex items-center justify-between bg-muted/10 dark:bg-[#1A2C53]/30">
+                <div className="text-sm text-muted-light dark:text-[#99BFD1]">
+                  Showing {((currentPage - 1) * ordersPerPage) + 1} - {Math.min(currentPage * ordersPerPage, totalOrders)} of {totalOrders} orders
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); }}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-border dark:border-[#2A3C63] bg-card hover:bg-muted/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-heading dark:text-[#C1EEFA]"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-heading dark:text-[#C1EEFA] px-3">
+                    Page {currentPage} of {Math.ceil(totalOrders / ordersPerPage)}
+                  </span>
+                  <button
+                    onClick={() => { setCurrentPage(p => Math.min(Math.ceil(totalOrders / ordersPerPage), p + 1)); }}
+                    disabled={currentPage >= Math.ceil(totalOrders / ordersPerPage)}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-border dark:border-[#2A3C63] bg-card hover:bg-muted/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-heading dark:text-[#C1EEFA]"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div >

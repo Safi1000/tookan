@@ -369,11 +369,7 @@ export function OrderEditorPanel() {
               )}
             </div>
 
-            {/* COD & Fees */}
-            <div className="text-sm text-muted-foreground mt-2 sm:mt-0">
-              <span className="font-medium">COD:</span> BHD {order.codAmount.toFixed(2)} •{" "}
-              <span className="font-medium">Fees:</span> BHD {order.orderFees.toFixed(2)}
-            </div>
+
           </div>
 
 

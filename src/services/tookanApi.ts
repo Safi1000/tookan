@@ -1702,13 +1702,15 @@ export async function syncAgents(): Promise<TookanApiResponse<{ synced: number; 
 export async function fetchDriverPerformance(
   search: string,
   dateFrom?: string,
-  dateTo?: string
-): Promise<TookanApiResponse<Array<{ fleet_id: number; name: string; total_orders: number; avg_delivery_time: number }>>> {
+  dateTo?: string,
+  status?: string
+): Promise<TookanApiResponse<Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number }>>> {
   try {
     const params = new URLSearchParams();
     params.append('search', search);
     if (dateFrom) params.append('dateFrom', dateFrom);
     if (dateTo) params.append('dateTo', dateTo);
+    if (status) params.append('status', status);
 
     const response = await fetch(`${API_BASE_URL}/api/reports/driver-performance?${params.toString()}`, {
       method: 'GET',
@@ -1753,13 +1755,15 @@ export async function fetchDriverPerformance(
 export async function fetchCustomerPerformance(
   search: string,
   dateFrom?: string,
-  dateTo?: string
+  dateTo?: string,
+  status?: string
 ): Promise<TookanApiResponse<Array<{ vendor_id: number; customer_name: string; total_orders: number; cod_received: number; order_fees: number; revenue_distribution: number }>>> {
   try {
     const params = new URLSearchParams();
     params.append('search', search);
     if (dateFrom) params.append('dateFrom', dateFrom);
     if (dateTo) params.append('dateTo', dateTo);
+    if (status) params.append('status', status);
 
     const response = await fetch(`${API_BASE_URL}/api/reports/customer-performance?${params.toString()}`, {
       method: 'GET',

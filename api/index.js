@@ -3607,14 +3607,15 @@ function getApp() {
     });
 
     // GET Driver Performance statistics via RPC
+    // GET Driver Performance statistics via RPC
     app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
       try {
-        const { search, dateFrom, dateTo } = req.query;
+        const { search, dateFrom, dateTo, status } = req.query;
         console.log('\n=== GET DRIVER PERFORMANCE ===');
-        console.log('Search:', search, 'From:', dateFrom, 'To:', dateTo);
+        console.log('Search:', search, 'From:', dateFrom, 'To:', dateTo, 'Status:', status);
 
         if (!isSupabaseConfigured || !supabase) {
-          return res.status(400).json({ status: 'error', message: 'Database not configured' });
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
         }
 
         if (!search) {
@@ -3626,71 +3627,120 @@ function getApp() {
         // Normalize search: trim, collapse spaces, lowercase (same as normalized_name column)
         const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
         const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
-        const isNumeric = /^\d+$/.test(searchTerm);
 
-        if (isNumeric) {
-          // 1. Try exact match on fleet_id
-          let { data: agent } = await supabase
-            .from('agents')
-            .select('fleet_id, name')
-            .eq('fleet_id', parseInt(searchTerm))
-            .maybeSingle();
+        // Fetch all agents to perform robust matching in JS
+        const { data: allAgents, error: agentsError } = await supabase
+          .from('agents')
+          .select('fleet_id, name, normalized_name, phone');
 
-          // 2. If no fleet_id match, try exact match on phone
-          if (!agent) {
-            const { data: phoneAgent } = await supabase
-              .from('agents')
-              .select('fleet_id, name')
-              .eq('phone', searchTerm)
-              .maybeSingle();
-            agent = phoneAgent;
+        if (agentsError) throw agentsError;
+
+        if (allAgents && allAgents.length > 0) {
+          const matchedAgents = allAgents.filter(agent => {
+            const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
+            // Use normalized_name for exact matching
+            const agentNormalizedName = agent.normalized_name || String(agent.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+            const agentIdStr = String(agent.fleet_id);
+
+            const nameMatch = agentNormalizedName === normalizedSearchName;
+            const idMatch = agentIdStr === searchTerm;
+            const phoneMatch = normalizedSearchPhone && agentPhoneDigits === normalizedSearchPhone;
+
+            return nameMatch || idMatch || phoneMatch;
+          });
+
+          if (matchedAgents.length > 0) {
+            driverIds = matchedAgents.map(a => ({ id: a.fleet_id, name: a.name }));
+          } else if (/^\d+$/.test(searchTerm)) {
+            // Fallback for numeric ID if not found in table
+            driverIds = [{ id: parseInt(searchTerm, 10), name: 'Driver #' + searchTerm }];
           }
-
-          if (agent) {
-            driverIds = [{ id: agent.fleet_id, name: agent.name }];
-          } else {
-            driverIds = [{ id: parseInt(searchTerm), name: 'Driver #' + searchTerm }];
-          }
-        } else {
-          // Search agents table using normalized_name for exact match
-          const { data: agents, error: agentsError } = await supabase
-            .from('agents')
-            .select('fleet_id, name, normalized_name')
-            .eq('normalized_name', normalizedSearchName)
-            .limit(10);
-
-          if (agentsError) throw agentsError;
-          driverIds = (agents || []).map(a => ({ id: a.fleet_id, name: a.name }));
         }
 
         if (driverIds.length === 0) {
           return res.json({ status: 'success', data: [] });
         }
 
-        // Call RPC for each driver
+        // Fetch tasks for these drivers with filters
         const results = await Promise.all(driverIds.map(async (driver) => {
-          const { data, error } = await supabase.rpc('get_driver_statistics', {
-            p_fleet_id: driver.id,
-            p_date_from: dateFrom || null,
-            p_date_to: dateTo || null
-          });
+          let query = supabase
+            .from('tasks')
+            .select('job_id, cod_amount, status, tags, creation_datetime, completed_datetime')
+            .eq('fleet_id', driver.id);
 
-          if (error) {
-            console.error(`RPC error for driver ${driver.id}:`, error);
+          // Apply date filters
+          if (dateFrom) {
+            query = query.gte('creation_datetime', dateFrom);
+          }
+          if (dateTo) {
+            query = query.lte('creation_datetime', dateTo);
+          }
+          // Apply status filter if provided
+          if (status !== undefined && status !== '') {
+            query = query.eq('status', parseInt(status, 10));
+          }
+
+          // No limit applied
+          // query = query.limit(2000);
+
+          const { data: tasks, error: tasksError } = await query;
+
+          if (tasksError) {
+            console.error(`Tasks query error for driver ${driver.id}:`, tasksError);
             return {
               fleet_id: driver.id,
               name: driver.name,
               total_orders: 0,
+              cod_total: 0,
+              order_fees: 0,
               avg_delivery_time: 0
             };
           }
 
-          const stats = data && data[0] ? data[0] : { total_orders: 0, avg_delivery_time_status2_minutes: 0 };
+          // Calculate stats from tasks
+          let total_orders = 0;
+          let cod_total = 0;
+          let order_fees = 0;
+          let total_delivery_time = 0;
+          let completed_count = 0;
+
+          for (const task of (tasks || [])) {
+            total_orders++;
+
+            // Only count completed orders (status 2) for COD and fees
+            if (task.status === 2) {
+              cod_total += parseFloat(task.cod_amount || 0);
+
+              // Calculate order fees from tags
+              const tags = (task.tags || '').toLowerCase();
+              if (tags.includes('same day delivery')) {
+                order_fees += 1.1;
+              } else if (tags.includes('express delivery')) {
+                order_fees += 1.65;
+              }
+
+              // Calculate delivery time if completed_datetime exists
+              if (task.creation_datetime && task.completed_datetime) {
+                const created = new Date(task.creation_datetime);
+                const completed = new Date(task.completed_datetime);
+                const diffMinutes = (completed - created) / (1000 * 60);
+                if (diffMinutes > 0 && diffMinutes < 1440) { // Less than 24 hours
+                  total_delivery_time += diffMinutes;
+                  completed_count++;
+                }
+              }
+            }
+          }
+
+          const avg_delivery_time = completed_count > 0 ? total_delivery_time / completed_count : 0;
+
           return {
             fleet_id: driver.id,
             name: driver.name,
-            total_orders: parseInt(stats.total_orders || 0),
-            avg_delivery_time: parseFloat(stats.avg_delivery_time_status2_minutes || 0)
+            total_orders,
+            cod_total,
+            order_fees,
+            avg_delivery_time
           };
         }));
 
@@ -3926,9 +3976,9 @@ function getApp() {
     // GET Customer Performance statistics
     app.get('/api/reports/customer-performance', authenticate, async (req, res) => {
       try {
-        const { search, dateFrom, dateTo } = req.query;
+        const { search, dateFrom, dateTo, status } = req.query;
         console.log('\n=== GET CUSTOMER PERFORMANCE ===');
-        console.log('Search:', search, 'From:', dateFrom, 'To:', dateTo);
+        console.log('Search:', search, 'From:', dateFrom, 'To:', dateTo, 'Status:', status);
 
         if (!isSupabaseConfigured || !supabase) {
           return res.status(400).json({ status: 'error', message: 'Database not configured' });
@@ -3939,96 +3989,64 @@ function getApp() {
         }
 
         const searchTerm = search.toString().trim();
-        // Normalize search: trim, collapse spaces, lowercase
-        const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
-        const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
-        const isNumeric = /^\d+$/.test(searchTerm);
 
-        // Build query to find matching orders directly from tasks table
-        let query = supabase
-          .from('tasks')
-          .select('vendor_id, customer_name, customer_phone, cod_amount, order_fees, status');
+        // Detect search type: numeric (vendor_id), phone (contains + or all digits), or name
+        const isPhoneLike = /^[\d+\s-]+$/.test(searchTerm); // Contains only digits, +, spaces, dashes
+        const isNumericOnly = /^\d+$/.test(searchTerm);
+        const numericValue = isNumericOnly ? parseInt(searchTerm, 10) : null;
+        const isValidVendorId = numericValue && numericValue <= 2147483647;
 
-        // Apply date filters if provided
-        if (dateFrom) {
-          query = query.gte('creation_datetime', dateFrom);
-        }
-        if (dateTo) {
-          query = query.lte('creation_datetime', dateTo);
-        }
+        let p_customer_name = null;
+        let p_vendor_id = null;
+        let p_customer_phone = null;
 
-        // Build robust search query
-        // 1. Search customer_name and customer_phone (always)
-        const orConditions = [
-          `customer_name.ilike.%${searchTerm}%`,
-          `customer_phone.ilike.%${searchTerm}%`
-        ];
-
-        // 2. Search vendor_id only if it's a valid integer within PostgreSQL integer range
-        if (/^\d+$/.test(searchTerm)) {
-          const numVal = parseInt(searchTerm, 10);
-          // Postgres integer max is 2147483647. Phone numbers often exceed this (overflow error).
-          if (numVal <= 2147483647) {
-            orConditions.push(`vendor_id.eq.${numVal}`);
+        if (isPhoneLike) {
+          // Search by phone number - strip non-digits for exact matching
+          const phoneDigits = searchTerm.replace(/\D/g, '');
+          p_customer_phone = phoneDigits;
+          // Also try vendor_id if it's purely numeric and valid range
+          if (isValidVendorId) {
+            p_vendor_id = numericValue;
           }
+        } else {
+          // Search by exact customer name
+          p_customer_name = searchTerm;
         }
 
-        query = query.or(orConditions.join(','));
+        console.log('🔍 Search params:', { p_customer_name, p_vendor_id, p_customer_phone });
 
-        // Increase limit
-        query = query.limit(2000);
+        // Use RPC function for optimized stats calculation
+        const { data, error } = await supabase.rpc('get_customer_statistics', {
+          p_customer_name,
+          p_vendor_id,
+          p_customer_phone,
+          p_date_from: dateFrom || null,
+          p_date_to: dateTo || null,
+          p_status: status ? parseInt(status, 10) : null
+        });
 
-        const { data: tasks, error: tasksError } = await query;
-
-        if (tasksError) {
-          console.error('Tasks query error:', tasksError);
-          throw tasksError;
+        if (error) {
+          console.error('Customer performance RPC error:', error);
+          throw error;
         }
 
-        // Filter tasks in JS - Relaxed since we now use DB filtering
-        let matchedTasks = tasks || [];
+        console.log('🔍 RPC results:', data?.length || 0);
 
-        // Removed strict JS filtering block
-        // if (!isNumeric) { ... }
-
-        if (matchedTasks.length === 0) {
+        if (!data || data.length === 0) {
           return res.json({ status: 'success', data: [] });
         }
 
-        // Group tasks by customer_name (or vendor_id if name is null)
-        const customerMap = new Map();
-
-        for (const task of matchedTasks) {
-          // Normalize the customer name for grouping (trim spaces, collapse multiple spaces)
-          const normalizedName = String(task.customer_name || '').trim().replace(/\s+/g, ' ');
-          const customerKey = normalizedName.toLowerCase() || `vendor_${task.vendor_id}`;
-          const displayName = normalizedName || `Customer #${task.vendor_id}`;
-
-          if (!customerMap.has(customerKey)) {
-            customerMap.set(customerKey, {
-              vendor_id: task.vendor_id,
-              customer_name: displayName,
-              total_orders: 0,
-              cod_received: 0,
-              order_fees: 0
-            });
-          }
-
-          const stats = customerMap.get(customerKey);
-          stats.total_orders++;
-
-          // Only count completed orders (status 2) for COD and fees
-          if (task.status === 2) {
-            stats.cod_received += parseFloat(task.cod_amount || 0);
-            stats.order_fees += parseFloat(task.order_fees || 0);
-          }
-        }
-
-        // Convert map to array and calculate revenue distribution
-        const results = Array.from(customerMap.values()).map(stats => ({
-          ...stats,
-          revenue_distribution: stats.cod_received - stats.order_fees
+        // Map RPC results to expected format
+        const results = data.map(stats => ({
+          vendor_id: stats.vendor_id,
+          customer_name: stats.customer_name || `Customer #${stats.vendor_id}`,
+          total_orders: parseInt(stats.total_orders || 0),
+          cod_received: parseFloat(stats.cod_received || 0),
+          order_fees: parseFloat(stats.order_fees || 0),
+          revenue_distribution: parseFloat(stats.revenue_distribution || 0)
         }));
+
+        console.log('🔍 Final results:', results.length);
 
         res.json({ status: 'success', data: results });
       } catch (error) {
