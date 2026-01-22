@@ -118,7 +118,7 @@ export function ReportsPanel() {
           dateTo: dateTo || undefined,
           status: statusFilter || undefined,
           search: combinedSearch,
-          limit: 100, // Search results limit
+          limit: 2000, // Search results limit
           page: 1
         };
         // @ts-ignore
@@ -437,13 +437,7 @@ export function ReportsPanel() {
             <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-          <button
-            onClick={() => setShowColumnManager(!showColumnManager)}
-            className="flex items-center gap-2 px-6 py-3 bg-card border border-border rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#223560] transition-all text-heading dark:text-[#C1EEFA]"
-          >
-            <Settings2 className="w-5 h-5" />
-            Manage Columns
-          </button>
+
           <button
             onClick={() => handleExport('csv')}
             className="flex items-center gap-2 px-6 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
@@ -599,34 +593,6 @@ export function ReportsPanel() {
       </div>
 
 
-      {/* Column Manager Modal */}
-      {showColumnManager && (
-        <div className="bg-card rounded-2xl border border-border p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-heading text-xl">Manage Columns</h3>
-            <button
-              onClick={() => setShowColumnManager(false)}
-              className="p-2 hover:bg-hover-bg-light dark:hover:bg-[#223560] rounded-lg transition-all"
-            >
-              <X className="w-5 h-5 text-heading dark:text-[#C1EEFA]" />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {columnDefinitions.map((col) => (
-              <label key={col.key} className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-hover-bg-light dark:hover:bg-[#223560] transition-all">
-                <input
-                  type="checkbox"
-                  checked={visibleColumns[col.key]}
-                  onChange={() => toggleColumn(col.key)}
-                  className="w-4 h-4 rounded accent-[#DE3544]"
-                />
-                <span className="text-heading dark:text-[#C1EEFA] text-sm">{col.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Dynamic Search Filters */}
       <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
         <h3 className="text-foreground mb-4">Dynamic Search Filters</h3>
@@ -721,7 +687,7 @@ export function ReportsPanel() {
               <option value="3">Failed</option>
               <option value="10">Deleted</option>
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1] pointer-events-none" />
+
           </div>
         </div>
 
