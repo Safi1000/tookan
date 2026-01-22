@@ -37,6 +37,17 @@ export function ReportsPanel() {
   const [tookanFeeRate, setTookanFeeRate] = useState(0.05);
   const [showFeeSettings, setShowFeeSettings] = useState(false);
   const [feeRateInput, setFeeRateInput] = useState('0.05');
+  // Delivery type fees
+  const [sameDayFee, setSameDayFee] = useState(() => {
+    const stored = localStorage.getItem('sameDayDeliveryFee');
+    return stored ? parseFloat(stored) : 1.1;
+  });
+  const [expressFee, setExpressFee] = useState(() => {
+    const stored = localStorage.getItem('expressDeliveryFee');
+    return stored ? parseFloat(stored) : 1.65;
+  });
+  const [sameDayFeeInput, setSameDayFeeInput] = useState('1.1');
+  const [expressFeeInput, setExpressFeeInput] = useState('1.65');
 
   // Loading and error states
   const [isLoading, setIsLoading] = useState(false);
@@ -78,6 +89,9 @@ export function ReportsPanel() {
         setTookanFeeRate(result.feeRate);
         setFeeRateInput(result.feeRate.toString());
       }
+      // Initialize delivery fee inputs from state
+      setSameDayFeeInput(sameDayFee.toString());
+      setExpressFeeInput(expressFee.toString());
     };
     loadFeeRate();
   }, []);
@@ -471,7 +485,7 @@ export function ReportsPanel() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="mb-6">
+            <div className="mb-4">
               <label className="block text-sm text-muted-light dark:text-[#99BFD1] mb-2">
                 Tookan Fee
               </label>
@@ -484,7 +498,34 @@ export function ReportsPanel() {
                 className="w-full px-4 py-3 bg-input border border-border rounded-xl text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="0.05"
               />
-
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm text-muted-light dark:text-[#99BFD1] mb-2">
+                Same Day Delivery Fee (BHD)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={sameDayFeeInput}
+                onChange={(e) => setSameDayFeeInput(e.target.value)}
+                className="w-full px-4 py-3 bg-input border border-border rounded-xl text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="1.10"
+              />
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm text-muted-light dark:text-[#99BFD1] mb-2">
+                Express Delivery Fee (BHD)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={expressFeeInput}
+                onChange={(e) => setExpressFeeInput(e.target.value)}
+                className="w-full px-4 py-3 bg-input border border-border rounded-xl text-heading dark:text-[#C1EEFA] focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="1.65"
+              />
             </div>
             <div className="flex gap-3">
               <button
@@ -496,17 +537,33 @@ export function ReportsPanel() {
               <button
                 onClick={async () => {
                   const newRate = parseFloat(feeRateInput);
+                  const newSameDayFee = parseFloat(sameDayFeeInput);
+                  const newExpressFee = parseFloat(expressFeeInput);
+
                   if (isNaN(newRate) || newRate < 0) {
-                    toast.error('Fee must be a positive number');
+                    toast.error('Tookan fee must be a positive number');
                     return;
                   }
+                  if (isNaN(newSameDayFee) || newSameDayFee < 0) {
+                    toast.error('Same Day Delivery fee must be a positive number');
+                    return;
+                  }
+                  if (isNaN(newExpressFee) || newExpressFee < 0) {
+                    toast.error('Express Delivery fee must be a positive number');
+                    return;
+                  }
+
                   const result = await updateTookanFeeRate(newRate);
                   if (result.status === 'success') {
                     setTookanFeeRate(newRate);
+                    setSameDayFee(newSameDayFee);
+                    setExpressFee(newExpressFee);
+                    localStorage.setItem('sameDayDeliveryFee', newSameDayFee.toString());
+                    localStorage.setItem('expressDeliveryFee', newExpressFee.toString());
                     setShowFeeSettings(false);
-                    toast.success('Tookan fee rate updated successfully');
+                    toast.success('Fee settings updated successfully');
                   } else {
-                    toast.error(result.message || 'Failed to update fee rate');
+                    toast.error(result.message || 'Failed to update fee settings');
                   }
                 }}
                 className="flex-1 px-4 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)]"
@@ -824,9 +881,9 @@ export function ReportsPanel() {
                   if (tags) {
                     const tagsLower = tags.toLowerCase();
                     if (tagsLower.includes('same day delivery')) {
-                      computedOrderFees = 1.1;
+                      computedOrderFees = sameDayFee;
                     } else if (tagsLower.includes('express delivery')) {
-                      computedOrderFees = 1.65;
+                      computedOrderFees = expressFee;
                     }
                   }
 
