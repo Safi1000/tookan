@@ -660,15 +660,8 @@ export function ReportsPanel() {
               className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none transition-all appearance-none cursor-pointer"
             >
               <option value="">All Statuses</option>
-              <option value="0">Assigned</option>
-              <option value="1">Started</option>
               <option value="2">Successful</option>
               <option value="3">Failed</option>
-              <option value="4">InProgress/Arrived</option>
-              <option value="6">Unassigned</option>
-              <option value="7">Accepted/Acknowledged</option>
-              <option value="8">Declined</option>
-              <option value="9">Cancelled</option>
               <option value="10">Deleted</option>
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#99BFD1] pointer-events-none" />
@@ -804,6 +797,7 @@ export function ReportsPanel() {
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tookan Fees</th>
                   <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>
+                  <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Tags</th>
 
 
                 </tr>
@@ -820,8 +814,21 @@ export function ReportsPanel() {
                   const pickupAddress = order.pickup_address || order.pickupAddress || '';
                   const deliveryAddress = order.delivery_address || order.deliveryAddress || '';
                   const cod = order.cod_amount || order.codAmount || 0;
-                  const orderFees = order.order_fees || order.orderFees || 0;
                   const orderId = order.order_id || '';
+
+                  // Get tags from order
+                  const tags = order.tags || '';
+
+                  // Compute order fees based on tags
+                  let computedOrderFees = 0;
+                  if (tags) {
+                    const tagsLower = tags.toLowerCase();
+                    if (tagsLower.includes('same day delivery')) {
+                      computedOrderFees = 1.1;
+                    } else if (tagsLower.includes('express delivery')) {
+                      computedOrderFees = 1.65;
+                    }
+                  }
 
                   const isPickup = pickupAddress.trim().toLowerCase() === deliveryAddress.trim().toLowerCase();
 
@@ -860,7 +867,7 @@ export function ReportsPanel() {
                       <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate" title={pickupAddress}>{pickupAddress}</td>
                       <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm max-w-xs truncate" title={deliveryAddress}>{deliveryAddress}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">{typeof cod === 'number' ? cod.toFixed(2) : cod}</td>
-                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{typeof orderFees === 'number' ? orderFees.toFixed(2) : orderFees}</td>
+                      <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{computedOrderFees > 0 ? computedOrderFees.toFixed(2) : '-'}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{tookanFeeRate.toFixed(2)}</td>
                       <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-medium">
                         <span className={`px-2 py-1 rounded-lg text-xs font-semibold ${order.status === 2 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
@@ -870,6 +877,7 @@ export function ReportsPanel() {
                           {mapStatus(order.status)}
                         </span>
                       </td>
+                      <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{tags || '-'}</td>
                     </tr>
                   );
                 })}
