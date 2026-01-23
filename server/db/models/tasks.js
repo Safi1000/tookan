@@ -279,14 +279,28 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
     throw error;
   }
 
-  // Filter out rows where pickup_address equals delivery_address (JS fallback)
-  const filteredTasks = (data || []).filter(task =>
-    task.pickup_address !== task.delivery_address
-  );
+  // Filter out rows where pickup_address equals delivery_address
+  // Match SQL behavior: pickup_address != delivery_address
+  // In SQL, NULL != NULL = NULL (falsy), but we also want to keep rows where either is genuinely different
+  const filteredTasks = (data || []).filter(task => {
+    const pickup = task.pickup_address;
+    const delivery = task.delivery_address;
+
+    // If both are null/empty, exclude (matches SQL NULL != NULL = NULL)
+    if (!pickup && !delivery) return false;
+
+    // If only one is null/empty, they're different - include
+    if (!pickup || !delivery) return true;
+
+    // Both have values - compare them
+    return pickup !== delivery;
+  });
+
+  console.log(`📊 Tasks filtered: ${data?.length || 0} → ${filteredTasks.length} (excluded ${(data?.length || 0) - filteredTasks.length} same-address)`);
 
   return {
     tasks: filteredTasks,
-    total: count || 0, // Note: count is from DB, not filtered count
+    total: filteredTasks.length, // Use filtered count for accurate total
     page: pageNum,
     limit: limitNum
   };

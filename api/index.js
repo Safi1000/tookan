@@ -4370,4 +4370,3 @@ module.exports = (req, res) => {
   const expressApp = getApp();
   return expressApp(req, res);
 };
-
