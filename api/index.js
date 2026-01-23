@@ -792,13 +792,6 @@ function getApp() {
         // Initialize optional filters for later use
         const orConditions = [];
 
-        if (dateFrom) query = query.gte('creation_datetime', dateFrom);
-        if (dateTo) query = query.lte('creation_datetime', dateTo);
-        if (driverId) query = query.eq('fleet_id', driverId);
-        if (customerId) query = query.eq('vendor_id', customerId);
-        if (status !== undefined && status !== null && status !== '') {
-          query = query.eq('status', parseInt(status));
-        }
         if (search) {
           const searchTerm = String(search).trim();
           // Normalize search: trim, collapse spaces, lowercase (same as normalized_name column)
@@ -867,9 +860,7 @@ function getApp() {
             }
           }
 
-          if (orConditions.length > 0) {
-            query = query.or(orConditions.join(','));
-          }
+          // orConditions will be applied to lightQuery below
         }
 
         // 1. Light fetch: Get ALL matching tasks with minimal fields to filter and paginate correctly
