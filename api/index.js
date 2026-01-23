@@ -3661,32 +3661,19 @@ function getApp() {
           return res.json({ status: 'success', data: [] });
         }
 
-        // Fetch tasks for these drivers with filters
+        console.log('🔍 Driver IDs found:', JSON.stringify(driverIds));
+
+        // Use RPC function for optimized stats calculation
         const results = await Promise.all(driverIds.map(async (driver) => {
-          let query = supabase
-            .from('tasks')
-            .select('job_id, cod_amount, status, tags, creation_datetime, completed_datetime')
-            .eq('fleet_id', driver.id);
+          const { data, error } = await supabase.rpc('get_driver_statistics_v2', {
+            p_fleet_id: driver.id,
+            p_date_from: dateFrom || null,
+            p_date_to: dateTo || null,
+            p_status: status ? parseInt(status, 10) : null
+          });
 
-          // Apply date filters
-          if (dateFrom) {
-            query = query.gte('creation_datetime', dateFrom);
-          }
-          if (dateTo) {
-            query = query.lte('creation_datetime', dateTo);
-          }
-          // Apply status filter if provided
-          if (status !== undefined && status !== '') {
-            query = query.eq('status', parseInt(status, 10));
-          }
-
-          // No limit applied
-          // query = query.limit(2000);
-
-          const { data: tasks, error: tasksError } = await query;
-
-          if (tasksError) {
-            console.error(`Tasks query error for driver ${driver.id}:`, tasksError);
+          if (error) {
+            console.error(`RPC error for driver ${driver.id}:`, error);
             return {
               fleet_id: driver.id,
               name: driver.name,
@@ -3697,50 +3684,15 @@ function getApp() {
             };
           }
 
-          // Calculate stats from tasks
-          let total_orders = 0;
-          let cod_total = 0;
-          let order_fees = 0;
-          let total_delivery_time = 0;
-          let completed_count = 0;
-
-          for (const task of (tasks || [])) {
-            total_orders++;
-
-            // Only count completed orders (status 2) for COD and fees
-            if (task.status === 2) {
-              cod_total += parseFloat(task.cod_amount || 0);
-
-              // Calculate order fees from tags
-              const tags = (task.tags || '').toLowerCase();
-              if (tags.includes('same day delivery')) {
-                order_fees += 1.1;
-              } else if (tags.includes('express delivery')) {
-                order_fees += 1.65;
-              }
-
-              // Calculate delivery time if completed_datetime exists
-              if (task.creation_datetime && task.completed_datetime) {
-                const created = new Date(task.creation_datetime);
-                const completed = new Date(task.completed_datetime);
-                const diffMinutes = (completed - created) / (1000 * 60);
-                if (diffMinutes > 0 && diffMinutes < 1440) { // Less than 24 hours
-                  total_delivery_time += diffMinutes;
-                  completed_count++;
-                }
-              }
-            }
-          }
-
-          const avg_delivery_time = completed_count > 0 ? total_delivery_time / completed_count : 0;
-
+          console.log(`🔍 RPC response for driver ${driver.id}:`, JSON.stringify(data));
+          const stats = data && data[0] ? data[0] : { total_orders: 0, cod_total: 0, order_fees: 0, avg_delivery_time_minutes: 0 };
           return {
             fleet_id: driver.id,
             name: driver.name,
-            total_orders,
-            cod_total,
-            order_fees,
-            avg_delivery_time
+            total_orders: parseInt(stats.total_orders || 0),
+            cod_total: parseFloat(stats.cod_total || 0),
+            order_fees: parseFloat(stats.order_fees || 0),
+            avg_delivery_time: parseFloat(stats.avg_delivery_time_minutes || 0)
           };
         }));
 
@@ -4044,7 +3996,7 @@ function getApp() {
           cod_received: parseFloat(stats.cod_received || 0),
           order_fees: parseFloat(stats.order_fees || 0),
           revenue_distribution: parseFloat(stats.revenue_distribution || 0),
-
+          avg_delivery_time: parseFloat(stats.avg_delivery_time_minutes || 0)
         }));
 
         console.log('🔍 Final results:', results.length);
