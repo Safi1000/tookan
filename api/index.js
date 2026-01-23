@@ -789,9 +789,8 @@ function getApp() {
           });
         }
 
-        let query = supabase
-          .from('tasks')
-          .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,vendor_id,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' });
+        // Initialize optional filters for later use
+        const orConditions = [];
 
         if (dateFrom) query = query.gte('creation_datetime', dateFrom);
         if (dateTo) query = query.lte('creation_datetime', dateTo);
@@ -873,64 +872,139 @@ function getApp() {
           }
         }
 
-        query = query.order('creation_datetime', { ascending: false }).range(from, to);
+        // 1. Light fetch: Get ALL matching tasks with minimal fields to filter and paginate correctly
+        let lightQuery = supabase
+          .from('tasks')
+          .select('job_id, pickup_address, delivery_address, creation_datetime')
+          .eq('job_type', 1);
 
-        const { data, error, count } = await query;
-        if (error) {
-          console.error('Get cached orders error:', error.message);
-          return res.status(500).json({
-            status: 'error',
-            message: error.message,
-            data: { orders: [], total: 0, page: pageNum, limit: limitNum, hasMore: false }
+        // Apply filters to lightQuery
+        if (dateFrom) lightQuery = lightQuery.gte('creation_datetime', dateFrom);
+        if (dateTo) lightQuery = lightQuery.lte('creation_datetime', dateTo);
+        if (driverId) lightQuery = lightQuery.eq('fleet_id', driverId);
+        if (customerId) lightQuery = lightQuery.eq('vendor_id', customerId);
+        if (status !== undefined && status !== null && status !== '') {
+          lightQuery = lightQuery.eq('status', parseInt(status));
+        }
+
+        // Apply search filters
+        if (orConditions.length > 0) {
+          lightQuery = lightQuery.or(orConditions.join(','));
+        }
+
+        // Order by creation
+        lightQuery = lightQuery.order('creation_datetime', { ascending: false });
+
+        // EXECUTE LIGHT QUERY WITH LOOP (Fetch ALL matching rows in batches)
+        let allLightData = [];
+        let fetchPage = 0;
+        const fetchSize = 1000;
+        let hasMore = true;
+
+        while (hasMore) {
+          const batchFrom = fetchPage * fetchSize;
+          const batchTo = batchFrom + fetchSize - 1;
+
+          const { data: batchData, error: batchError } = await lightQuery.range(batchFrom, batchTo);
+
+          if (batchError) {
+            console.error('Get cached orders light fetch error:', batchError.message);
+            // Instead of throwing, we might want to return partial data or error
+            throw batchError;
+          }
+
+          if (batchData && batchData.length > 0) {
+            allLightData = allLightData.concat(batchData);
+
+            if (batchData.length < fetchSize) {
+              hasMore = false;
+            } else {
+              fetchPage++;
+              // Safety Break (20k rows)
+              if (fetchPage > 20) {
+                hasMore = false;
+              }
+            }
+          } else {
+            hasMore = false;
+          }
+        }
+
+        // 2. Filter in Memory
+        // 2. Filter in Memory
+        const validTasks = allLightData.filter(task => {
+          const pickup = task.pickup_address;
+          const delivery = task.delivery_address;
+          if (!pickup && !delivery) return false;
+          if (!pickup || !delivery) return true;
+          return pickup !== delivery;
+        });
+
+        const total = validTasks.length;
+        console.log(`🔍 DEBUG API: Filtered Total: ${total} (Raw: ${lightData?.length}). Page: ${pageNum}`);
+
+        // 3. Slice for Pagination
+        const pageIds = validTasks
+          .slice(from, to + 1)
+          .map(t => t.job_id);
+
+        let orders = [];
+
+        if (pageIds.length > 0) {
+          // 4. Fetch Full Details
+          const { data: fullData, error: fullError } = await supabase
+            .from('tasks')
+            .select('job_id,job_type,order_id,cod_amount,order_fees,fleet_id,fleet_name,vendor_id,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data')
+            .in('job_id', pageIds)
+            .order('creation_datetime', { ascending: false });
+
+          if (fullError) {
+            console.error('Get cached orders full fetch error:', fullError.message);
+            throw fullError;
+          }
+
+          // Sort to match pageIds order
+          const sortedTasks = pageIds.map(id => fullData.find(t => t.job_id === id)).filter(Boolean);
+
+          orders = sortedTasks.map(task => {
+            const codAmount = parseFloat(task.cod_amount || 0);
+            const orderFees = parseFloat(task.order_fees || 0);
+            const fleetIdStr = task.fleet_id ? String(task.fleet_id) : '';
+            return {
+              jobId: task.job_id?.toString() || '',
+              job_id: task.job_id,
+              order_id: task.order_id || '',
+              completed_datetime: task.completed_datetime || '',
+              codAmount,
+              cod_amount: codAmount,
+              orderFees,
+              order_fees: orderFees,
+              fleet_id: task.fleet_id || null,
+              assignedDriver: task.fleet_id || null,
+              fleet_name: task.fleet_name || '',
+              assignedDriverName: task.fleet_name || '',
+              vendor_id: task.vendor_id || null,
+              driver_phone: agentMap[fleetIdStr] || task.raw_data?.fleet_phone || '',
+              driverPhone: agentMap[fleetIdStr] || task.raw_data?.fleet_phone || '',
+              notes: task.notes || '',
+              date: task.creation_datetime || null,
+              creation_datetime: task.creation_datetime || null,
+              customer_name: task.customer_name || '',
+              customerName: task.customer_name || '',
+              customer_phone: task.customer_phone || '',
+              customerPhone: task.customer_phone || '',
+              customerEmail: task.customer_email || '',
+              pickup_address: task.pickup_address || '',
+              pickupAddress: task.pickup_address || '',
+              delivery_address: task.delivery_address || '',
+              deliveryAddress: task.delivery_address || '',
+              status: task.status ?? null,
+              tags: task.tags || '',
+              raw_data: task.raw_data || {}
+            };
           });
         }
 
-        // Filter out rows where pickup_address equals delivery_address
-        const allOrders = (data || []).map(task => {
-          const codAmount = parseFloat(task.cod_amount || 0);
-          const orderFees = parseFloat(task.order_fees || 0);
-          const fleetIdStr = task.fleet_id ? String(task.fleet_id) : '';
-          return {
-            jobId: task.job_id?.toString() || '',
-            job_id: task.job_id,
-            order_id: task.order_id || '',
-            completed_datetime: task.completed_datetime || '',
-            codAmount,
-            cod_amount: codAmount,
-            orderFees,
-            order_fees: orderFees,
-            fleet_id: task.fleet_id || null,
-            assignedDriver: task.fleet_id || null,
-            fleet_name: task.fleet_name || '',
-            assignedDriverName: task.fleet_name || '',
-            vendor_id: task.vendor_id || null,
-            driver_phone: agentMap[fleetIdStr] || task.raw_data?.fleet_phone || '',
-            driverPhone: agentMap[fleetIdStr] || task.raw_data?.fleet_phone || '',
-            notes: task.notes || '',
-            date: task.creation_datetime || null,
-            creation_datetime: task.creation_datetime || null,
-            customer_name: task.customer_name || '',
-            customerName: task.customer_name || '',
-            customer_phone: task.customer_phone || '',
-            customerPhone: task.customer_phone || '',
-            customerEmail: task.customer_email || '',
-            pickup_address: task.pickup_address || '',
-            pickupAddress: task.pickup_address || '',
-            delivery_address: task.delivery_address || '',
-            deliveryAddress: task.delivery_address || '',
-            status: task.status ?? null,
-            tags: task.tags || '',
-            raw_data: task.raw_data || {}
-          };
-        });
-
-        // Filter: exclude same-address tasks
-        const orders = allOrders.filter(order =>
-          order.pickup_address !== order.delivery_address
-        );
-
-        const total = count || 0;
-        const hasMore = (pageNum * limitNum) < total;
 
         return res.json({
           status: 'success',
@@ -942,7 +1016,7 @@ function getApp() {
             total,
             page: pageNum,
             limit: limitNum,
-            hasMore,
+            hasMore: (pageNum * limitNum) < total,
             filters: {
               dateFrom: dateFrom || null,
               dateTo: dateTo || null,
@@ -954,6 +1028,7 @@ function getApp() {
             source: 'database'
           }
         });
+
       } catch (error) {
         console.error('Get cached orders error:', error);
         return res.status(500).json({

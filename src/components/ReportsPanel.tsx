@@ -809,6 +809,10 @@ export function ReportsPanel() {
 
       {/* Orders Table */}
       <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
+        <div className="px-6 py-4 border-b border-border dark:border-[#2A3C63] bg-muted/10 dark:bg-[#1A2C53]/30 flex justify-between items-center">
+          <h3 className="text-heading dark:text-[#C1EEFA] font-semibold">Orders List</h3>
+          <span className="text-sm font-medium text-heading dark:text-[#C1EEFA]">Total: {totalOrders}</span>
+        </div>
         {isLoading ? (
           <div className="p-12 text-center">
             <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-[#C1EEFA]" />
@@ -927,7 +931,7 @@ export function ReportsPanel() {
             </div>
 
             {/* Pagination Controls */}
-            {totalOrders > ordersPerPage && (
+            {totalOrders > 0 && (
               <div className="px-6 py-4 border-t border-border dark:border-[#2A3C63] flex items-center justify-between bg-muted/10 dark:bg-[#1A2C53]/30">
                 <div className="text-sm text-muted-light dark:text-[#99BFD1]">
                   Showing {((currentPage - 1) * ordersPerPage) + 1} - {Math.min(currentPage * ordersPerPage, totalOrders)} of {totalOrders} orders

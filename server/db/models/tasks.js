@@ -156,9 +156,11 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
 
   // Note: Supabase JS client doesn't support column-to-column comparison (pickup_address != delivery_address)
   // We filter in JavaScript after fetching
+  // 1. Light fetch: Get ALL matching tasks with minimal fields to filter and paginate correctly
   let query = supabase
     .from('tasks')
-    .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,vendor_id,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' });
+    .select('job_id, pickup_address, delivery_address, creation_datetime')
+    .eq('job_type', 1); // Only Delivery type
 
   if (filters.dateFrom) {
     query = query.gte('creation_datetime', filters.dateFrom);
@@ -272,35 +274,83 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
     }
   }
 
-  query = query.order('creation_datetime', { ascending: false }).range(from, to);
+  // Order by creation for consistent pagination
+  query = query.order('creation_datetime', { ascending: false });
 
-  const { data, error, count } = await query;
-  if (error) {
-    throw error;
+  // EXECUTE LIGHT QUERY WITH LOOP (Fetch ALL matching rows in batches)
+  let allLightData = [];
+  let fetchPage = 0;
+  const fetchSize = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const batchFrom = fetchPage * fetchSize;
+    const batchTo = batchFrom + fetchSize - 1;
+
+    const { data: batchData, error: batchError } = await query.range(batchFrom, batchTo);
+
+    if (batchError) throw batchError;
+
+    if (batchData && batchData.length > 0) {
+      allLightData = allLightData.concat(batchData);
+
+      // If we got less than the limit, we're done
+      if (batchData.length < fetchSize) {
+        hasMore = false;
+      } else {
+        fetchPage++;
+        // Safety Break: Stop after 20 pages (20k rows) to prevent infinite loops in extreme cases
+        if (fetchPage > 20) {
+          console.warn('⚠️ Pagination safety break: Reached 20k rows limit.');
+          hasMore = false;
+        }
+      }
+    } else {
+      hasMore = false;
+    }
   }
 
-  // Filter out rows where pickup_address equals delivery_address
-  // Match SQL behavior: pickup_address != delivery_address
-  // In SQL, NULL != NULL = NULL (falsy), but we also want to keep rows where either is genuinely different
-  const filteredTasks = (data || []).filter(task => {
+  // 2. Filter in Memory (The "Correct" Logic)
+  const validTasks = allLightData.filter(task => {
     const pickup = task.pickup_address;
     const delivery = task.delivery_address;
-
-    // If both are null/empty, exclude (matches SQL NULL != NULL = NULL)
     if (!pickup && !delivery) return false;
-
-    // If only one is null/empty, they're different - include
     if (!pickup || !delivery) return true;
-
-    // Both have values - compare them
     return pickup !== delivery;
   });
 
-  console.log(`📊 Tasks filtered: ${data?.length || 0} → ${filteredTasks.length} (excluded ${(data?.length || 0) - filteredTasks.length} same-address)`);
+  const total = validTasks.length;
+  console.log(`📊 Filtered Total in Memory: ${total} (Raw Fetched: ${allLightData?.length}). Page: ${pageNum}, Limit: ${limitNum}`);
+
+  // 3. Slice for Pagination
+  const pageIds = validTasks
+    .slice(from, to + 1)
+    .map(t => t.job_id);
+
+  if (pageIds.length === 0) {
+    return {
+      tasks: [],
+      total,
+      page: pageNum,
+      limit: limitNum
+    };
+  }
+
+  // 4. Fetch Full Details for Page IDs
+  const { data: fullData, error: fullError } = await supabase
+    .from('tasks')
+    .select('job_id,job_type,order_id,cod_amount,order_fees,fleet_id,fleet_name,vendor_id,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data')
+    .in('job_id', pageIds)
+    .order('creation_datetime', { ascending: false });
+
+  if (fullError) throw fullError;
+
+  // 5. Re-sort fullData
+  const sortedTasks = pageIds.map(id => fullData.find(t => t.job_id === id)).filter(Boolean);
 
   return {
-    tasks: filteredTasks,
-    total: filteredTasks.length, // Use filtered count for accurate total
+    tasks: sortedTasks,
+    total: total,
     page: pageNum,
     limit: limitNum
   };
