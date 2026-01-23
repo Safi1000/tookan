@@ -922,7 +922,7 @@ function getApp() {
         }
 
         // 2. Filter in Memory
-        // 2. Filter in Memory
+
         const validTasks = allLightData.filter(task => {
           const pickup = task.pickup_address;
           const delivery = task.delivery_address;
@@ -932,7 +932,7 @@ function getApp() {
         });
 
         const total = validTasks.length;
-        console.log(`🔍 DEBUG API: Filtered Total: ${total} (Raw: ${lightData?.length}). Page: ${pageNum}`);
+        console.log(`🔍 DEBUG API: Filtered Total: ${total} (Raw: ${allLightData?.length}). Page: ${pageNum}`);
 
         // 3. Slice for Pagination
         const pageIds = validTasks
