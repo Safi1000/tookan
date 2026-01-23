@@ -66,6 +66,7 @@ BEGIN
   FROM tasks t
   WHERE 
     t.job_type = 1 -- Only Deliveries
+    AND t.pickup_address != t.delivery_address -- Only real orders (pickup and delivery are different)
     -- Search params: match ANY of name, vendor_id, or phone (OR logic)
     AND (
       (p_customer_name IS NOT NULL AND t.customer_name = p_customer_name)
@@ -125,6 +126,7 @@ BEGIN
   WHERE 
     t.fleet_id = p_fleet_id
     AND t.job_type = 1 -- Only Deliveries
+    AND t.pickup_address != t.delivery_address -- Only real orders (pickup and delivery are different)
     AND (p_date_from IS NULL OR t.creation_datetime >= p_date_from)
     AND (p_date_to IS NULL OR t.creation_datetime <= p_date_to)
     AND (p_status IS NULL OR t.status = p_status)
