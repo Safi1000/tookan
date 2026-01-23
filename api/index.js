@@ -838,7 +838,7 @@ function getApp() {
           }
 
           // Build OR conditions based on matches
-          const orConditions = [];
+          // orConditions matches are pushed to the outer array defined above
 
           if (resolvedDriverIds.size > 0) {
             const idList = Array.from(resolvedDriverIds).join(',');

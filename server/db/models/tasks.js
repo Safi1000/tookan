@@ -162,6 +162,8 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
     .select('job_id, pickup_address, delivery_address, creation_datetime')
     .eq('job_type', 1); // Only Delivery type
 
+  const orConditions = []; // Initialize for search filters
+
   if (filters.dateFrom) {
     query = query.gte('creation_datetime', filters.dateFrom);
   }
@@ -246,7 +248,7 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
     }
 
     // Build OR conditions based on matches
-    const orConditions = [];
+    // matches are pushed to the outer array
 
     if (resolvedDriverIds.size > 0) {
       const idList = Array.from(resolvedDriverIds).join(',');
