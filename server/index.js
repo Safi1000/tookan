@@ -4836,7 +4836,8 @@ app.get('/api/reports/customer-performance', authenticate, async (req, res) => {
       total_orders: parseInt(stats.total_orders || 0),
       cod_received: parseFloat(stats.cod_received || 0),
       order_fees: parseFloat(stats.order_fees || 0),
-      revenue_distribution: parseFloat(stats.revenue_distribution || 0)
+      revenue_distribution: parseFloat(stats.revenue_distribution || 0),
+
     }));
 
     console.log('🔍 Final results:', results.length);

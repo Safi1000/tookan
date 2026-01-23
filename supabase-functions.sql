@@ -30,7 +30,8 @@ RETURNS TABLE (
   total_orders BIGINT,
   cod_received NUMERIC,
   order_fees NUMERIC,
-  revenue_distribution NUMERIC
+  revenue_distribution NUMERIC,
+  avg_delivery_time_minutes NUMERIC(10,2)
 )
 LANGUAGE plpgsql
 AS $$
@@ -39,7 +40,7 @@ BEGIN
   SELECT 
     t.vendor_id,
     t.customer_name::TEXT,
-    COUNT(*)::BIGINT AS total_orders,
+    COUNT(*) FILTER (WHERE t.status = 2)::BIGINT AS total_orders,
     COALESCE(SUM(CASE WHEN t.status = 2 THEN t.cod_amount ELSE 0 END), 0) AS cod_received,
     COALESCE(SUM(CASE 
       WHEN t.status = 2 AND LOWER(t.tags) LIKE '%same day delivery%' THEN 1.1
@@ -51,11 +52,22 @@ BEGIN
       WHEN t.status = 2 AND LOWER(t.tags) LIKE '%same day delivery%' THEN 1.1
       WHEN t.status = 2 AND LOWER(t.tags) LIKE '%express delivery%' THEN 1.65
       ELSE 0 
-    END), 0) AS revenue_distribution
+    END), 0) AS revenue_distribution,
+    COALESCE(
+      AVG(
+        CASE 
+          WHEN t.status = 2 AND t.completed_datetime IS NOT NULL AND t.started_datetime IS NOT NULL 
+          THEN EXTRACT(EPOCH FROM (t.completed_datetime - t.started_datetime)) / 60.0
+          ELSE NULL 
+        END
+      ), 
+      0
+    )::NUMERIC(10,2) AS avg_delivery_time_minutes
   FROM tasks t
   WHERE 
+    t.job_type = 1 -- Only Deliveries
     -- Search params: match ANY of name, vendor_id, or phone (OR logic)
-    (
+    AND (
       (p_customer_name IS NOT NULL AND t.customer_name = p_customer_name)
       OR (p_vendor_id IS NOT NULL AND t.vendor_id = p_vendor_id)
       OR (p_customer_phone IS NOT NULL AND REGEXP_REPLACE(t.customer_phone, '[^0-9]', '', 'g') LIKE '%' || p_customer_phone || '%')
@@ -92,23 +104,27 @@ BEGIN
   RETURN QUERY
   SELECT 
     t.fleet_id,
-    COUNT(*)::BIGINT AS total_orders,
+    COUNT(*) FILTER (WHERE t.status = 2)::BIGINT AS total_orders,
     COALESCE(SUM(CASE WHEN t.status = 2 THEN t.cod_amount ELSE 0 END), 0) AS cod_total,
     COALESCE(SUM(CASE 
       WHEN t.status = 2 AND LOWER(t.tags) LIKE '%same day delivery%' THEN 1.1
       WHEN t.status = 2 AND LOWER(t.tags) LIKE '%express delivery%' THEN 1.65
       ELSE 0 
     END), 0) AS order_fees,
-    COALESCE(AVG(
-      CASE 
-        WHEN t.status = 2 AND t.completed_datetime IS NOT NULL 
-        THEN EXTRACT(EPOCH FROM (t.completed_datetime - t.creation_datetime)) / 60.0
-        ELSE NULL 
-      END
-    ), 0) AS avg_delivery_time_minutes
+    COALESCE(
+      AVG(
+        CASE 
+          WHEN t.status = 2 AND t.completed_datetime IS NOT NULL AND t.started_datetime IS NOT NULL 
+          THEN EXTRACT(EPOCH FROM (t.completed_datetime - t.started_datetime)) / 60.0
+          ELSE NULL 
+        END
+      ), 
+      0
+    )::NUMERIC(10,2) AS avg_delivery_time_minutes
   FROM tasks t
   WHERE 
     t.fleet_id = p_fleet_id
+    AND t.job_type = 1 -- Only Deliveries
     AND (p_date_from IS NULL OR t.creation_datetime >= p_date_from)
     AND (p_date_to IS NULL OR t.creation_datetime <= p_date_to)
     AND (p_status IS NULL OR t.status = p_status)

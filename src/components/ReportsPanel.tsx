@@ -785,6 +785,7 @@ export function ReportsPanel() {
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD Received</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order Fees</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Revenue Distribution</th>
+
                   </tr>
                 </thead>
                 <tbody>

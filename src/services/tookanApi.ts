@@ -1757,7 +1757,7 @@ export async function fetchCustomerPerformance(
   dateFrom?: string,
   dateTo?: string,
   status?: string
-): Promise<TookanApiResponse<Array<{ vendor_id: number; customer_name: string; total_orders: number; cod_received: number; order_fees: number; revenue_distribution: number }>>> {
+): Promise<TookanApiResponse<Array<{ vendor_id: number; customer_name: string; total_orders: number; cod_received: number; order_fees: number; revenue_distribution: number; avg_delivery_time: number }>>> {
   try {
     const params = new URLSearchParams();
     params.append('search', search);
