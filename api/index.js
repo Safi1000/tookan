@@ -791,8 +791,7 @@ function getApp() {
 
         let query = supabase
           .from('tasks')
-          .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,vendor_id,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' })
-          .eq('job_type', 1); // Only Deliveries
+          .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,vendor_id,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' });
 
         if (dateFrom) query = query.gte('creation_datetime', dateFrom);
         if (dateTo) query = query.lte('creation_datetime', dateTo);
@@ -886,7 +885,8 @@ function getApp() {
           });
         }
 
-        const orders = (data || []).map(task => {
+        // Filter out rows where pickup_address equals delivery_address
+        const allOrders = (data || []).map(task => {
           const codAmount = parseFloat(task.cod_amount || 0);
           const orderFees = parseFloat(task.order_fees || 0);
           const fleetIdStr = task.fleet_id ? String(task.fleet_id) : '';
@@ -924,14 +924,12 @@ function getApp() {
           };
         });
 
-        // Filter out tasks where pickup_address == delivery_address (post-fetch filter)
-        const filteredOrders = orders.filter(order => {
-          const pickup = (order.pickup_address || '').trim().toLowerCase();
-          const delivery = (order.delivery_address || '').trim().toLowerCase();
-          return pickup !== delivery;
-        });
+        // Filter: exclude same-address tasks
+        const orders = allOrders.filter(order =>
+          order.pickup_address !== order.delivery_address
+        );
 
-        const total = filteredOrders.length;
+        const total = count || 0;
         const hasMore = (pageNum * limitNum) < total;
 
         return res.json({
@@ -940,7 +938,7 @@ function getApp() {
           entity: 'order',
           message: 'Cached orders fetched successfully',
           data: {
-            orders: filteredOrders,
+            orders,
             total,
             page: pageNum,
             limit: limitNum,

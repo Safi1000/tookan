@@ -154,13 +154,11 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
   const from = (pageNum - 1) * limitNum;
   const to = from + limitNum - 1;
 
+  // Note: Supabase JS client doesn't support column-to-column comparison (pickup_address != delivery_address)
+  // We filter in JavaScript after fetching
   let query = supabase
     .from('tasks')
-    .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,vendor_id,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' })
-    .eq('job_type', 1); // Only Deliveries
-
-  // Note: pickup_address != delivery_address filter is applied in JavaScript below
-  // because Supabase JS client doesn't support column-to-column comparison
+    .select('job_id,order_id,cod_amount,order_fees,fleet_id,fleet_name,vendor_id,notes,creation_datetime,completed_datetime,customer_name,customer_phone,customer_email,pickup_address,delivery_address,status,tags,raw_data', { count: 'exact' });
 
   if (filters.dateFrom) {
     query = query.gte('creation_datetime', filters.dateFrom);
@@ -281,16 +279,14 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
     throw error;
   }
 
-  // Filter out tasks where pickup_address == delivery_address (post-fetch filter)
-  const filteredTasks = (data || []).filter(task => {
-    const pickup = (task.pickup_address || '').trim().toLowerCase();
-    const delivery = (task.delivery_address || '').trim().toLowerCase();
-    return pickup !== delivery;
-  });
+  // Filter out rows where pickup_address equals delivery_address (JS fallback)
+  const filteredTasks = (data || []).filter(task =>
+    task.pickup_address !== task.delivery_address
+  );
 
   return {
     tasks: filteredTasks,
-    total: filteredTasks.length, // Adjusted count after filtering
+    total: count || 0, // Note: count is from DB, not filtered count
     page: pageNum,
     limit: limitNum
   };
