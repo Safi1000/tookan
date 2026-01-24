@@ -4429,28 +4429,44 @@ function getApp() {
 
     // PUT Update Order (COD, Notes, Fees) - Called by OrderEditorPanel
     app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+      // DEBUG LOG COLLECTOR
+      const debutLogs = [];
+      const log = (msg, data) => {
+        const line = `${new Date().toISOString()} - ${msg} ${data ? JSON.stringify(data) : ''}`;
+        console.log(line);
+        debutLogs.push(line);
+      };
+
       try {
-        console.log('\n=== UPDATE ORDER REQUEST (Vercel) ===');
+        log('=== UPDATE ORDER REQUEST (Vercel) ===');
         const { orderId } = req.params;
         const { codAmount, orderFees, notes } = req.body;
-        console.log('Order ID:', orderId);
-        console.log('Request body:', JSON.stringify(req.body, null, 2));
+        log('Order ID:', orderId);
+        log('Request body:', req.body);
 
         if (!orderId) {
           return res.status(400).json({
             status: 'error',
             message: 'Order ID is required',
-            data: {}
+            data: { debug_logs: debutLogs }
           });
         }
 
-        const apiKey = getApiKey();
+        let apiKey;
+        try {
+          apiKey = getApiKey();
+          log('API Key retrieved:', '***HIDDEN***');
+        } catch (e) {
+          log('API Key error:', e.message);
+          throw e;
+        }
+
         const numericJobId = parseInt(orderId, 10);
         if (isNaN(numericJobId)) {
           return res.status(400).json({
             status: 'error',
             message: 'Invalid Order ID - must be a number',
-            data: {}
+            data: { debug_logs: debutLogs }
           });
         }
 
@@ -4480,10 +4496,9 @@ function getApp() {
           tookanPayload.job_description = notes;
         }
 
-        console.log('Calling Tookan API: https://api.tookanapp.com/v2/edit_task');
-        console.log('Template:', tookanPayload.custom_field_template);
-        console.log('Meta Data:', JSON.stringify(metaData, null, 2));
-        console.log('Full Tookan Payload (api_key hidden):', JSON.stringify({ ...tookanPayload, api_key: '***HIDDEN***' }, null, 2));
+        log('Calling Tookan API: https://api.tookanapp.com/v2/edit_task');
+        log('Template:', tookanPayload.custom_field_template);
+        log('Meta Data:', metaData);
 
         let response;
         let textResponse;
@@ -4494,10 +4509,10 @@ function getApp() {
             body: JSON.stringify(tookanPayload),
           });
           textResponse = await response.text();
-          console.log('Tookan Response Status:', response.status);
-          console.log('Tookan Response Body:', textResponse.substring(0, 500));
+          log('Tookan Response Status:', response.status);
+          log('Tookan Response Body:', textResponse.substring(0, 500));
         } catch (fetchError) {
-          console.error('Tookan fetch error:', fetchError.message);
+          log('Tookan fetch error:', fetchError.message);
           textResponse = JSON.stringify({ status: 0, message: fetchError.message });
         }
 
@@ -4505,15 +4520,15 @@ function getApp() {
         try {
           tookanData = JSON.parse(textResponse);
         } catch (parseError) {
-          console.warn('Failed to parse Tookan response:', parseError.message);
+          log('Failed to parse Tookan response:', parseError.message);
           tookanData = { status: 0, message: 'Non-JSON response: ' + textResponse.substring(0, 100) };
         }
 
         const tookanSuccess = response && response.ok && tookanData.status === 200;
         if (tookanSuccess) {
-          console.log('✅ Tookan API update successful');
+          log('✅ Tookan API update successful');
         } else {
-          console.warn('⚠️ Tookan update failed:', tookanData.message || textResponse);
+          log('⚠️ Tookan update failed:', tookanData.message || textResponse);
         }
 
         // Update Supabase database
@@ -4524,21 +4539,22 @@ function getApp() {
         if (!supabase) {
           const sbUrl = process.env.SUPABASE_URL;
           const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-          console.log('Runtime Supabase Check - URL:', sbUrl ? 'Present' : 'Missing', 'Key:', sbKey ? 'Present' : 'Missing');
+          log('Runtime Supabase Check - URL:', sbUrl ? 'Present' : 'Missing');
+          log('Runtime Supabase Check - Key:', sbKey ? 'Present' : 'Missing');
 
           if (sbUrl && sbKey && sbUrl.startsWith('https://') && !sbUrl.includes('YOUR_')) {
-            console.log('Re-initializing Supabase client at runtime...');
+            log('Re-initializing Supabase client at runtime...');
             try {
               supabase = createClient(sbUrl, sbKey, {
                 auth: { autoRefreshToken: false, persistSession: false }
               });
             } catch (initError) {
-              console.error('Supabase runtime init failed:', initError.message);
+              log('Supabase runtime init failed:', initError.message);
             }
           }
         }
 
-        console.log('Supabase client active:', !!supabase);
+        log('Supabase client active:', !!supabase);
 
         if (supabase) {
           try {
@@ -4547,20 +4563,25 @@ function getApp() {
             if (orderFees !== undefined) updateData.order_fees = parseFloat(orderFees);
             if (notes !== undefined) updateData.notes = notes;
 
+            log('Updating Supabase task:', numericJobId);
             const { error } = await supabase
               .from('tasks')
               .update(updateData)
               .eq('job_id', numericJobId);
 
-            if (error) throw error;
+            if (error) {
+              throw error;
+            }
             dbUpdated = true;
-            console.log('✅ Database updated');
+            log('✅ Database updated');
           } catch (dbError) {
-            console.warn('⚠️ Database update failed:', dbError.message);
+            log('⚠️ Database update failed:', dbError.message);
           }
+        } else {
+          log('⚠️ Skipping database update: Client not available');
         }
 
-        console.log('=== END REQUEST (SUCCESS) ===\n');
+        log('=== END REQUEST (SUCCESS) ===');
 
         res.json({
           status: 'success',
@@ -4571,7 +4592,8 @@ function getApp() {
             orderId,
             tookan_synced: tookanSuccess,
             database_synced: dbUpdated,
-            tookan_response: tookanData
+            tookan_response: tookanData,
+            debug_logs: debutLogs // RETURN LOGS IN RESPONSE
           }
         });
       } catch (error) {
@@ -4579,7 +4601,9 @@ function getApp() {
         res.status(500).json({
           status: 'error',
           message: error.message || 'Failed to update order',
-          data: {}
+          data: {
+            debug_logs: (typeof debutLogs !== 'undefined' ? debutLogs : [error.message])
+          }
         });
       }
     });
