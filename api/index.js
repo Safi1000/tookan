@@ -4427,6 +4427,131 @@ function getApp() {
       }
     });
 
+    // PUT Update Order (COD, Notes, Fees) - Called by OrderEditorPanel
+    app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+      try {
+        console.log('\n=== UPDATE ORDER REQUEST (Vercel) ===');
+        const { orderId } = req.params;
+        const { codAmount, orderFees, notes } = req.body;
+        console.log('Order ID:', orderId);
+        console.log('Request body:', JSON.stringify(req.body, null, 2));
+
+        if (!orderId) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Order ID is required',
+            data: {}
+          });
+        }
+
+        const apiKey = getApiKey();
+        const numericJobId = parseInt(orderId, 10);
+        if (isNaN(numericJobId)) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Invalid Order ID - must be a number',
+            data: {}
+          });
+        }
+
+        // Build the meta_data array for COD custom field
+        const metaData = [];
+        if (codAmount !== undefined) {
+          metaData.push({
+            label: 'CASH_NEEDS_TO_BE_COLLECTED',
+            data: String(codAmount)
+          });
+        }
+
+        // Build Tookan payload with custom_field_template
+        const tookanPayload = {
+          api_key: apiKey,
+          job_id: numericJobId,
+          custom_field_template: 'Order_editor_test'
+        };
+
+        // Add meta_data if we have COD to update
+        if (metaData.length > 0) {
+          tookanPayload.meta_data = metaData;
+        }
+
+        // Add job_description (notes) if provided
+        if (notes !== undefined) {
+          tookanPayload.job_description = notes;
+        }
+
+        console.log('Calling Tookan API: https://api.tookanapp.com/v2/edit_task');
+        console.log('Template:', tookanPayload.custom_field_template);
+        console.log('Meta Data:', JSON.stringify(metaData, null, 2));
+
+        const response = await fetch('https://api.tookanapp.com/v2/edit_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(tookanPayload),
+        });
+
+        const textResponse = await response.text();
+        let tookanData;
+        try {
+          tookanData = JSON.parse(textResponse);
+        } catch (parseError) {
+          console.warn('Failed to parse Tookan response');
+          tookanData = { status: 0, message: 'Non-JSON response' };
+        }
+
+        const tookanSuccess = response.ok && tookanData.status === 200;
+        if (tookanSuccess) {
+          console.log('✅ Tookan API update successful');
+        } else {
+          console.warn('⚠️ Tookan update failed:', tookanData.message || textResponse);
+        }
+
+        // Update Supabase database
+        let dbUpdated = false;
+        if (isSupabaseConfigured && supabase) {
+          try {
+            const updateData = { updated_at: new Date().toISOString() };
+            if (codAmount !== undefined) updateData.cod_amount = parseFloat(codAmount);
+            if (orderFees !== undefined) updateData.order_fees = parseFloat(orderFees);
+            if (notes !== undefined) updateData.notes = notes;
+
+            const { error } = await supabase
+              .from('tasks')
+              .update(updateData)
+              .eq('job_id', numericJobId);
+
+            if (error) throw error;
+            dbUpdated = true;
+            console.log('✅ Database updated');
+          } catch (dbError) {
+            console.warn('⚠️ Database update failed:', dbError.message);
+          }
+        }
+
+        console.log('=== END REQUEST (SUCCESS) ===\n');
+
+        res.json({
+          status: 'success',
+          message: tookanSuccess
+            ? 'Order updated in Tookan and database'
+            : 'Order updated in database only. Tookan update may have failed.',
+          data: {
+            orderId,
+            tookan_synced: tookanSuccess,
+            database_synced: dbUpdated,
+            tookan_response: tookanData
+          }
+        });
+      } catch (error) {
+        console.error('❌ Update order error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to update order',
+          data: {}
+        });
+      }
+    });
+
     // Catch-all for other API routes
     app.all('/api/*', (req, res) => {
       res.status(404).json({
