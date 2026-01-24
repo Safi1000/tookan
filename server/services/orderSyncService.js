@@ -201,6 +201,13 @@ async function fetchJobDetailsForJobIds(jobIds) {
     const data = await response.json();
     const detailsMap = {};
 
+    // DEBUG: Log the custom fields of the first job to verify label names
+    if (data && data.data && Array.isArray(data.data) && data.data.length > 0) {
+      const sampleJob = data.data[0];
+      console.log(`🔍 DEBUG: Sample JobID ${sampleJob.job_id} Custom Fields:`);
+      console.log(JSON.stringify(sampleJob.custom_field, null, 2));
+    }
+
     const extractCodFromCustomField = (job) => {
       // COD is in custom_field array with label "CASH_NEEDS_TO_BE_COLLECTED"
       // (Not in job_additional_info as previously thought)
@@ -351,7 +358,7 @@ function transformTaskToRecord(task) {
 
     // Financial
     total_amount: parseFloat(task.total_amount || task.order_payment || task.cod || 0),
-    cod_amount: parseFloat(task.cod_amount || task.total_amount || 0),
+    // NOTE: cod_amount is handled separately below to avoid overwriting existing values
     cod_collected: task.cod_collected || false,
     order_fees: parseFloat(task.order_fees || 0),
 
@@ -384,6 +391,13 @@ function transformTaskToRecord(task) {
 
   const acknowledgedDt = normalizeTimestamp(task.acknowledged_datetime || task.job_acknowledged_datetime);
   if (acknowledgedDt) record.acknowledged_datetime = acknowledgedDt;
+
+  // Only set cod_amount if task has a valid non-zero value
+  // This prevents overwriting COD values synced by sync-cod-amounts.js
+  const incomingCod = parseFloat(task.cod_amount || 0);
+  if (incomingCod > 0) {
+    record.cod_amount = incomingCod;
+  }
 
   return record;
 }

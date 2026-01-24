@@ -30,6 +30,10 @@ const showStatus = args.includes('--status') || args.includes('-s');
 const showHelp = args.includes('--help') || args.includes('-h');
 const limitArg = args.find(a => a.startsWith('--limit='));
 const limit = limitArg ? parseInt(limitArg.split('=')[1]) : null;
+const dateFromArg = args.find(a => a.startsWith('--from=')); // e.g. --from=2023-01-01
+const dateFrom = dateFromArg ? dateFromArg.split('=')[1] : null;
+const dateToArg = args.find(a => a.startsWith('--to='));     // e.g. --to=2023-01-31
+const dateTo = dateToArg ? dateToArg.split('=')[1] : null;
 
 const BATCH_SIZE = 50; // Tookan limits job_ids to 50 per request
 
@@ -47,6 +51,8 @@ Usage:
 Options:
   (no options)    Sync tasks with null or 0 cod_amount
   --all           Force sync all tasks (even with existing COD values)
+  --from=DATE     Start date (YYYY-MM-DD) inclusive
+  --to=DATE       End date (YYYY-MM-DD) inclusive
   --limit=N       Limit number of tasks to process
   --status        Show current COD sync status and exit
   --help          Show this help message
@@ -59,6 +65,7 @@ Environment Variables:
 Examples:
   node sync-cod-amounts.js              # Sync tasks missing COD
   node sync-cod-amounts.js --all        # Re-sync all tasks
+  node sync-cod-amounts.js --from=2023-01-01 --to=2023-01-31 # Sync Jan 2023
   node sync-cod-amounts.js --limit=500  # Sync up to 500 tasks
 `);
 }
@@ -158,6 +165,13 @@ async function main() {
             if (!syncAll) {
                 // Only sync tasks with null or 0 cod_amount
                 query = query.or('cod_amount.is.null,cod_amount.eq.0');
+            }
+
+            if (dateFrom) {
+                query = query.gte('creation_datetime', dateFrom);
+            }
+            if (dateTo) {
+                query = query.lte('creation_datetime', dateTo);
             }
 
             const { data: tasks, error } = await query;

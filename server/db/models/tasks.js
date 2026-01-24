@@ -159,8 +159,12 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
   // 1. Light fetch: Get ALL matching tasks with minimal fields to filter and paginate correctly
   let query = supabase
     .from('tasks')
-    .select('job_id, pickup_address, delivery_address, creation_datetime')
-    .eq('job_type', 1); // Only Delivery type
+    .select('job_id, pickup_address, delivery_address, creation_datetime');
+
+  // By default, filter strictly for Deliveries (job_type=1) unless includePickups is requested (for Editor)
+  if (!filters.includePickups) {
+    query = query.eq('job_type', 1); // Only Delivery type
+  }
 
   const orConditions = []; // Initialize for search filters
 
@@ -313,11 +317,18 @@ async function getAllTasksPaginated(filters = {}, page = 1, limit = 50) {
   }
 
   // 2. Filter in Memory (The "Correct" Logic)
+  console.log(`🔍 DEBUG: filters.includePickups = ${filters.includePickups}`);
+  if (allLightData.length > 0) {
+    const sample = allLightData[0];
+    console.log(`🔍 DEBUG: Sample task - pickup: "${sample.pickup_address}", delivery: "${sample.delivery_address}"`);
+  }
   const validTasks = allLightData.filter(task => {
     const pickup = task.pickup_address;
     const delivery = task.delivery_address;
     if (!pickup && !delivery) return false;
     if (!pickup || !delivery) return true;
+    // If includePickups is true, allow same address (pickup task)
+    if (filters.includePickups) return true;
     return pickup !== delivery;
   });
 

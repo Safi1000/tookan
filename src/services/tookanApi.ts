@@ -155,6 +155,7 @@ export interface OrderFilters {
   driverId?: string;
   customerId?: string;
   status?: string;
+  includePickups?: boolean;
 }
 
 /**
@@ -270,6 +271,34 @@ export interface WithdrawalRequest {
   createdAt?: string;
   updatedAt?: string;
   rejectedReason?: string;
+}
+
+/**
+ * Delete a task (and its connected task)
+ */
+export async function deleteTask(jobId: string): Promise<TookanApiResponse> {
+  const headers = getAuthHeaders();
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/delete-task`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ jobId }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to delete task: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.error('Delete task error:', error);
+    return {
+      status: 'error',
+      message: error.message || 'Network error occurred',
+      data: {}
+    };
+  }
 }
 
 /**
@@ -1490,6 +1519,7 @@ export interface CachedOrderFilters {
   search?: string;
   limit?: number;
   page?: number;
+  includePickups?: boolean;
 }
 
 /**
@@ -1510,6 +1540,7 @@ export async function fetchCachedOrders(
     if (filters?.search) params.append('search', filters.search);
     if (filters?.limit) params.append('limit', filters.limit.toString());
     if (filters?.page) params.append('page', filters.page.toString());
+    if (filters?.includePickups) params.append('includePickups', 'true');
 
     if (params.toString()) {
       url += `?${params.toString()}`;

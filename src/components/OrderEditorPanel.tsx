@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, RefreshCw, RotateCcw, CornerDownLeft, Save, X, Plus } from 'lucide-react';
+import { Search, RefreshCw, RotateCcw, CornerDownLeft, Save, X, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   fetchCachedOrders,
@@ -8,6 +8,7 @@ import {
   updateOrder,
   fetchAllDrivers,
   fetchRelatedDeliveryAddress,
+  deleteTask,
 } from '../services/tookanApi';
 
 type OrderDetails = {
@@ -111,7 +112,8 @@ export function OrderEditorPanel() {
       const result = await fetchCachedOrders({
         page: 1,
         limit: 1,
-        search: search.trim()
+        search: search.trim(),
+        includePickups: true
       });
       const first = result.data?.orders?.[0];
       if (!first) {
@@ -283,6 +285,31 @@ export function OrderEditorPanel() {
       toast.error('Failed to create return order');
     } finally {
       setIsCreatingReturn(false);
+    }
+  };
+
+  // Delete Order state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteCallback = async () => {
+    if (!order) return;
+    setIsDeleting(true);
+    try {
+      const result = await deleteTask(order.jobId);
+      if (result.status === 'success') {
+        toast.success(result.message || 'Order deleted successfully');
+        setShowDeleteModal(false);
+        setOrder(null); // Clear the deleted order from view
+        setSearch(''); // Clear search
+      } else {
+        toast.error(result.message || 'Failed to delete order');
+      }
+    } catch (err) {
+      console.error('Delete error', err);
+      toast.error('Failed to delete order');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -492,8 +519,60 @@ export function OrderEditorPanel() {
               <CornerDownLeft className="w-4 h-4" />
               Return Order
             </button>
+
+            {/* DELETE Button */}
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              disabled={isAction}
+              className="flex-1 px-4 py-3 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/30 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 transition disabled:opacity-50 flex items-center gap-2 justify-center"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </button>
           </div>
 
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && order && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-card dark:bg-[#1A2C53] rounded-2xl border border-border dark:border-[#2A3C63] w-full max-w-sm shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3 text-red-600 dark:text-red-400">
+              <div className="p-3 bg-red-100 dark:bg-red-900/20 rounded-full">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h2 className="text-lg font-bold text-heading">Delete Order?</h2>
+            </div>
+
+            <div className="text-sm text-muted-foreground space-y-2">
+              <p>Are you sure you want to delete this order? This action cannot be undone.</p>
+              <div className="bg-muted/30 p-3 rounded-lg border border-border/50 text-xs font-mono space-y-1">
+                <p><span className="font-semibold">Task ID:</span> {order.jobId}</p>
+                <p><span className="font-semibold">Pickup:</span> {order.pickupAddress}</p>
+                <p><span className="font-semibold">Delivery:</span> {order.deliveryAddress}</p>
+              </div>
+              <p className="text-red-500 text-xs">Note: This will delete both the pickup and delivery tasks.</p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-medium text-heading bg-muted dark:bg-[#2A3C63] rounded-lg hover:bg-muted/80 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteCallback}
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition flex items-center gap-2 disabled:opacity-50"
+              >
+                {isDeleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
+                Confirm Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1437,8 +1437,8 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
       console.log('⚠️  Warning: Attempting to edit successful order. Tookan API may reject this.');
     }
 
-    // Build update payload - only include fields that are provided
-    // Convert job_id to number for Tookan API
+    // Build update payload using custom_field_template and meta_data
+    // This is the format required for the user's Tookan workflow
     const numericOrderId = parseInt(orderId, 10);
     if (isNaN(numericOrderId)) {
       return res.status(400).json({
@@ -1448,43 +1448,41 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
       });
     }
 
+    // Build the meta_data array for COD custom field
+    const metaData = [];
+    if (codAmount !== undefined) {
+      metaData.push({
+        label: 'CASH_NEEDS_TO_BE_COLLECTED',
+        data: String(codAmount)
+      });
+    }
+
+    // Build Tookan payload with custom_field_template
     const updatePayload = {
       api_key: apiKey,
-      job_id: numericOrderId  // Already converted to number above
+      job_id: numericOrderId,
+      custom_field_template: 'Order_editor_test'
     };
 
-    console.log('Order Update - Job ID type:', typeof numericOrderId, 'Value:', numericOrderId);
+    // Add meta_data if we have COD to update
+    if (metaData.length > 0) {
+      updatePayload.meta_data = metaData;
+    }
 
-    // Add fields only if they are provided
-    if (codAmount !== undefined) {
-      updatePayload.cod = parseFloat(codAmount) || 0;
+    // Add job_description (notes) if provided
+    if (notes !== undefined) {
+      updatePayload.job_description = notes;
     }
-    if (orderFees !== undefined) {
-      updatePayload.order_payment = parseFloat(orderFees) || 0;
-    }
+
+    // Add fleet_id if driver assignment is being updated
     if (assignedDriver !== undefined && assignedDriver !== null) {
       updatePayload.fleet_id = assignedDriver;
     }
-    if (notes !== undefined) {
-      updatePayload.job_description = notes || '';
-    }
-
-    // Preserve existing fields that aren't being updated
-    if (!updatePayload.cod) updatePayload.cod = parseFloat(currentTask.cod || 0);
-    if (!updatePayload.order_payment) updatePayload.order_payment = parseFloat(currentTask.order_payment || 0);
-    if (!updatePayload.fleet_id) updatePayload.fleet_id = currentTask.fleet_id || '';
-    if (!updatePayload.job_description) updatePayload.job_description = currentTask.job_description || '';
-
-    // Include required fields from current task
-    updatePayload.customer_name = currentTask.customer_name || '';
-    updatePayload.customer_phone = currentTask.customer_phone || '';
-    updatePayload.customer_email = currentTask.customer_email || '';
-    updatePayload.pickup_address = currentTask.pickup_address || '';
-    updatePayload.delivery_address = currentTask.delivery_address || '';
-    updatePayload.job_type = currentTask.job_type || 0;
 
     console.log('Calling Tookan API: https://api.tookanapp.com/v2/edit_task');
-    console.log('Tookan API payload:', JSON.stringify({ ...updatePayload, api_key: '***HIDDEN***' }, null, 2));
+    console.log('Template:', updatePayload.custom_field_template);
+    console.log('Meta Data:', JSON.stringify(metaData, null, 2));
+    console.log('Notes:', notes !== undefined ? notes : '(not changed)');
 
     const response = await fetch('https://api.tookanapp.com/v2/edit_task', {
       method: 'POST',
@@ -1513,6 +1511,27 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
         message: data.message || 'Failed to update order',
         data: {}
       });
+    }
+
+    console.log('✅ Tookan API update successful');
+
+    // Update local Supabase database
+    let dbUpdated = false;
+    if (isConfigured()) {
+      try {
+        const updateData = {};
+        if (codAmount !== undefined) updateData.cod_amount = parseFloat(codAmount);
+        if (orderFees !== undefined) updateData.order_fees = parseFloat(orderFees);
+        if (notes !== undefined) updateData.notes = notes;
+
+        if (Object.keys(updateData).length > 0) {
+          await taskModel.updateTask(numericOrderId, updateData);
+          dbUpdated = true;
+          console.log('✅ Database updated');
+        }
+      } catch (dbError) {
+        console.warn('⚠️ Database update failed:', dbError.message);
+      }
     }
 
     // Fetch updated order to return complete data
@@ -2232,223 +2251,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
   }
 });
 
-// DELETE Order
-app.delete('/api/tookan/order/:orderId', authenticate, requirePermission('delete_ongoing_orders'), async (req, res) => {
-  try {
-    console.log('\n=== DELETE ORDER REQUEST ===');
-    console.log('Order ID:', req.params.orderId);
-    console.log('Request body:', JSON.stringify(req.body, null, 2));
-    return res.status(400).json({
-      status: 'error',
-      message: 'Order deletion and successful-order notes are disabled.',
-      data: {}
-    });
 
-    const apiKey = getApiKey();
-    const orderId = req.params.orderId;
-    const { note } = req.body || {};
-
-    if (!orderId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Order ID is required',
-        data: {}
-      });
-    }
-
-    // First, fetch current order to check status
-    const getTaskPayload = {
-      api_key: apiKey,
-      job_id: orderId
-    };
-
-    const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(getTaskPayload),
-    });
-
-    const getTextResponse = await getResponse.text();
-    let getData;
-    try {
-      getData = JSON.parse(getTextResponse);
-    } catch (parseError) {
-      return res.status(500).json({
-        status: 'error',
-        message: 'Failed to fetch order for deletion',
-        data: {}
-      });
-    }
-
-    if (!getResponse.ok || getData.status !== 200) {
-      return res.status(getResponse.status || 500).json({
-        status: 'error',
-        message: getData.message || 'Order not found',
-        data: {}
-      });
-    }
-
-    const currentTask = getData.data || {};
-    const currentStatus = currentTask.job_status || '';
-    const statusInt = parseInt(currentStatus);
-
-    // Check if order is successful (delivered/completed)
-    // Status 6 = Completed, 7 = Delivered, etc.
-    const successfulStatuses = [2]; // Tookan status 2 = Successful/Completed
-    const isSuccessful = successfulStatuses.includes(statusInt) ||
-      ['completed', 'delivered'].includes(currentStatus.toString().toLowerCase());
-
-    if (isSuccessful) {
-      // Cannot delete successful orders, add note instead
-      if (!note || !note.trim()) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Note is required for successful orders',
-          data: {}
-        });
-      }
-
-      // Update order with note
-      const updatePayload = {
-        api_key: apiKey,
-        job_id: orderId,
-        customer_name: currentTask.customer_name || '',
-        customer_phone: currentTask.customer_phone || '',
-        customer_email: currentTask.customer_email || '',
-        pickup_address: currentTask.pickup_address || '',
-        delivery_address: currentTask.delivery_address || '',
-        cod: parseFloat(currentTask.cod || 0),
-        order_payment: parseFloat(currentTask.order_payment || 0),
-        customer_comments: `${currentTask.customer_comments || ''}\n[DELETION NOTE: ${note}]`.trim(),
-        job_type: currentTask.job_type || 0
-      };
-
-      if (currentTask.fleet_id) {
-        updatePayload.fleet_id = currentTask.fleet_id;
-      }
-
-      const updateResponse = await fetch('https://api.tookanapp.com/v2/edit_task', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updatePayload),
-      });
-
-      const updateTextResponse = await updateResponse.text();
-      let updateData;
-      try {
-        updateData = JSON.parse(updateTextResponse);
-      } catch (parseError) {
-        return res.status(500).json({
-          status: 'error',
-          message: 'Failed to add note to order',
-          data: {}
-        });
-      }
-
-      if (!updateResponse.ok || updateData.status !== 200) {
-        return res.status(updateResponse.status || 500).json({
-          status: 'error',
-          message: updateData.message || 'Failed to add note to order',
-          data: {}
-        });
-      }
-
-      console.log('✅ Note added to successful order:', orderId);
-      console.log('=== END REQUEST (SUCCESS) ===\n');
-
-      return res.json({
-        status: 'success',
-        action: 'add_note',
-        entity: 'order',
-        message: 'Note added. Successful orders cannot be deleted.',
-        data: { cannotDelete: true, orderId: orderId, note: note }
-      });
-    }
-
-    // Delete ongoing order
-    const deletePayload = {
-      api_key: apiKey,
-      job_id: orderId
-    };
-
-    console.log('Calling Tookan API: https://api.tookanapp.com/v2/delete_task');
-    console.log('Tookan API payload:', JSON.stringify({ ...deletePayload, api_key: '***HIDDEN***' }, null, 2));
-
-    const response = await fetch('https://api.tookanapp.com/v2/delete_task', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(deletePayload),
-    });
-
-    const textResponse = await response.text();
-    let data;
-
-    try {
-      data = JSON.parse(textResponse);
-    } catch (parseError) {
-      return res.status(500).json({
-        status: 'error',
-        message: `API returned non-JSON response: ${textResponse.substring(0, 200)}`,
-        data: {}
-      });
-    }
-
-    if (!response.ok || data.status !== 200) {
-      return res.status(response.status || 500).json({
-        status: 'error',
-        message: data.message || 'Failed to delete order',
-        data: {}
-      });
-    }
-
-    // Also remove from Supabase cache
-    if (isConfigured()) {
-      try {
-        await supabase
-          .from('tasks')
-          .delete()
-          .eq('job_id', parseInt(orderId));
-        console.log('✅ Order also removed from Supabase cache');
-      } catch (dbError) {
-        console.error('⚠️ Failed to remove order from Supabase:', dbError.message);
-      }
-    }
-
-    // Audit log
-    await auditLogger.createAuditLog(
-      req,
-      'order_delete',
-      'order',
-      orderId,
-      { orderId, status: currentTask.job_status, customerName: currentTask.customer_name },
-      null
-    );
-
-    console.log('✅ Order deleted successfully:', orderId);
-    console.log('=== END REQUEST (SUCCESS) ===\n');
-
-    res.json({
-      status: 'success',
-      action: 'delete_order',
-      entity: 'order',
-      message: 'Order deleted successfully',
-      data: { orderId: orderId }
-    });
-  } catch (error) {
-    console.error('❌ Delete order error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message || 'Network error occurred',
-      data: {}
-    });
-  }
-});
 
 // CHECK Order Conflicts
 app.get('/api/tookan/order/:orderId/conflicts', authenticate, async (req, res) => {
@@ -3083,44 +2886,47 @@ app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_ord
       );
     }
 
-    // Try to update in Tookan via task update API
-    // Note: Tookan API may or may not support template field updates
-    // We'll attempt it and fallback gracefully if it doesn't work
+    // Try to update in Tookan via edit_task API
+    // Using custom_field_template and meta_data as per user's workflow
     try {
-      const { TEMPLATE_FIELDS } = require('./config/tookanConfig');
-
-      // Build template fields object for Tookan
-      const templateFields = {
-        ...(task.template_fields || {}),
-        [TEMPLATE_FIELDS.COD_AMOUNT]: updatedTask.cod_amount,
-        [TEMPLATE_FIELDS.COD_COLLECTED]: updatedTask.cod_collected
-      };
-
       // Convert job_id to number (Tookan API requires numeric job_id)
       const numericJobId = parseInt(jobId, 10);
       if (isNaN(numericJobId)) {
         throw new Error(`Invalid job_id: ${jobId}. Must be a valid number.`);
       }
 
+      // Build the meta_data array for COD custom field
+      const metaData = [];
+      if (cod_amount !== undefined) {
+        metaData.push({
+          label: 'CASH_NEEDS_TO_BE_COLLECTED',
+          data: String(cod_amount)
+        });
+      }
+
+      // Build Tookan payload
       const tookanPayload = {
         api_key: apiKey,
         job_id: numericJobId,
-        template_fields: templateFields
+        custom_field_template: 'Order_editor_test',
+        meta_data: metaData
       };
 
-      console.log('\n=== ATTEMPTING TO UPDATE COD IN TOOKAN ===');
-      console.log('Original job_id (from URL param):', jobId, `(type: ${typeof jobId})`);
-      console.log('Converted job_id (numeric):', numericJobId, `(type: ${typeof numericJobId})`);
-      console.log('Is numericJobId a number?', typeof numericJobId === 'number');
-      console.log('\nTookan API Payload (API key hidden):');
-      const logPayload = { ...tookanPayload, api_key: '***HIDDEN***' };
-      console.log(JSON.stringify(logPayload, null, 2));
-      console.log('\nVerification - job_id in payload:');
-      console.log('  Value:', tookanPayload.job_id);
-      console.log('  Type:', typeof tookanPayload.job_id);
-      console.log('  JSON representation:', JSON.stringify({ job_id: tookanPayload.job_id }));
+      // Add job_description (notes) if provided in request
+      const { notes } = req.body;
+      if (notes !== undefined) {
+        tookanPayload.job_description = notes;
+      }
 
-      // Try Tookan task update endpoint
+      console.log('\n=== ATTEMPTING TO UPDATE TASK IN TOOKAN ===');
+      console.log('Job ID:', numericJobId);
+      console.log('Template:', tookanPayload.custom_field_template);
+      console.log('Meta Data:', JSON.stringify(metaData, null, 2));
+      if (notes !== undefined) {
+        console.log('Notes (job_description):', notes);
+      }
+
+      // Call Tookan edit_task endpoint
       const response = await fetch('https://api.tookanapp.com/v2/edit_task', {
         method: 'POST',
         headers: {
@@ -3226,10 +3032,137 @@ app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_ord
   }
 });
 
+// PUT Update Order (COD, Notes, Fees) - Called by OrderEditorPanel
+app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+  try {
+    console.log('\n=== UPDATE ORDER REQUEST ===');
+    const { orderId } = req.params;
+    const { codAmount, orderFees, notes } = req.body;
+    console.log('Order ID:', orderId);
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+
+    if (!orderId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Order ID is required',
+        data: {}
+      });
+    }
+
+    const apiKey = getApiKey();
+    const numericJobId = parseInt(orderId, 10);
+    if (isNaN(numericJobId)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid Order ID - must be a number',
+        data: {}
+      });
+    }
+
+    // Build the meta_data array for COD custom field
+    const metaData = [];
+    if (codAmount !== undefined) {
+      metaData.push({
+        label: 'CASH_NEEDS_TO_BE_COLLECTED',
+        data: String(codAmount)
+      });
+    }
+
+    // Build Tookan payload
+    const tookanPayload = {
+      api_key: apiKey,
+      job_id: numericJobId,
+      custom_field_template: 'Order_editor_test'
+    };
+
+    // Only add meta_data if we have fields to update
+    if (metaData.length > 0) {
+      tookanPayload.meta_data = metaData;
+    }
+
+    // Add job_description (notes) if provided
+    if (notes !== undefined) {
+      tookanPayload.job_description = notes;
+    }
+
+    console.log('Calling Tookan edit_task API...');
+    console.log('Template:', tookanPayload.custom_field_template);
+    console.log('Meta Data:', JSON.stringify(metaData, null, 2));
+    if (notes !== undefined) {
+      console.log('Notes (job_description):', notes);
+    }
+
+    // Call Tookan edit_task endpoint
+    const response = await fetch('https://api.tookanapp.com/v2/edit_task', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tookanPayload),
+    });
+
+    const textResponse = await response.text();
+    console.log('Tookan API Response Status:', response.status);
+    console.log('Tookan API Response:', textResponse.substring(0, 500));
+
+    let tookanData;
+    try {
+      tookanData = JSON.parse(textResponse);
+    } catch (parseError) {
+      console.warn('Failed to parse Tookan response, continuing with DB update');
+      tookanData = { status: 0, message: 'Non-JSON response' };
+    }
+
+    const tookanSuccess = response.ok && tookanData.status === 200;
+    if (tookanSuccess) {
+      console.log('✅ Tookan update successful');
+    } else {
+      console.warn('⚠️ Tookan update failed:', tookanData.message || textResponse);
+    }
+
+    // Update local database
+    let dbUpdated = false;
+    if (isConfigured()) {
+      try {
+        const updateData = {};
+        if (codAmount !== undefined) updateData.cod_amount = parseFloat(codAmount);
+        if (orderFees !== undefined) updateData.order_fees = parseFloat(orderFees);
+        if (notes !== undefined) updateData.notes = notes;
+
+        if (Object.keys(updateData).length > 0) {
+          await taskModel.updateTask(numericJobId, updateData);
+          dbUpdated = true;
+          console.log('✅ Database updated');
+        }
+      } catch (dbError) {
+        console.warn('⚠️ Database update failed:', dbError.message);
+      }
+    }
+
+    console.log('=== END REQUEST (SUCCESS) ===\n');
+
+    res.json({
+      status: 'success',
+      message: tookanSuccess
+        ? 'Order updated in Tookan and database'
+        : 'Order updated in database only. Tookan update may have failed.',
+      data: {
+        orderId,
+        tookan_synced: tookanSuccess,
+        database_synced: dbUpdated,
+        tookan_response: tookanData
+      }
+    });
+  } catch (error) {
+    console.error('❌ Update order error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to update order',
+      data: {}
+    });
+  }
+});
+
 // ============================================
 // TASK METADATA - INTERNAL CUSTOM FIELDS
-// ============================================
-
 // ============================================
 // COD DATA AGGREGATION ENDPOINTS
 // ============================================
@@ -4232,7 +4165,7 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
     console.log('\n=== GET CACHED ORDERS REQUEST ===');
     console.log('Query params:', JSON.stringify(req.query, null, 2));
 
-    const { dateFrom, dateTo, driverId, customerId, status, search, limit = 50, page = 1 } = req.query;
+    const { dateFrom, dateTo, driverId, customerId, status, search, limit = 50, page = 1, includePickups } = req.query;
 
     if (!isConfigured()) {
       return res.status(500).json({
@@ -4248,7 +4181,8 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
       driverId: driverId || undefined,
       customerId: customerId || undefined,
       status: status ? parseInt(status) : undefined,
-      search: search || undefined
+      search: search || undefined,
+      includePickups: includePickups === 'true'
     };
 
     const result = await taskModel.getAllTasksPaginated(filters, page, limit);
@@ -8077,3 +8011,92 @@ app.listen(PORT, async () => {
   }
 });
 
+
+
+// DELETE Task (and connected task)
+app.post('/api/tookan/delete-task', authenticate, requirePermission('perform_reorder'), async (req, res) => {
+  try {
+    console.log('\n=== DELETE TASK REQUEST ===');
+    const { jobId } = req.body;
+
+    if (!jobId) {
+      return res.status(400).json({ status: 'error', message: 'Job ID is required' });
+    }
+
+    // 1. Fetch task details from DB to find connected task
+    const { data: task, error: fetchError } = await supabase
+      .from('tasks')
+      .select('job_id, raw_data')
+      .eq('job_id', jobId)
+      .single();
+
+    if (fetchError || !task) {
+      console.error('Failed to find task in DB:', jobId);
+      return res.status(404).json({ status: 'error', message: 'Task not found in database' });
+    }
+
+    // 2. Identify connected task
+    // Try to find connected task ID from raw_data or relationship logic
+    // Usually mapped in raw_data.pickup_delivery_relationship or by matching tracking link etc.
+    // For now, we will query the DB for the OTHER task that shares the same order_id or tracking link if possible.
+    // BETTER STRATEGY: Use the 'order_id' or 'pickup_delivery_relationship' field if available.
+    // Let's assume the user wants to delete the "Job" they clicked, AND if it's part of a P/D pair, the other one.
+
+    // In Tookan, pickup_delivery_relationship is often a unique string shared by both.
+    const relationshipId = task.raw_data?.pickup_delivery_relationship;
+    let connectedJobIds = [jobId];
+
+    if (relationshipId) {
+      // Find all tasks with this relationship ID
+      const { data: relatedTasks } = await supabase
+        .from('tasks')
+        .select('job_id')
+        .eq('raw_data->>pickup_delivery_relationship', relationshipId);
+
+      if (relatedTasks) {
+        connectedJobIds = relatedTasks.map(t => t.job_id);
+      }
+    }
+
+    // Ensure we have unique IDs (in case logic adds duplicates)
+    connectedJobIds = [...new Set(connectedJobIds)];
+    console.log(`🗑️ Deleting tasks: ${connectedJobIds.join(', ')}`);
+
+    const apiKey = getApiKey();
+    const results = [];
+
+    // 3. Delete from Tookan (Loop through IDs)
+    for (const id of connectedJobIds) {
+      const response = await fetch('https://api.tookanapp.com/v2/delete_task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: apiKey, job_id: String(id) })
+      });
+      const data = await response.json();
+      results.push({ id, status: data.status, message: data.message });
+    }
+
+    // 4. Delete from Supabase
+    const { error: deleteError } = await supabase
+      .from('tasks')
+      .delete()
+      .in('job_id', connectedJobIds);
+
+    if (deleteError) {
+      console.error('Failed to delete from Supabase:', deleteError);
+    }
+
+    console.log('✅ Delete operation completed');
+    console.log('=== END REQUEST (SUCCESS) ===\n');
+
+    res.json({
+      status: 'success',
+      message: 'Tasks deleted successfully',
+      data: { deletedIds: connectedJobIds, results }
+    });
+
+  } catch (error) {
+    console.error('❌ Delete task error:', error);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
