@@ -2757,50 +2757,7 @@ function getApp() {
 
     // PUT Update Order
     // Edit order requires permission
-    app.put('/api/tookan/order/:orderId', authenticate, requirePermission(PERMISSIONS.EDIT_ORDER_FINANCIALS), async (req, res) => {
-      try {
-        const { orderId } = req.params;
-        const { total_amount, order_payment, fleet_id, custom_field, notes } = req.body;
-        const apiKey = getApiKey();
 
-        const updatePayload = {
-          api_key: apiKey,
-          job_id: orderId
-        };
-
-        if (total_amount !== undefined) updatePayload.total_amount = total_amount;
-        if (order_payment !== undefined) updatePayload.order_payment = order_payment;
-        if (fleet_id !== undefined) updatePayload.fleet_id = fleet_id;
-        if (custom_field) updatePayload.custom_field = custom_field;
-
-        const response = await fetch('https://api.tookanapp.com/v2/edit_task', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatePayload)
-        });
-
-        const data = await response.json();
-
-        // Log the update
-        if (isSupabaseConfigured && supabase) {
-          await supabase.from('audit_logs').insert({
-            action: 'ORDER_UPDATED',
-            entity_type: 'order',
-            entity_id: orderId,
-            new_value: req.body,
-            notes: notes || `Order ${orderId} updated`
-          });
-        }
-
-        res.json({
-          status: data.status === 200 ? 'success' : 'error',
-          message: data.message || 'Order updated',
-          data: data
-        });
-      } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
-      }
-    });
 
     // DELETE Order
     // Delete order requires permission (SRS: only ongoing orders can be deleted)
