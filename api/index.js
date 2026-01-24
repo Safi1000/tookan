@@ -2761,17 +2761,7 @@ function getApp() {
 
     // DELETE Order
     // Delete order requires permission (SRS: only ongoing orders can be deleted)
-    app.delete('/api/tookan/order/:orderId', authenticate, requirePermission(PERMISSIONS.DELETE_ONGOING_ORDERS), async (req, res) => {
-      try {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Order deletion and successful-order notes are disabled.',
-          data: {}
-        });
-      } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
-      }
-    });
+
 
     // POST Reorder
     // Reorder requires permission
