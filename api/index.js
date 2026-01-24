@@ -1268,155 +1268,115 @@ function getApp() {
       }
     });
 
-    // Analytics endpoint
-    app.get('/api/reports/analytics', async (req, res) => {
+    // GET Order Details from Tookan
+    app.get('/api/tookan/order/:orderId', authenticate, async (req, res) => {
       try {
+        console.log('\n=== GET ORDER DETAILS REQUEST ===');
         const apiKey = getApiKey();
+        const { orderId } = req.params;
 
-        // Fetch data from Tookan - always use get_all_customers for consistency
-        // NOTE: We use small task limits here because RPC provides accurate totals
-        // Tasks are only used for charts/trends which only need recent data
-        // Fetch data from Tookan - only fleets and tasks
-        // NOTE: Customers now come from Supabase
-        const [fleetsRes, tasksRes] = await Promise.all([
-          fetch('https://api.tookanapp.com/v2/get_all_fleets', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_key: apiKey })
-          }),
-          fetch('https://api.tookanapp.com/v2/get_all_tasks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              api_key: apiKey,
-              job_type: 1, // Delivery only for charts
-              job_status: '0,1,2,3,4,5,6,7,8,9',
-              limit: 100, // Small limit - RPC provides accurate totals
-              custom_fields: 1
-            })
-          })
-        ]);
+        const response = await fetch('https://api.tookanapp.com/v2/get_task_details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, job_id: orderId })
+        });
 
-        const [fleetsData, tasksData] = await Promise.all([
-          fleetsRes.json(),
-          tasksRes.json()
-        ]);
+        const data = await response.json();
+        if (data.status !== 200) throw new Error(data.message || 'Failed to fetch task details');
 
-        // Ensure data is always an array
-        const fleets = Array.isArray(fleetsData.data) ? fleetsData.data :
-          Array.isArray(fleetsData.fleets) ? fleetsData.fleets :
-            Array.isArray(fleetsData) ? fleetsData : [];
-
-        const tasks = Array.isArray(tasksData.data) ? tasksData.data :
-          Array.isArray(tasksData.tasks) ? tasksData.tasks :
-            Array.isArray(tasksData) ? tasksData : [];
-
-        // Shared totals from Supabase if configured (for faster/more accurate counts)
-        let rpcTotals = null;
-        if (isSupabaseConfigured && supabase) {
-          try {
-            const { data: stats } = await supabase.rpc('get_order_stats');
-            if (stats && stats.length > 0) {
-              rpcTotals = stats[0];
-            }
-          } catch (e) {
-            console.log('RPC check failed in analytics:', e.message);
-          }
-        }
-
-        // Get top drivers from RPC (last 7 days)
-        let driverPerformance = [];
-        if (isSupabaseConfigured && supabase) {
-          try {
-            // Get order counts per fleet
-            const { data: fleetCounts } = await supabase.rpc('get_fleet_order_counts_last_7_days');
-
-            if (fleetCounts && fleetCounts.length > 0) {
-              // Get ALL agent names from agents table (safer matching)
-              const { data: agents } = await supabase
-                .from('agents')
-                .select('fleet_id, name');
-
-              // Create a map of fleet_id (as string) to name
-              const agentMap = new Map();
-              if (agents) {
-                agents.forEach(a => agentMap.set(String(a.fleet_id), a.name));
-              }
-
-              // Build leaderboard (top 5) using string lookup
-              driverPerformance = fleetCounts.slice(0, 5).map(f => ({
-                name: agentMap.get(String(f.fleet_id)) || `Driver ${f.fleet_id}`,
-                deliveries: parseInt(f.total_orders) || 0
-              }));
-            }
-          } catch (e) {
-            console.log('Driver performance RPC failed:', e.message);
-          }
-        }
-
-        // Calculate analytics
-        const completedTasks = tasks.filter(t => parseInt(t.job_status) === 2);
-        const pendingCOD = tasks
-          .filter(t => (t.order_payment || t.total_amount) && parseInt(t.job_status) === 2)
-          .reduce((sum, t) => sum + (parseFloat(t.order_payment || t.total_amount) || 0), 0);
-
-        // Get customer count from Supabase
-        let dbCustomerCount = 0;
-        if (isSupabaseConfigured && supabase) {
-          try {
-            const { count } = await supabase
-              .from('customers')
-              .select('*', { count: 'exact', head: true });
-            dbCustomerCount = count || 0;
-          } catch (e) {
-            console.log('Customer count check failed in analytics:', e.message);
-          }
-        }
-
-        const totalCustomers = dbCustomerCount;
-        const totalMerchants = dbCustomerCount; // Per user request, match Reports Panel which uses all customers
-
-        console.log(`🚀 [VERCEL-BACKEND] Analytics: totalCustomers=${totalCustomers}, totalMerchants=${totalMerchants}`);
+        let taskData = data.data || {};
+        if (Array.isArray(data.data) && data.data.length > 0) taskData = data.data[0];
 
         res.json({
           status: 'success',
-          message: 'Analytics fetched successfully',
           data: {
-            kpis: {
-              totalOrders: rpcTotals?.total_orders || tasks.length,
-              totalDrivers: fleets.length,  // Tookan calls these "Agents"
-              totalMerchants: totalMerchants,  // Only those with vendor_id
-              totalCustomers: totalCustomers,  // All delivery recipients
-              pendingCOD: pendingCOD,
-              driversWithPending: 0,
-              completedDeliveries: rpcTotals?.completed_deliveries || completedTasks.length
-            },
-            trends: {
-              orders: '+0%',
-              drivers: '+0%',
-              merchants: '+0%',
-              customers: '+0%',
-              pendingCOD: '+0%',
-              driversPending: '+0%',
-              completed: '+0%'
-            },
-            codStatus: [],
-            orderVolume: [],
-            driverPerformance: driverPerformance
+            orderId: taskData.job_id || orderId,
+            status: taskData.job_status || 'unknown',
+            codAmount: parseFloat(taskData.total_amount || taskData.cod || 0),
+            orderFees: parseFloat(taskData.order_payment || 0),
+            assignedDriver: taskData.fleet_id || null,
+            customerName: taskData.customer_name || taskData.job_pickup_name || '',
+            notes: taskData.customer_comments || taskData.job_description || '',
+            pickupAddress: taskData.job_pickup_address || taskData.pickup_address || '',
+            deliveryAddress: taskData.job_address || taskData.delivery_address || '',
+            rawData: taskData
           }
         });
       } catch (error) {
-        res.status(500).json({
-          status: 'error',
-          message: error.message,
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Search Order by job_id (from Supabase)
+    app.get('/api/search/order/:jobId', authenticate, async (req, res) => {
+      try {
+        const { jobId } = req.params;
+        const { data: task, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('job_id', parseInt(jobId))
+          .single();
+
+        if (error) {
+          if (error.code === 'PGRST116') return res.json({ status: 'success', data: null, message: 'Order not found' });
+          throw error;
+        }
+
+        res.json({
+          status: 'success',
           data: {
-            kpis: { totalOrders: 0, totalDrivers: 0, totalMerchants: 0, totalCustomers: 0, pendingCOD: 0, driversWithPending: 0, completedDeliveries: 0 },
-            trends: { orders: '+0%', drivers: '+0%', merchants: '+0%', customers: '+0%', pendingCOD: '+0%', driversPending: '+0%', completed: '+0%' },
-            codStatus: [],
-            orderVolume: [],
-            driverPerformance: []
+            jobId: task.job_id?.toString(),
+            job_id: task.job_id,
+            status: task.status,
+            codAmount: parseFloat(task.cod_amount || 0),
+            orderFees: parseFloat(task.order_fees || 0),
+            assignedDriver: task.fleet_id,
+            customerName: task.customer_name,
+            notes: task.notes,
+            pickupAddress: task.pickup_address,
+            deliveryAddress: task.delivery_address
           }
         });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Search Customers
+    app.get('/api/search/customers', authenticate, async (req, res) => {
+      try {
+        const { q } = req.query;
+        if (!q) return res.json({ status: 'success', data: [] });
+
+        const isNumeric = /^\d+$/.test(q);
+        let query = supabase.from('customers').select('*');
+        if (isNumeric) query = query.eq('vendor_id', parseInt(q));
+        else query = query.ilike('customer_name', `%${q}%`);
+
+        const { data, error } = await query.limit(20);
+        if (error) throw error;
+        res.json({ status: 'success', data: data || [] });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Search Drivers
+    app.get('/api/search/drivers', authenticate, async (req, res) => {
+      try {
+        const { q } = req.query;
+        if (!q) return res.json({ status: 'success', data: [] });
+
+        const isNumeric = /^\d+$/.test(q);
+        let query = supabase.from('agents').select('*');
+        if (isNumeric) query = query.eq('fleet_id', parseInt(q));
+        else query = query.ilike('name', `%${q}%`);
+
+        const { data, error } = await query.limit(20);
+        if (error) throw error;
+        res.json({ status: 'success', data: data || [] });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
       }
     });
 
@@ -4552,6 +4512,263 @@ function getApp() {
       }
     });
 
+    // Helper function to calculate plan fee
+    const calculatePlanFee = (plan, orderAmount, orderCount) => {
+      if (!plan) return 0;
+      if (plan.feeType === 'fixed') {
+        return plan.feeAmount || 0;
+      } else if (plan.feeType === 'percentage') {
+        return (orderAmount * (plan.feePercentage || 0)) / 100;
+      } else if (plan.feeType === 'tiered' && orderCount !== undefined) {
+        const tier = plan.tieredFees?.find((t) =>
+          orderCount >= t.minOrders && (t.maxOrders === null || orderCount <= t.maxOrders)
+        );
+        return tier ? tier.fee : 0;
+      }
+      return 0;
+    };
+
+    // GET Analytics (KPIs, Charts, Performance Data) - serverless implementation
+    app.get('/api/reports/analytics', authenticate, async (req, res) => {
+      try {
+        console.log('\n=== GET ANALYTICS REQUEST (Vercel) ===');
+        const apiKey = getApiKey();
+        const { dateFrom, dateTo } = req.query;
+
+        // Default to last 30 days
+        let startDate = dateFrom;
+        let endDate = dateTo;
+        if (!startDate || !endDate) {
+          const end = new Date();
+          const start = new Date();
+          start.setDate(start.getDate() - 30);
+          if (!startDate) startDate = start.toISOString().split('T')[0];
+          if (!endDate) endDate = end.toISOString().split('T')[0];
+        }
+
+        // 1. Fetch metrics directly from Supabase
+        const { data: orders, error: orderErr } = await supabase
+          .from('tasks')
+          .select('job_id, status, cod_amount, order_fees, creation_datetime')
+          .gte('creation_datetime', startDate)
+          .lte('creation_datetime', endDate);
+
+        if (orderErr) throw orderErr;
+
+        // 2. Fetch drivers count from Tookan
+        const fleetResponse = await fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey })
+        });
+        const fleetData = await fleetResponse.json();
+        const driversCount = fleetData.status === 200 ? (fleetData.data?.length || 0) : 0;
+
+        // 3. Get customer count from database
+        const { count: customerCount } = await supabase
+          .from('customers')
+          .select('*', { count: 'exact', head: true });
+
+        const totalOrders = orders?.length || 0;
+        const totalDrivers = driversCount;
+        const totalMerchants = customerCount || 0;
+
+        // Calculate metrics
+        const pendingCOD = (orders || [])
+          .filter(o => [0, 1, 3, 4, 6, 7].includes(parseInt(o.status)))
+          .reduce((sum, o) => sum + (parseFloat(o.cod_amount) || 0), 0);
+
+        const collectedCOD = (orders || [])
+          .filter(o => [2].includes(parseInt(o.status)))
+          .reduce((sum, o) => sum + (parseFloat(o.cod_amount) || 0), 0);
+
+        const completedDeliveries = (orders || []).filter(o => [2].includes(parseInt(o.status))).length;
+
+        // Volume trends (last 7 days)
+        const orderVolume = [];
+        const today = new Date();
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date(today);
+          date.setDate(date.getDate() - i);
+          const dateStr = date.toISOString().split('T')[0];
+          const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+          const count = (orders || []).filter(o => o.creation_datetime?.startsWith(dateStr)).length;
+          orderVolume.push({ day: dayName, orders: count });
+        }
+
+        res.json({
+          status: 'success',
+          data: {
+            kpis: {
+              totalOrders,
+              totalDrivers,
+              totalMerchants,
+              completedDeliveries,
+              revenue: collectedCOD,
+              pendingCOD
+            },
+            codStatus: [
+              { name: 'Collected', value: collectedCOD, color: '#10B981' },
+              { name: 'Pending', value: pendingCOD, color: '#F59E0B' }
+            ],
+            orderVolume,
+            driverPerformance: [] // Simplified for now
+          }
+        });
+      } catch (error) {
+        console.error('Analytics error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Reports Summary (Aggregated Data) - serverless implementation
+    app.get('/api/reports/summary', authenticate, async (req, res) => {
+      try {
+        console.log('\n=== GET REPORTS SUMMARY REQUEST (Vercel) ===');
+        const apiKey = getApiKey();
+        const { dateFrom, dateTo } = req.query;
+
+        // Default to last 30 days
+        let startDate = dateFrom;
+        let endDate = dateTo;
+        if (!startDate || !endDate) {
+          const end = new Date();
+          const start = new Date();
+          start.setDate(start.getDate() - 30);
+          if (!startDate) startDate = start.toISOString().split('T')[0];
+          if (!endDate) endDate = end.toISOString().split('T')[0];
+        }
+
+        // 1. Fetch data from Supabase
+        const { data: dbOrders, error: orderErr } = await supabase
+          .from('tasks')
+          .select('*')
+          .gte('creation_datetime', startDate)
+          .lte('creation_datetime', endDate);
+
+        if (orderErr) throw orderErr;
+        const orders = dbOrders || [];
+
+        // 2. Fetch fleets for names
+        const fleetResponse = await fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey })
+        });
+        const fleetData = await fleetResponse.json();
+        const fleets = fleetData.status === 200 ? (fleetData.data || []) : [];
+
+        // 3. Process summaries
+        const driverSummaries = [];
+        const merchantMap = new Map();
+        const driverStats = new Map();
+
+        orders.forEach(o => {
+          const fid = String(o.fleet_id);
+          if (!driverStats.has(fid)) driverStats.set(fid, { orders: 0, cod: 0, fees: 0 });
+          const s = driverStats.get(fid);
+          s.orders++;
+          s.cod += parseFloat(o.cod_amount || 0);
+          s.fees += parseFloat(o.order_fees || 0);
+
+          const mid = String(o.vendor_id);
+          if (!merchantMap.has(mid)) merchantMap.set(mid, { name: o.customer_name || `Merchant ${mid}`, orders: 0, cod: 0, fees: 0 });
+          const m = merchantMap.get(mid);
+          m.orders++;
+          m.cod += parseFloat(o.cod_amount || 0);
+          m.fees += parseFloat(o.order_fees || 0);
+        });
+
+        fleets.forEach(f => {
+          const id = String(f.fleet_id || f.id);
+          const s = driverStats.get(id) || { orders: 0, cod: 0, fees: 0 };
+          driverSummaries.push({
+            driverId: id,
+            driverName: f.name || f.username || 'Unknown Driver',
+            numberOfOrders: s.orders,
+            totalCod: s.cod,
+            totalFees: s.fees,
+            avgOrderValue: s.orders > 0 ? (s.cod / s.orders).toFixed(2) : '0'
+          });
+        });
+
+        const customerSummaries = Array.from(merchantMap.entries()).map(([id, m]) => ({
+          merchantId: id,
+          merchantName: m.name,
+          totalOrders: m.orders,
+          codTotal: m.cod,
+          feesTotal: m.fees,
+          averageOrderValue: m.orders > 0 ? (m.cod / m.orders).toFixed(2) : '0'
+        }));
+
+        res.json({
+          status: 'success',
+          data: {
+            totals: {
+              orders: orders.length,
+              drivers: fleets.length,
+              customers: merchantMap.size,
+              deliveries: orders.filter(o => [2].includes(parseInt(o.status))).length
+            },
+            driverSummaries,
+            customerSummaries,
+            filters: { startDate, endDate }
+          }
+        });
+      } catch (error) {
+        console.error('Summary error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // DELETE Task (and connected task) - Moved inside getApp
+    app.post('/api/tookan/delete-task', authenticate, requirePermission('perform_reorder'), async (req, res) => {
+      try {
+        console.log('\n=== DELETE TASK REQUEST (Vercel) ===');
+        const { jobId } = req.body;
+        if (!jobId) return res.status(400).json({ status: 'error', message: 'Job ID is required' });
+
+        const { data: task, error: fetchError } = await supabase
+          .from('tasks')
+          .select('job_id, raw_data')
+          .eq('job_id', jobId)
+          .single();
+
+        if (fetchError || !task) return res.status(404).json({ status: 'error', message: 'Task not found' });
+
+        const relationshipId = task.raw_data?.pickup_delivery_relationship;
+        let connectedJobIds = [jobId];
+
+        if (relationshipId) {
+          const { data: relatedTasks } = await supabase
+            .from('tasks')
+            .select('job_id')
+            .eq('raw_data->>pickup_delivery_relationship', relationshipId);
+          if (relatedTasks) connectedJobIds = relatedTasks.map(t => t.job_id);
+        }
+
+        connectedJobIds = [...new Set(connectedJobIds)];
+        const apiKey = getApiKey();
+        const results = [];
+
+        for (const id of connectedJobIds) {
+          const response = await fetch('https://api.tookanapp.com/v2/delete_task', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKey, job_id: String(id) })
+          });
+          const data = await response.json();
+          results.push({ id, status: data.status, message: data.message });
+        }
+
+        await supabase.from('tasks').delete().in('job_id', connectedJobIds);
+        res.json({ status: 'success', message: 'Tasks deleted successfully', data: { deletedIds: connectedJobIds, results } });
+      } catch (error) {
+        console.error('Delete task error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
     // Catch-all for other API routes
     app.all('/api/*', (req, res) => {
       res.status(404).json({
@@ -4569,92 +4786,3 @@ module.exports = (req, res) => {
   const expressApp = getApp();
   return expressApp(req, res);
 };
-
-
-// DELETE Task (and connected task)
-app.post('/api/tookan/delete-task', authenticate, requirePermission('perform_reorder'), async (req, res) => {
-  try {
-    console.log('\n=== DELETE TASK REQUEST ===');
-    const { jobId } = req.body;
-
-    if (!jobId) {
-      return res.status(400).json({ status: 'error', message: 'Job ID is required' });
-    }
-
-    // 1. Fetch task details from DB to find connected task
-    const { data: task, error: fetchError } = await supabase
-      .from('tasks')
-      .select('job_id, raw_data')
-      .eq('job_id', jobId)
-      .single();
-
-    if (fetchError || !task) {
-      console.error('Failed to find task in DB:', jobId);
-      return res.status(404).json({ status: 'error', message: 'Task not found in database' });
-    }
-
-    // 2. Identify connected task
-    // Try to find connected task ID from raw_data or relationship logic
-    // Usually mapped in raw_data.pickup_delivery_relationship or by matching tracking link etc.
-    // For now, we will query the DB for the OTHER task that shares the same order_id or tracking link if possible.
-    // BETTER STRATEGY: Use the 'order_id' or 'pickup_delivery_relationship' field if available.
-    // Let's assume the user wants to delete the "Job" they clicked, AND if it's part of a P/D pair, the other one.
-
-    // In Tookan, pickup_delivery_relationship is often a unique string shared by both.
-    const relationshipId = task.raw_data?.pickup_delivery_relationship;
-    let connectedJobIds = [jobId];
-
-    if (relationshipId) {
-      // Find all tasks with this relationship ID
-      const { data: relatedTasks } = await supabase
-        .from('tasks')
-        .select('job_id')
-        .eq('raw_data->>pickup_delivery_relationship', relationshipId);
-
-      if (relatedTasks) {
-        connectedJobIds = relatedTasks.map(t => t.job_id);
-      }
-    }
-
-    // Ensure we have unique IDs (in case logic adds duplicates)
-    connectedJobIds = [...new Set(connectedJobIds)];
-    console.log(`🗑️ Deleting tasks: ${connectedJobIds.join(', ')}`);
-
-    const apiKey = getApiKey();
-    const results = [];
-
-    // 3. Delete from Tookan (Loop through IDs)
-    for (const id of connectedJobIds) {
-      const response = await fetch('https://api.tookanapp.com/v2/delete_task', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: apiKey, job_id: String(id) })
-      });
-      const data = await response.json();
-      results.push({ id, status: data.status, message: data.message });
-    }
-
-    // 4. Delete from Supabase
-    const { error: deleteError } = await supabase
-      .from('tasks')
-      .delete()
-      .in('job_id', connectedJobIds);
-
-    if (deleteError) {
-      console.error('Failed to delete from Supabase:', deleteError);
-    }
-
-    console.log('✅ Delete operation completed');
-    console.log('=== END REQUEST (SUCCESS) ===\n');
-
-    res.json({
-      status: 'success',
-      message: 'Tasks deleted successfully',
-      data: { deletedIds: connectedJobIds, results }
-    });
-
-  } catch (error) {
-    console.error('❌ Delete task error:', error);
-    res.status(500).json({ status: 'error', message: error.message });
-  }
-});
