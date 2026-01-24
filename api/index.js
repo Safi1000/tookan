@@ -4518,8 +4518,29 @@ function getApp() {
 
         // Update Supabase database
         let dbUpdated = false;
-        console.log('Supabase configured:', isSupabaseConfigured, '| supabase client:', !!supabase);
-        if (isSupabaseConfigured && supabase) {
+
+        // RE-CHECK SUPABASE CONFIGURATION AT RUNTIME
+        // In serverless, env vars might not be available at module load time
+        if (!supabase) {
+          const sbUrl = process.env.SUPABASE_URL;
+          const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+          console.log('Runtime Supabase Check - URL:', sbUrl ? 'Present' : 'Missing', 'Key:', sbKey ? 'Present' : 'Missing');
+
+          if (sbUrl && sbKey && sbUrl.startsWith('https://') && !sbUrl.includes('YOUR_')) {
+            console.log('Re-initializing Supabase client at runtime...');
+            try {
+              supabase = createClient(sbUrl, sbKey, {
+                auth: { autoRefreshToken: false, persistSession: false }
+              });
+            } catch (initError) {
+              console.error('Supabase runtime init failed:', initError.message);
+            }
+          }
+        }
+
+        console.log('Supabase client active:', !!supabase);
+
+        if (supabase) {
           try {
             const updateData = { updated_at: new Date().toISOString() };
             if (codAmount !== undefined) updateData.cod_amount = parseFloat(codAmount);
