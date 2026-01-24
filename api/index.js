@@ -4676,6 +4676,352 @@ function getApp() {
       }
     });
 
+    // ============================================
+    // ADMIN SYNC ENDPOINTS
+    // ============================================
+
+    // POST Trigger Incremental Sync (Admin only)
+    app.post('/api/admin/sync/incremental', authenticate, requireRole('admin'), async (req, res) => {
+      try {
+        console.log('\n=== TRIGGER INCREMENTAL SYNC (Vercel) ===');
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(400).json({ status: 'error', message: 'Database not configured' });
+        }
+        // In Vercel serverless, we can't run background tasks effectively
+        // Just return that the operation would need to be run locally
+        res.json({
+          status: 'success',
+          message: 'Incremental sync must be triggered from local server due to serverless limitations',
+          data: { serverless: true }
+        });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // DELETE Clear Order Cache (Admin only)
+    app.delete('/api/admin/sync/cache', authenticate, requireRole('admin'), async (req, res) => {
+      try {
+        console.log('\n=== CLEAR ORDER CACHE (Vercel) ===');
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(400).json({ status: 'error', message: 'Database not configured' });
+        }
+        // Delete all cached tasks
+        const { error } = await supabase.from('tasks').delete().neq('job_id', 0);
+        if (error) throw error;
+        res.json({ status: 'success', message: 'Order cache cleared successfully' });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // AUTH ENDPOINT ADDITIONS
+    // ============================================
+
+    // POST Register User
+    app.post('/api/auth/register', async (req, res) => {
+      try {
+        console.log('\n=== REGISTER USER (Vercel) ===');
+        const { email, password, name, role } = req.body;
+        if (!email || !password) {
+          return res.status(400).json({ status: 'error', message: 'Email and password required' });
+        }
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+        // Check if user exists
+        const { data: existing } = await supabase.from('users').select('id').eq('email', email).single();
+        if (existing) {
+          return res.status(400).json({ status: 'error', message: 'User already exists' });
+        }
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+        // Create user
+        const { data: newUser, error } = await supabase.from('users').insert({
+          email,
+          password_hash: hashedPassword,
+          name: name || email.split('@')[0],
+          role: role || 'viewer',
+          status: 'active'
+        }).select().single();
+        if (error) throw error;
+        res.json({ status: 'success', message: 'User registered', data: { id: newUser.id, email: newUser.email } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // ORDER ASSIGNMENT
+    // ============================================
+
+    // PUT Assign Driver to Order
+    app.put('/api/orders/:jobId/assign', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+      try {
+        console.log('\n=== ASSIGN DRIVER (Vercel) ===');
+        const { jobId } = req.params;
+        const { fleet_id, notes } = req.body;
+        const apiKey = getApiKey();
+
+        // Update in Tookan
+        const tookanPayload = {
+          api_key: apiKey,
+          job_id: parseInt(jobId),
+          fleet_id: fleet_id ? parseInt(fleet_id) : null
+        };
+        if (notes !== undefined) tookanPayload.job_description = notes;
+
+        const response = await fetch('https://api.tookanapp.com/v2/edit_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(tookanPayload)
+        });
+        const data = await response.json();
+
+        if (data.status !== 200) {
+          return res.status(500).json({ status: 'error', message: data.message });
+        }
+
+        // Update database
+        if (isSupabaseConfigured && supabase) {
+          await supabase.from('tasks').update({ fleet_id: parseInt(fleet_id), updated_at: new Date().toISOString() }).eq('job_id', parseInt(jobId));
+        }
+
+        res.json({ status: 'success', message: 'Driver assigned', data: { jobId, fleet_id } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // CUSTOMER/FLEET ADD ENDPOINTS
+    // ============================================
+
+    // POST Add Customer
+    app.post('/api/tookan/customer/add', authenticate, requireRole('admin'), async (req, res) => {
+      try {
+        console.log('\n=== ADD CUSTOMER (Vercel) ===');
+        const apiKey = getApiKey();
+        const { name, phone } = req.body;
+        if (!name || !phone) {
+          return res.status(400).json({ status: 'error', message: 'Name and phone required' });
+        }
+        const response = await fetch('https://api.tookanapp.com/v2/customer/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, user_type: 0, name, phone })
+        });
+        const data = await response.json();
+        if (data.status !== 200) {
+          return res.status(500).json({ status: 'error', message: data.message });
+        }
+        res.json({ status: 'success', message: 'Customer added', data: data.data });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // POST Add Fleet/Driver
+    app.post('/api/tookan/fleet/add', authenticate, requireRole('admin'), async (req, res) => {
+      try {
+        console.log('\n=== ADD FLEET (Vercel) ===');
+        const apiKey = getApiKey();
+        const { name, email, phone, password, username, transport_type } = req.body;
+        if (!name || !phone) {
+          return res.status(400).json({ status: 'error', message: 'Name and phone required' });
+        }
+        const response = await fetch('https://api.tookanapp.com/v2/add_agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: apiKey,
+            fleet_name: name,
+            email: email || '',
+            phone,
+            password: password || phone,
+            username: username || name.toLowerCase().replace(/\s/g, '_'),
+            transport_type: transport_type || 0
+          })
+        });
+        const data = await response.json();
+        if (data.status !== 200) {
+          return res.status(500).json({ status: 'error', message: data.message });
+        }
+        res.json({ status: 'success', message: 'Fleet added', data: data.data });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // WALLET ENDPOINTS
+    // ============================================
+
+    // POST Driver Wallet Balance
+    app.post('/api/tookan/driver-wallet/balance', authenticate, async (req, res) => {
+      try {
+        const apiKey = getApiKey();
+        const { fleet_id } = req.body;
+        if (!fleet_id) {
+          return res.status(400).json({ status: 'error', message: 'fleet_id required' });
+        }
+        const response = await fetch('https://api.tookanapp.com/v2/get_fleet_wallet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, fleet_id })
+        });
+        const data = await response.json();
+        res.json({ status: 'success', data });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message, data: { balance: 0 } });
+      }
+    });
+
+    // GET Customer Wallet Details
+    app.get('/api/tookan/customer-wallet/details', authenticate, async (req, res) => {
+      try {
+        const apiKey = getApiKey();
+        const { vendor_id } = req.query;
+        if (!vendor_id) {
+          return res.status(400).json({ status: 'error', message: 'vendor_id required' });
+        }
+        const response = await fetch('https://api.tookanapp.com/v2/get_customer_wallet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, vendor_id })
+        });
+        const data = await response.json();
+        res.json({ status: 'success', data });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // TASK ENDPOINTS
+    // ============================================
+
+    // GET Task Details
+    app.get('/api/tookan/task/:jobId', authenticate, async (req, res) => {
+      try {
+        const { jobId } = req.params;
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+        const { data: task, error } = await supabase.from('tasks').select('*').eq('job_id', parseInt(jobId)).single();
+        if (error || !task) {
+          return res.status(404).json({ status: 'error', message: 'Task not found' });
+        }
+        res.json({ status: 'success', data: task });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // PUT Update Task COD
+    app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+      try {
+        console.log('\n=== UPDATE TASK COD (Vercel) ===');
+        const { jobId } = req.params;
+        const { cod_amount, cod_collected } = req.body;
+        const apiKey = getApiKey();
+        const numericJobId = parseInt(jobId);
+
+        // Build meta_data for Tookan
+        const metaData = [];
+        if (cod_amount !== undefined) {
+          metaData.push({ label: 'CASH_NEEDS_TO_BE_COLLECTED', data: String(cod_amount) });
+        }
+
+        const tookanPayload = {
+          api_key: apiKey,
+          job_id: numericJobId,
+          custom_field_template: 'Order_editor_test'
+        };
+        if (metaData.length > 0) tookanPayload.meta_data = metaData;
+
+        const response = await fetch('https://api.tookanapp.com/v2/edit_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(tookanPayload)
+        });
+        const data = await response.json();
+
+        // Update database
+        if (isSupabaseConfigured && supabase) {
+          const updateData = { updated_at: new Date().toISOString() };
+          if (cod_amount !== undefined) updateData.cod_amount = parseFloat(cod_amount);
+          if (cod_collected !== undefined) updateData.cod_collected = cod_collected;
+          await supabase.from('tasks').update(updateData).eq('job_id', numericJobId);
+        }
+
+        res.json({ status: 'success', message: 'COD updated', data: { jobId, tookan_status: data.status } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Task History
+    app.get('/api/tookan/task/:jobId/history', authenticate, async (req, res) => {
+      try {
+        const { jobId } = req.params;
+        // In Vercel, we don't have task history storage - return empty
+        res.json({ status: 'success', data: [] });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // COD QUEUE ENDPOINTS
+    // ============================================
+
+    // GET Driver COD Queue
+    app.get('/api/cod/queue/:driverId', authenticate, async (req, res) => {
+      try {
+        const { driverId } = req.params;
+        // Return empty queue for Vercel - COD queue is managed locally
+        res.json({ status: 'success', data: { queue: [], total: 0 } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Pending COD for Driver
+    app.get('/api/cod/queue/pending/:driverId', authenticate, async (req, res) => {
+      try {
+        // Return null for Vercel
+        res.json({ status: 'success', data: null });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // ============================================
+    // USER PASSWORD ENDPOINT
+    // ============================================
+
+    // PUT Update User Password
+    app.put('/api/users/:id/password', authenticate, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { newPassword } = req.body;
+        if (!newPassword || newPassword.length < 6) {
+          return res.status(400).json({ status: 'error', message: 'Password must be at least 6 characters' });
+        }
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        const { error } = await supabase.from('users').update({ password_hash: hashedPassword }).eq('id', id);
+        if (error) throw error;
+        res.json({ status: 'success', message: 'Password updated' });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
     // Catch-all for other API routes
     app.all('/api/*', (req, res) => {
       res.status(404).json({
