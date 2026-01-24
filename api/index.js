@@ -4483,23 +4483,33 @@ function getApp() {
         console.log('Calling Tookan API: https://api.tookanapp.com/v2/edit_task');
         console.log('Template:', tookanPayload.custom_field_template);
         console.log('Meta Data:', JSON.stringify(metaData, null, 2));
+        console.log('Full Tookan Payload (api_key hidden):', JSON.stringify({ ...tookanPayload, api_key: '***HIDDEN***' }, null, 2));
 
-        const response = await fetch('https://api.tookanapp.com/v2/edit_task', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(tookanPayload),
-        });
+        let response;
+        let textResponse;
+        try {
+          response = await fetch('https://api.tookanapp.com/v2/edit_task', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(tookanPayload),
+          });
+          textResponse = await response.text();
+          console.log('Tookan Response Status:', response.status);
+          console.log('Tookan Response Body:', textResponse.substring(0, 500));
+        } catch (fetchError) {
+          console.error('Tookan fetch error:', fetchError.message);
+          textResponse = JSON.stringify({ status: 0, message: fetchError.message });
+        }
 
-        const textResponse = await response.text();
         let tookanData;
         try {
           tookanData = JSON.parse(textResponse);
         } catch (parseError) {
-          console.warn('Failed to parse Tookan response');
-          tookanData = { status: 0, message: 'Non-JSON response' };
+          console.warn('Failed to parse Tookan response:', parseError.message);
+          tookanData = { status: 0, message: 'Non-JSON response: ' + textResponse.substring(0, 100) };
         }
 
-        const tookanSuccess = response.ok && tookanData.status === 200;
+        const tookanSuccess = response && response.ok && tookanData.status === 200;
         if (tookanSuccess) {
           console.log('✅ Tookan API update successful');
         } else {
@@ -4508,6 +4518,7 @@ function getApp() {
 
         // Update Supabase database
         let dbUpdated = false;
+        console.log('Supabase configured:', isSupabaseConfigured, '| supabase client:', !!supabase);
         if (isSupabaseConfigured && supabase) {
           try {
             const updateData = { updated_at: new Date().toISOString() };
