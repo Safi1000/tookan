@@ -2761,8 +2761,8 @@ function getApp() {
           order_payment: orderData.orderFees,
           job_description: orderData.notes,
           auto_assignment: 0,
-          custom_field_template: 'Order_editor_test',
-          meta_data: [
+          pickup_custom_field_template: 'Order_editor_test',
+          pickup_meta_data: [
             {
               label: 'CASH_NEEDS_TO_BE_COLLECTED',
               data: String(orderData.codAmount)
@@ -2847,6 +2847,7 @@ function getApp() {
           try {
             // Save PICKUP task
             if (pickupOrderId) {
+              const pickupResponseData = pickupData.data || {};
               await supabase.from('tasks').upsert({
                 job_id: pickupOrderId,
                 customer_name: orderData.customerName,
@@ -2861,13 +2862,18 @@ function getApp() {
                 status: 0,
                 creation_datetime: new Date().toISOString(),
                 source: 'reorder_pickup',
-                last_synced_at: new Date().toISOString()
+                last_synced_at: new Date().toISOString(),
+                job_hash: pickupResponseData.job_hash || null,
+                job_token: pickupResponseData.job_token || null,
+                tracking_link: pickupResponseData.tracking_link || null,
+                raw_data: { ...pickupPayload, ...pickupResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });
               console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
             }
 
             // Save DELIVERY task
             if (deliveryOrderId) {
+              const deliveryResponseData = deliveryData.data || {};
               await supabase.from('tasks').upsert({
                 job_id: deliveryOrderId,
                 customer_name: orderData.customerName,
@@ -2882,7 +2888,11 @@ function getApp() {
                 status: 0,
                 creation_datetime: new Date().toISOString(),
                 source: 'reorder_delivery',
-                last_synced_at: new Date().toISOString()
+                last_synced_at: new Date().toISOString(),
+                job_hash: deliveryResponseData.job_hash || null,
+                job_token: deliveryResponseData.job_token || null,
+                tracking_link: deliveryResponseData.tracking_link || null,
+                raw_data: { ...deliveryPayload, ...deliveryResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });
               console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);
             }

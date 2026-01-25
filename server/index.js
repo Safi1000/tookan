@@ -1768,8 +1768,8 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       order_payment: orderData.orderFees,
       job_description: orderData.notes || '',
       auto_assignment: 0,
-      custom_field_template: 'Order_editor_test',
-      meta_data: [
+      pickup_custom_field_template: 'Order_editor_test',
+      pickup_meta_data: [
         {
           label: 'CASH_NEEDS_TO_BE_COLLECTED',
           data: String(orderData.codAmount)
@@ -1849,6 +1849,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
     if (isConfigured()) {
       try {
         if (pickupOrderId) {
+          const pickupResponseData = pickupData.data || {};
           await taskModel.upsertTask(pickupOrderId, {
             job_id: pickupOrderId,
             customer_name: orderData.customerName,
@@ -1864,12 +1865,17 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
             creation_datetime: new Date().toISOString(),
             source: 'reorder_pickup',
             tags: tags || null,
-            last_synced_at: new Date().toISOString()
+            last_synced_at: new Date().toISOString(),
+            job_hash: pickupResponseData.job_hash || null,
+            job_token: pickupResponseData.job_token || null,
+            tracking_link: pickupResponseData.tracking_link || null,
+            raw_data: { ...pickupPayload, ...pickupResponseData, job_status: 0 }
           });
           console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
         }
 
         if (deliveryOrderId) {
+          const deliveryResponseData = deliveryData.data || {};
           await taskModel.upsertTask(deliveryOrderId, {
             job_id: deliveryOrderId,
             customer_name: orderData.customerName,
@@ -1885,7 +1891,11 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
             creation_datetime: new Date().toISOString(),
             source: 'reorder_delivery',
             tags: tags || null,
-            last_synced_at: new Date().toISOString()
+            last_synced_at: new Date().toISOString(),
+            job_hash: deliveryResponseData.job_hash || null,
+            job_token: deliveryResponseData.job_token || null,
+            tracking_link: deliveryResponseData.tracking_link || null,
+            raw_data: { ...deliveryPayload, ...deliveryResponseData, job_status: 0 }
           });
           console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);
         }
