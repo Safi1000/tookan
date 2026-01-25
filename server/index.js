@@ -1669,40 +1669,23 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
 
     // Check if we need to fetch order data
     if (!customerName || !customerPhone || !pickupAddress || !deliveryAddress) {
-      console.log('📋 Fetching order data from Tookan...');
-
-      const getTaskPayload = {
-        api_key: apiKey,
-        job_id: orderId
-      };
-
-      const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(getTaskPayload),
-      });
-
-      const getTextResponse = await getResponse.text();
-      let getData;
-      try {
-        getData = JSON.parse(getTextResponse);
-      } catch (parseError) {
-        return res.status(500).json({
-          status: 'error',
-          message: 'Failed to fetch original order data',
-          data: {}
-        });
+      console.log('📋 Fetching order data from Supabase...');
+      if (!isConfigured()) {
+        throw new Error('Supabase not configured');
       }
 
-      if (!getResponse.ok || getData.status !== 200) {
-        return res.status(getResponse.status || 500).json({
-          status: 'error',
-          message: getData.message || 'Original order not found',
-          data: {}
-        });
+      const { data: dbTask, error: dbTaskError } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('job_id', orderId)
+        .single();
+
+      if (dbTaskError || !dbTask || !dbTask.raw_data) {
+        console.error('Original order not found in Supabase:', dbTaskError);
+        return res.status(404).json({ status: 'error', message: 'Original order not found in database' });
       }
 
-      const currentTask = getData.data || {};
+      const currentTask = dbTask.raw_data || {};
       originalPickup = currentTask;
       originalDelivery = currentTask;
 

@@ -2707,19 +2707,24 @@ function getApp() {
           return res.status(400).json({ status: 'error', message: 'Original order ID is required' });
         }
 
-        // First get original order details
-        const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_key: apiKey, job_id: orderIdToUse })
-        });
-        const originalData = await getResponse.json();
-
-        if (originalData.status !== 200) {
-          return res.status(404).json({ status: 'error', message: 'Original order not found' });
+        // 1. Fetch original order from Supabase
+        console.log('Fetching original order data from Supabase...');
+        if (!isSupabaseConfigured || !supabase) {
+          throw new Error('Supabase not configured');
         }
 
-        const original = originalData.data || {};
+        const { data: dbTask, error: dbTaskError } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('job_id', orderIdToUse)
+          .single();
+
+        if (dbTaskError || !dbTask || !dbTask.raw_data) {
+          console.error('Original order not found in Supabase:', dbTaskError);
+          return res.status(404).json({ status: 'error', message: 'Original order not found in database' });
+        }
+
+        const original = dbTask.raw_data || {};
 
         // Fetch connected tasks if relationship exists
         let originalPickup = original;
