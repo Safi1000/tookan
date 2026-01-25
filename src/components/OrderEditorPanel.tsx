@@ -208,7 +208,7 @@ export function OrderEditorPanel() {
   const openReorderModal = () => {
     setReorderDriver('');
     setReorderNotes('');
-    setReorderCod((order?.codAmount || 0).toString());
+    setReorderCod('0'); // Default to 0 for reorders (can be changed if needed)
     setReorderFees((order?.orderFees || 0).toString());
     setShowReorderModal(true);
     loadAgentsFromTookan(); // Fetch fresh agents from Tookan API

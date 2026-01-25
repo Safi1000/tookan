@@ -2732,107 +2732,162 @@ function getApp() {
           customerEmail: customerEmail || original.customer_email || '',
           pickupAddress: pickupAddress || original.job_pickup_address || original.pickup_address || '',
           deliveryAddress: deliveryAddress || original.customer_address || original.job_address || original.delivery_address || '',
-          codAmount: codAmount !== undefined ? codAmount : (parseFloat(original.cod) || 0),
-          orderFees: orderFees !== undefined ? orderFees : (parseFloat(original.order_payment) || 0),
-          assignedDriver: assignedDriver !== undefined ? assignedDriver : (original.fleet_id || null),
+          codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0, // Default to 0 for reorder
+          orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(original.order_payment) || 0),
+          assignedDriver: assignedDriver !== undefined ? assignedDriver : null, // Default unassigned
           notes: effectiveNotes
         };
 
-        // Determine task type from original order:
-        // - Pickup task = same pickup and delivery address
-        // - Delivery task = different pickup and delivery address
-        const originalPickupAddr = (orderData.pickupAddress || '').trim();
-        const originalDeliveryAddr = (orderData.deliveryAddress || '').trim();
-        const isPickupTask = originalPickupAddr === originalDeliveryAddr;
-
-        // Task time
+        // Task times
         const now = new Date();
-        const taskTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours
+        const pickupTime = new Date(now.getTime() + 1 * 60 * 60 * 1000); // +1 hour for pickup
+        const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours for delivery
         const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
 
-        let createPayload;
-
-        if (isPickupTask) {
-          // Original was PICKUP task → Create new PICKUP task
-          createPayload = {
-            api_key: apiKey,
-            customer_username: orderData.customerName,
-            customer_phone: orderData.customerPhone,
-            customer_email: orderData.customerEmail,
-            job_pickup_address: originalPickupAddr,
-            job_pickup_datetime: formatDateTime(taskTime),
-            has_pickup: 1,
-            has_delivery: 0,
-            layout_type: 0,
-            timezone: '-180',
-            cod: parseFloat(orderData.codAmount) || 0,
-            order_payment: parseFloat(orderData.orderFees) || 0,
-            job_description: orderData.notes,
-            auto_assignment: 0
-          };
-        } else {
-          // Original was DELIVERY task → Create new DELIVERY task
-          createPayload = {
-            api_key: apiKey,
-            customer_username: orderData.customerName,
-            customer_phone: orderData.customerPhone,
-            customer_email: orderData.customerEmail,
-            customer_address: originalDeliveryAddr,
-            job_delivery_datetime: formatDateTime(taskTime),
-            has_pickup: 0,
-            has_delivery: 1,
-            layout_type: 0,
-            timezone: '-180',
-            cod: parseFloat(orderData.codAmount) || 0,
-            order_payment: parseFloat(orderData.orderFees) || 0,
-            job_description: orderData.notes,
-            auto_assignment: 0
-          };
-        }
+        // ========== TASK 1: PICKUP from merchant/warehouse ==========
+        const pickupPayload = {
+          api_key: apiKey,
+          job_pickup_name: orderData.customerName,
+          job_pickup_phone: orderData.customerPhone,
+          job_pickup_email: orderData.customerEmail,
+          job_pickup_address: orderData.pickupAddress,
+          job_pickup_datetime: formatDateTime(pickupTime),
+          has_pickup: 1,
+          has_delivery: 0,
+          layout_type: 0,
+          timezone: '-180',
+          cod: orderData.codAmount,
+          order_payment: orderData.orderFees,
+          job_description: orderData.notes,
+          auto_assignment: 0
+        };
 
         if (orderData.assignedDriver) {
-          createPayload.fleet_id = orderData.assignedDriver;
+          pickupPayload.fleet_id = orderData.assignedDriver;
         }
 
-        const response = await fetch('https://api.tookanapp.com/v2/create_task', {
+        console.log('Creating PICKUP task for reorder...');
+        const pickupResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(createPayload)
+          body: JSON.stringify(pickupPayload)
         });
 
-        const data = await response.json();
-        const newOrderId = data.data?.job_id || null;
+        const pickupData = await pickupResponse.json();
 
-        // Save to Supabase
-        if (newOrderId && isSupabaseConfigured && supabase) {
+        if (pickupData.status !== 200) {
+          return res.status(500).json({
+            status: 'error',
+            message: pickupData.message || 'Failed to create pickup task for reorder'
+          });
+        }
+
+        const pickupOrderId = pickupData.data?.job_id || null;
+        console.log('✅ Pickup task created:', pickupOrderId);
+
+        // ========== TASK 2: DELIVERY to customer ==========
+        const deliveryPayload = {
+          api_key: apiKey,
+          customer_username: orderData.customerName,
+          customer_phone: orderData.customerPhone,
+          customer_email: orderData.customerEmail,
+          customer_address: orderData.deliveryAddress,
+          job_delivery_datetime: formatDateTime(deliveryTime),
+          has_pickup: 0,
+          has_delivery: 1,
+          layout_type: 0,
+          timezone: '-180',
+          cod: orderData.codAmount,
+          order_payment: orderData.orderFees,
+          job_description: orderData.notes,
+          auto_assignment: 0
+        };
+
+        if (orderData.assignedDriver) {
+          deliveryPayload.fleet_id = orderData.assignedDriver;
+        }
+
+        console.log('Creating DELIVERY task for reorder...');
+        const deliveryResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(deliveryPayload)
+        });
+
+        const deliveryData = await deliveryResponse.json();
+
+        if (deliveryData.status !== 200) {
+          return res.status(500).json({
+            status: 'error',
+            message: deliveryData.message || 'Failed to create delivery task for reorder'
+          });
+        }
+
+        const deliveryOrderId = deliveryData.data?.job_id || null;
+        console.log('✅ Delivery task created:', deliveryOrderId);
+        console.log('✅ Reorder complete - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
+
+        // Save BOTH tasks to Supabase
+        if (isSupabaseConfigured && supabase) {
           try {
-            await supabase.from('tasks').upsert({
-              job_id: newOrderId,
-              customer_name: orderData.customerName,
-              customer_phone: orderData.customerPhone,
-              customer_email: orderData.customerEmail,
-              pickup_address: orderData.pickupAddress,
-              delivery_address: orderData.deliveryAddress,
-              cod_amount: parseFloat(orderData.codAmount) || 0,
-              order_fees: parseFloat(orderData.orderFees) || 0,
-              notes: orderData.notes,
-              fleet_id: orderData.assignedDriver,
-              status: 0,
-              creation_datetime: new Date().toISOString(),
-              source: 'reorder',
-              last_synced_at: new Date().toISOString()
-            }, { onConflict: 'job_id' });
+            // Save PICKUP task
+            if (pickupOrderId) {
+              await supabase.from('tasks').upsert({
+                job_id: pickupOrderId,
+                customer_name: orderData.customerName,
+                customer_phone: orderData.customerPhone,
+                customer_email: orderData.customerEmail || null,
+                pickup_address: orderData.pickupAddress,
+                delivery_address: orderData.pickupAddress, // Same as pickup for pickup tasks
+                cod_amount: orderData.codAmount,
+                order_fees: orderData.orderFees,
+                notes: orderData.notes,
+                fleet_id: orderData.assignedDriver,
+                status: 0,
+                creation_datetime: new Date().toISOString(),
+                source: 'reorder_pickup',
+                last_synced_at: new Date().toISOString()
+              }, { onConflict: 'job_id' });
+              console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
+            }
+
+            // Save DELIVERY task
+            if (deliveryOrderId) {
+              await supabase.from('tasks').upsert({
+                job_id: deliveryOrderId,
+                customer_name: orderData.customerName,
+                customer_phone: orderData.customerPhone,
+                customer_email: orderData.customerEmail || null,
+                pickup_address: orderData.pickupAddress,
+                delivery_address: orderData.deliveryAddress,
+                cod_amount: orderData.codAmount,
+                order_fees: orderData.orderFees,
+                notes: orderData.notes,
+                fleet_id: orderData.assignedDriver,
+                status: 0,
+                creation_datetime: new Date().toISOString(),
+                source: 'reorder_delivery',
+                last_synced_at: new Date().toISOString()
+              }, { onConflict: 'job_id' });
+              console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);
+            }
           } catch (dbErr) {
-            console.error('Failed to save reorder to Supabase:', dbErr.message);
+            console.error('Failed to save reorder tasks to Supabase:', dbErr.message);
           }
         }
 
         res.json({
-          status: data.status === 200 ? 'success' : 'error',
-          message: data.message || 'Re-order created successfully',
-          data: { newOrderId, originalOrderId: orderIdToUse }
+          status: 'success',
+          message: 'Re-order created successfully (2 tasks: Pickup + Delivery)',
+          data: {
+            pickupOrderId,
+            deliveryOrderId,
+            originalOrderId: orderIdToUse,
+            tasksCreated: 2
+          }
         });
       } catch (error) {
+        console.error('Reorder error:', error);
         res.status(500).json({ status: 'error', message: error.message });
       }
     });
