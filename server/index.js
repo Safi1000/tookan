@@ -1881,9 +1881,9 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
           const pickupResponseData = pickupData.data || {};
           await taskModel.upsertTask(pickupOrderId, {
             job_id: pickupOrderId,
-            customer_name: orderData.customerName,
-            customer_phone: orderData.customerPhone,
-            customer_email: orderData.customerEmail || null,
+            customer_name: customerName || originalPickup.customer_username || originalPickup.customer_name || originalPickup.job_pickup_name || 'Customer',
+            customer_phone: customerPhone || originalPickup.customer_phone || originalPickup.job_pickup_phone || '+97300000000',
+            customer_email: customerEmail || originalPickup.customer_email || originalPickup.job_pickup_email || '',
             pickup_address: orderData.pickupAddress,
             delivery_address: orderData.pickupAddress,
             cod_amount: orderData.codAmount,
@@ -1908,9 +1908,9 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
           const deliveryResponseData = deliveryData.data || {};
           await taskModel.upsertTask(deliveryOrderId, {
             job_id: deliveryOrderId,
-            customer_name: orderData.customerName,
-            customer_phone: orderData.customerPhone,
-            customer_email: orderData.customerEmail || null,
+            customer_name: customerName || originalDelivery.customer_username || originalDelivery.customer_name || originalDelivery.job_pickup_name || 'Customer',
+            customer_phone: customerPhone || originalDelivery.customer_phone || originalDelivery.job_pickup_phone || '+97300000000',
+            customer_email: customerEmail || originalDelivery.customer_email || originalDelivery.job_pickup_email || '',
             pickup_address: orderData.pickupAddress,
             delivery_address: orderData.deliveryAddress,
             cod_amount: orderData.codAmount,
