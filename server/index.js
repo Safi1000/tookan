@@ -1708,7 +1708,8 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       // Tookan uses different field names, so we need to check multiple possibilities
       // For notes: only use provided notes if it has actual content, otherwise use original
       const originalNotes = currentTask.customer_comments || currentTask.job_description || '';
-      const effectiveNotes = (notes && notes.trim()) ? notes.trim() : originalNotes;
+      // User requested empty notes by default unless entered
+      const effectiveNotes = (notes && notes.trim()) ? notes.trim() : '';
 
       orderData = {
         customerName: customerName || currentTask.customer_username || currentTask.customer_name || currentTask.job_pickup_name || 'Customer',
@@ -1767,10 +1768,10 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       order_payment: orderData.orderFees,
       job_description: orderData.notes || '',
       auto_assignment: 0,
-      custom_field_template: 'Order editor test',
+      custom_field_template: 'Order_editor_test',
       meta_data: [
         {
-          label: 'CASH NEEDS TO BE COLLECTED',
+          label: 'CASH_NEEDS_TO_BE_COLLECTED',
           data: String(orderData.codAmount)
         }
       ]
@@ -1813,10 +1814,10 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       order_payment: orderData.orderFees,
       job_description: orderData.notes || '',
       auto_assignment: 0,
-      custom_field_template: 'Order editor test',
+      custom_field_template: 'Order_editor_test',
       meta_data: [
         {
-          label: 'CASH NEEDS TO BE COLLECTED',
+          label: 'CASH_NEEDS_TO_BE_COLLECTED',
           data: String(orderData.codAmount)
         }
       ]

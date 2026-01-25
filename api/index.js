@@ -2723,7 +2723,8 @@ function getApp() {
 
         // Use original notes if new notes not provided
         const originalNotes = original.customer_comments || original.job_description || '';
-        const effectiveNotes = (notes && notes.trim()) ? notes.trim() : originalNotes;
+        // User requested empty notes by default unless entered
+        const effectiveNotes = (notes && notes.trim()) ? notes.trim() : '';
 
         // Build order data with fallbacks
         const orderData = {
@@ -2760,10 +2761,10 @@ function getApp() {
           order_payment: orderData.orderFees,
           job_description: orderData.notes,
           auto_assignment: 0,
-          custom_field_template: 'Order editor test',
+          custom_field_template: 'Order_editor_test',
           meta_data: [
             {
-              label: 'CASH NEEDS TO BE COLLECTED',
+              label: 'CASH_NEEDS_TO_BE_COLLECTED',
               data: String(orderData.codAmount)
             }
           ]
@@ -2808,10 +2809,10 @@ function getApp() {
           order_payment: orderData.orderFees,
           job_description: orderData.notes,
           auto_assignment: 0,
-          custom_field_template: 'Order editor test',
+          custom_field_template: 'Order_editor_test',
           meta_data: [
             {
-              label: 'CASH NEEDS TO BE COLLECTED',
+              label: 'CASH_NEEDS_TO_BE_COLLECTED',
               data: String(orderData.codAmount)
             }
           ]
