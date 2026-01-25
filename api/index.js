@@ -2721,72 +2721,22 @@ function getApp() {
 
         const original = originalData.data || {};
 
-        // Attempt to fetch connected task from Supabase to fill missing details
-        let connectedTask = {};
-        let connectedTags = [];
-
-        if (isSupabaseConfigured && supabase) {
-          try {
-            // 1. Get relationship ID from current task in DB (if exists)
-            const { data: existingRecord } = await supabase
-              .from('tasks')
-              .select('raw_data')
-              .eq('job_id', orderId)
-              .single();
-
-            const relationshipId = existingRecord?.raw_data?.pickup_delivery_relationship;
-
-            if (relationshipId) {
-              // 2. Find the partner task
-              const { data: partnerRecord } = await supabase
-                .from('tasks')
-                .select('*')
-                .eq('raw_data->>pickup_delivery_relationship', relationshipId)
-                .neq('job_id', orderId)
-                .limit(1)
-                .single();
-
-              if (partnerRecord) {
-                connectedTask = partnerRecord;
-                connectedTags = partnerRecord.tags || [];
-                console.log('📋 Found connected task in DB:', connectedTask.job_id);
-              }
-            }
-          } catch (connErr) {
-            console.error('Error fetching connected task:', connErr.message);
-          }
-        }
-
         // Use original notes if new notes not provided
         const originalNotes = original.customer_comments || original.job_description || '';
         // User requested empty notes by default unless entered
         const effectiveNotes = (notes && notes.trim()) ? notes.trim() : '';
 
-        // Resolve Vendor ID: Input > Tookan Current > Connected DB > Current DB (via lookup if needed, but connected covers it)
-        const resolvedVendorId = original.customer_id || original.vendor_id || connectedTask.vendor_id || null;
-
-        // Resolve Customer Name: Input > Tookan Current > Connected DB > Default
-        const resolvedCustomerName = customerName || original.customer_username || original.customer_name || original.job_pickup_name || connectedTask.customer_name || 'Customer';
-
-        // Resolve Tags: Tookan Current > Connected DB
-        let mergedTags = normalizeTags(original.tags);
-        if (mergedTags.length === 0 && connectedTags.length > 0) {
-          mergedTags = connectedTags;
-        }
-
         // Build order data with fallbacks
         const orderData = {
-          customerName: resolvedCustomerName,
-          customerPhone: customerPhone || original.customer_phone || original.job_pickup_phone || connectedTask.customer_phone || '+97300000000',
-          customerEmail: customerEmail || original.customer_email || original.job_pickup_email || connectedTask.customer_email || '',
-          pickupAddress: pickupAddress || original.job_pickup_address || original.pickup_address || connectedTask.pickup_address || '',
-          deliveryAddress: deliveryAddress || original.customer_address || original.job_address || original.delivery_address || connectedTask.delivery_address || '',
+          customerName: customerName || original.customer_username || original.customer_name || 'Customer',
+          customerPhone: customerPhone || original.customer_phone || '+97300000000',
+          customerEmail: customerEmail || original.customer_email || '',
+          pickupAddress: pickupAddress || original.job_pickup_address || original.pickup_address || '',
+          deliveryAddress: deliveryAddress || original.customer_address || original.job_address || original.delivery_address || '',
           codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0, // Default to 0 for reorder
           orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(original.order_payment) || 0),
           assignedDriver: assignedDriver !== undefined ? assignedDriver : null, // Default unassigned
-          notes: effectiveNotes,
-          customerId: resolvedVendorId,
-          tags: mergedTags
+          notes: effectiveNotes
         };
 
         // Task times
@@ -2916,8 +2866,8 @@ function getApp() {
                 job_hash: pickupResponseData.job_hash || null,
                 job_token: pickupResponseData.job_token || null,
                 tracking_link: pickupResponseData.tracking_link || null,
-                vendor_id: pickupResponseData.customer_id || orderData.customerId || null,
-                tags: orderData.tags || [],
+                vendor_id: pickupResponseData.customer_id || original.customer_id || null,
+                tags: normalizeTags(original.tags),
                 raw_data: { ...pickupPayload, ...pickupResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });
               console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
@@ -2944,8 +2894,8 @@ function getApp() {
                 job_hash: deliveryResponseData.job_hash || null,
                 job_token: deliveryResponseData.job_token || null,
                 tracking_link: deliveryResponseData.tracking_link || null,
-                vendor_id: deliveryResponseData.customer_id || orderData.customerId || null,
-                tags: orderData.tags || [],
+                vendor_id: deliveryResponseData.customer_id || original.customer_id || null,
+                tags: normalizeTags(original.tags),
                 raw_data: { ...deliveryPayload, ...deliveryResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });
               console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);
