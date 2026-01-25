@@ -1704,6 +1704,42 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
 
       console.log('📋 Tookan task data received:', JSON.stringify(currentTask, null, 2));
 
+      // Attempt to fetch connected task from Supabase to fill missing details
+      let connectedTask = {};
+      let connectedTags = [];
+
+      if (isConfigured()) {
+        try {
+          // 1. Get relationship ID from current task in DB (if exists)
+          const { data: existingRecord } = await supabase
+            .from('tasks')
+            .select('raw_data')
+            .eq('job_id', orderId)
+            .single();
+
+          const relationshipId = existingRecord?.raw_data?.pickup_delivery_relationship;
+
+          if (relationshipId) {
+            // 2. Find the partner task
+            const { data: partnerRecord } = await supabase
+              .from('tasks')
+              .select('*')
+              .eq('raw_data->>pickup_delivery_relationship', relationshipId)
+              .neq('job_id', orderId)
+              .limit(1)
+              .single();
+
+            if (partnerRecord) {
+              connectedTask = partnerRecord;
+              connectedTags = partnerRecord.tags || [];
+              console.log('📋 Found connected task in DB:', connectedTask.job_id);
+            }
+          }
+        } catch (connErr) {
+          console.error('Error fetching connected task:', connErr.message);
+        }
+      }
+
       // Use fetched data if not provided
       // Tookan uses different field names, so we need to check multiple possibilities
       // For notes: only use provided notes if it has actual content, otherwise use original
@@ -1711,17 +1747,29 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       // User requested empty notes by default unless entered
       const effectiveNotes = (notes && notes.trim()) ? notes.trim() : '';
 
+      // Resolve Vendor ID: Input > Tookan Current > Connected DB > Current DB (via lookup if needed, but connected covers it)
+      const resolvedVendorId = currentTask.customer_id || currentTask.vendor_id || connectedTask.vendor_id || null;
+
+      // Resolve Customer Name: Input > Tookan Current > Connected DB > Default
+      const resolvedCustomerName = customerName || currentTask.customer_username || currentTask.customer_name || currentTask.job_pickup_name || connectedTask.customer_name || 'Customer';
+
+      // Resolve Tags: Tookan Current > Connected DB
+      // Note: currentTask.tags might be string or array
+      let mergedTags = currentTask.tags || connectedTags;
+      // Ensure specific relevant tags from connected task are preserved if current has none?
+
       orderData = {
-        customerName: customerName || currentTask.customer_username || currentTask.customer_name || currentTask.job_pickup_name || 'Customer',
-        customerPhone: customerPhone || currentTask.customer_phone || currentTask.job_pickup_phone || '+97300000000',
-        customerEmail: customerEmail || currentTask.customer_email || currentTask.job_pickup_email || '',
-        pickupAddress: pickupAddress || currentTask.job_pickup_address || currentTask.pickup_address || '',
-        deliveryAddress: deliveryAddress || currentTask.customer_address || currentTask.job_address || currentTask.delivery_address || '',
+        customerName: resolvedCustomerName,
+        customerPhone: customerPhone || currentTask.customer_phone || currentTask.job_pickup_phone || connectedTask.customer_phone || '+97300000000',
+        customerEmail: customerEmail || currentTask.customer_email || currentTask.job_pickup_email || connectedTask.customer_email || '',
+        pickupAddress: pickupAddress || currentTask.job_pickup_address || currentTask.pickup_address || connectedTask.pickup_address || '',
+        deliveryAddress: deliveryAddress || currentTask.customer_address || currentTask.job_address || currentTask.delivery_address || connectedTask.delivery_address || '',
         codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0, // Default to 0 for reorder
         orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(currentTask.order_payment) || 0),
         assignedDriver: assignedDriver !== undefined ? assignedDriver : null, // Default unassigned
         notes: effectiveNotes,
-        customerId: currentTask.customer_id || currentTask.vendor_id
+        customerId: resolvedVendorId,
+        tags: mergedTags
       };
 
       console.log('📋 Merged order data:', JSON.stringify(orderData, null, 2));
