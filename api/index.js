@@ -2721,6 +2721,40 @@ function getApp() {
 
         const original = originalData.data || {};
 
+        // Fetch connected tasks if relationship exists
+        let originalPickup = original;
+        let originalDelivery = original;
+
+        if (original.pickup_delivery_relationship) {
+          try {
+            const relatedRes = await fetch('https://api.tookanapp.com/v2/get_related_tasks', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                api_key: apiKey,
+                pickup_delivery_relationship: original.pickup_delivery_relationship
+              })
+            });
+            const relatedData = await relatedRes.json();
+            if (relatedData.status === 200 && Array.isArray(relatedData.data)) {
+              // Heuristic to identify Pickup vs Delivery
+              // Usually Pickup task has job_type=0 or has_pickup=1 (and has_delivery=0)
+              // Delivery task has job_type=1 or has_pickup=0 (and has_delivery=1)
+              const foundPickup = relatedData.data.find(t => t.job_type === 0 || (t.has_pickup === 1 && t.has_delivery === 0));
+              const foundDelivery = relatedData.data.find(t => t.job_type === 1 || (t.has_pickup === 0 && t.has_delivery === 1));
+
+              if (foundPickup) originalPickup = foundPickup;
+              if (foundDelivery) originalDelivery = foundDelivery;
+              console.log('Fetched related tasks:', {
+                pickupId: foundPickup?.job_id,
+                deliveryId: foundDelivery?.job_id
+              });
+            }
+          } catch (err) {
+            console.error('Failed to fetch related tasks:', err.message);
+          }
+        }
+
         // Use original notes if new notes not provided
         const originalNotes = original.customer_comments || original.job_description || '';
         // User requested empty notes by default unless entered
@@ -2866,8 +2900,8 @@ function getApp() {
                 job_hash: pickupResponseData.job_hash || null,
                 job_token: pickupResponseData.job_token || null,
                 tracking_link: pickupResponseData.tracking_link || null,
-                vendor_id: pickupResponseData.customer_id || original.customer_id || original.vendor_id || original.user_id || null,
-                tags: normalizeTags(original.tags),
+                vendor_id: pickupResponseData.customer_id || originalPickup.customer_id || originalPickup.vendor_id || originalPickup.user_id || null,
+                tags: normalizeTags(originalPickup.tags),
                 raw_data: { ...pickupPayload, ...pickupResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });
               console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
@@ -2894,8 +2928,8 @@ function getApp() {
                 job_hash: deliveryResponseData.job_hash || null,
                 job_token: deliveryResponseData.job_token || null,
                 tracking_link: deliveryResponseData.tracking_link || null,
-                vendor_id: deliveryResponseData.customer_id || original.customer_id || original.vendor_id || original.user_id || null,
-                tags: normalizeTags(original.tags),
+                vendor_id: deliveryResponseData.customer_id || originalDelivery.customer_id || originalDelivery.vendor_id || originalDelivery.user_id || null,
+                tags: normalizeTags(originalDelivery.tags),
                 raw_data: { ...deliveryPayload, ...deliveryResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });
               console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);

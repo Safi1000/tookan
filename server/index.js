@@ -1664,6 +1664,8 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
     let orderData = {
       customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, codAmount, orderFees, assignedDriver, notes
     };
+    let originalPickup = {};
+    let originalDelivery = {};
 
     // Check if we need to fetch order data
     if (!customerName || !customerPhone || !pickupAddress || !deliveryAddress) {
@@ -1701,6 +1703,32 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       }
 
       const currentTask = getData.data || {};
+      originalPickup = currentTask;
+      originalDelivery = currentTask;
+
+      // Fetch connected tasks if relationship exists
+      if (currentTask.pickup_delivery_relationship) {
+        try {
+          const relatedRes = await fetch('https://api.tookanapp.com/v2/get_related_tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              api_key: apiKey,
+              pickup_delivery_relationship: currentTask.pickup_delivery_relationship
+            })
+          });
+          const relatedData = await relatedRes.json();
+          if (relatedData.status === 200 && Array.isArray(relatedData.data)) {
+            const foundPickup = relatedData.data.find(t => t.job_type === 0 || (t.has_pickup === 1 && t.has_delivery === 0));
+            const foundDelivery = relatedData.data.find(t => t.job_type === 1 || (t.has_pickup === 0 && t.has_delivery === 1));
+
+            if (foundPickup) originalPickup = foundPickup;
+            if (foundDelivery) originalDelivery = foundDelivery;
+          }
+        } catch (err) {
+          console.error('Failed to fetch related tasks:', err.message);
+        }
+      }
 
       console.log('📋 Tookan task data received:', JSON.stringify(currentTask, null, 2));
 
@@ -1870,7 +1898,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
             job_hash: pickupResponseData.job_hash || null,
             job_token: pickupResponseData.job_token || null,
             tracking_link: pickupResponseData.tracking_link || null,
-            vendor_id: pickupResponseData.customer_id || orderData.customerId || null,
+            vendor_id: pickupResponseData.customer_id || originalPickup.customer_id || originalPickup.vendor_id || originalPickup.user_id || null,
             raw_data: { ...pickupPayload, ...pickupResponseData, job_status: 0 }
           });
           console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
@@ -1897,7 +1925,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
             job_hash: deliveryResponseData.job_hash || null,
             job_token: deliveryResponseData.job_token || null,
             tracking_link: deliveryResponseData.tracking_link || null,
-            vendor_id: deliveryResponseData.customer_id || orderData.customerId || null,
+            vendor_id: deliveryResponseData.customer_id || originalDelivery.customer_id || originalDelivery.vendor_id || originalDelivery.user_id || null,
             raw_data: { ...deliveryPayload, ...deliveryResponseData, job_status: 0 }
           });
           console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);
