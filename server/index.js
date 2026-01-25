@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
 require('dotenv').config();
@@ -43,7 +43,7 @@ const getApiKey = () => {
 const getWebhookSecret = () => {
   const secret = process.env.TOOKAN_WEBHOOK_SECRET;
   if (!secret) {
-    console.warn('⚠️  TOOKAN_WEBHOOK_SECRET not set. Webhook requests will fail auth.');
+    console.warn('âš ï¸  TOOKAN_WEBHOOK_SECRET not set. Webhook requests will fail auth.');
   }
   return secret;
 };
@@ -65,7 +65,7 @@ app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermissio
     console.log('  transaction_type:', transaction_type);
 
     if (!fleet_id || !amount || !description) {
-      console.log('❌ Validation failed: Missing required fields');
+      console.log('âŒ Validation failed: Missing required fields');
       return res.status(400).json({
         status: 'error',
         message: 'Missing required fields: fleet_id, amount, description'
@@ -119,7 +119,7 @@ app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermissio
       data = JSON.parse(textResponse);
       console.log('Tookan API parsed response:', JSON.stringify(data, null, 2));
     } catch (parseError) {
-      console.log('❌ Failed to parse Tookan API response as JSON');
+      console.log('âŒ Failed to parse Tookan API response as JSON');
       return res.status(500).json({
         status: 'error',
         message: `API returned non-JSON response: ${textResponse.substring(0, 200)}`,
@@ -128,7 +128,7 @@ app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermissio
     }
 
     if (!response.ok || data.status !== 200) {
-      console.log('❌ Tookan API returned error');
+      console.log('âŒ Tookan API returned error');
       return res.status(response.status || 500).json({
         status: 'error',
         message: data.message || 'Failed to process driver wallet transaction',
@@ -136,7 +136,7 @@ app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermissio
       });
     }
 
-    console.log('✅ Transaction successful');
+    console.log('âœ… Transaction successful');
     console.log('=== END REQUEST ===\n');
 
     // Audit log
@@ -157,7 +157,7 @@ app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermissio
       data
     });
   } catch (error) {
-    console.error('❌ Driver wallet transaction error:', error);
+    console.error('âŒ Driver wallet transaction error:', error);
     console.error('Error stack:', error.stack);
     console.log('=== END REQUEST (ERROR) ===\n');
     res.status(500).json({
@@ -424,7 +424,7 @@ app.post('/api/cod/queue/add', authenticate, requirePermission('add_cod'), async
       notes
     });
 
-    console.log('✅ COD added to queue:', codEntry.codId);
+    console.log('âœ… COD added to queue:', codEntry.codId);
     console.log('=== END REQUEST ===\n');
 
     res.json({
@@ -433,7 +433,7 @@ app.post('/api/cod/queue/add', authenticate, requirePermission('add_cod'), async
       data: codEntry
     });
   } catch (error) {
-    console.error('❌ Add COD to queue error:', error);
+    console.error('âŒ Add COD to queue error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to add COD to queue',
@@ -460,7 +460,7 @@ app.get('/api/cod/queue/:driverId', authenticate, async (req, res) => {
       data: queue
     });
   } catch (error) {
-    console.error('❌ Get COD queue error:', error);
+    console.error('âŒ Get COD queue error:', error);
     console.log('=== END REQUEST (ERROR) ===\n');
     res.status(500).json({
       status: 'error',
@@ -502,7 +502,7 @@ app.get('/api/cod/queue/pending/:driverId', authenticate, async (req, res) => {
       data: oldestPending
     });
   } catch (error) {
-    console.error('❌ Get pending COD error:', error);
+    console.error('âŒ Get pending COD error:', error);
     console.log('=== END REQUEST (ERROR) ===\n');
     res.status(500).json({
       status: 'error',
@@ -553,7 +553,7 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
       });
     }
 
-    console.log('✅ Found pending COD in queue:');
+    console.log('âœ… Found pending COD in queue:');
     console.log('  COD ID:', pendingCOD.codId);
     console.log('  Order ID:', pendingCOD.orderId || 'N/A');
     console.log('  COD Amount:', codAmount);
@@ -561,7 +561,7 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
     console.log('  Merchant Vendor ID:', pendingCOD.merchantVendorId);
     console.log('  Date:', pendingCOD.date);
 
-    console.log('\n🔄 Processing settlement...');
+    console.log('\nðŸ”„ Processing settlement...');
 
     // Step C: Atomic settlement transaction
     // 1. Credit driver wallet (+COD amount)
@@ -583,7 +583,7 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
     const driverWalletResult = await driverWalletResponse.json();
 
     if (driverWalletResult.status !== 'success') {
-      console.error('❌ Driver wallet credit failed:', driverWalletResult.message);
+      console.error('âŒ Driver wallet credit failed:', driverWalletResult.message);
       console.log('Driver wallet response:', JSON.stringify(driverWalletResult, null, 2));
       return res.status(500).json({
         status: 'error',
@@ -592,7 +592,7 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
       });
     }
 
-    console.log('✅ Driver wallet credited successfully');
+    console.log('âœ… Driver wallet credited successfully');
     console.log('  Driver wallet response status:', driverWalletResult.status);
 
     // 2. Credit merchant wallet (+COD amount)
@@ -612,7 +612,7 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
     const merchantWalletResult = await merchantWalletResponse.json();
 
     if (merchantWalletResult.status !== 'success') {
-      console.error('❌ Merchant wallet credit failed:', merchantWalletResult.message);
+      console.error('âŒ Merchant wallet credit failed:', merchantWalletResult.message);
       console.log('Merchant wallet response:', JSON.stringify(merchantWalletResult, null, 2));
       // Note: In production, you might want to rollback driver wallet credit here
       return res.status(500).json({
@@ -622,7 +622,7 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
       });
     }
 
-    console.log('✅ Merchant wallet credited successfully');
+    console.log('âœ… Merchant wallet credited successfully');
     console.log('  Merchant wallet response status:', merchantWalletResult.status);
 
     // 3. Mark COD as COMPLETED
@@ -630,7 +630,7 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
     const settledCOD = await codQueue.settleCOD(driverId, pendingCOD.codId, note);
 
     if (!settledCOD) {
-      console.error('❌ Failed to update COD status');
+      console.error('âŒ Failed to update COD status');
       return res.status(500).json({
         status: 'error',
         message: 'Failed to update COD status',
@@ -638,7 +638,7 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
       });
     }
 
-    console.log('✅ COD marked as COMPLETED');
+    console.log('âœ… COD marked as COMPLETED');
 
     // Audit log
     await auditLogger.createAuditLog(
@@ -662,7 +662,7 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
       }
     });
   } catch (error) {
-    console.error('❌ Settle COD error:', error);
+    console.error('âŒ Settle COD error:', error);
     console.error('Error stack:', error.stack);
     console.log('=== END REQUEST (ERROR) ===\n');
     res.status(500).json({
@@ -700,10 +700,10 @@ app.get('/api/reports/daily', authenticate, async (req, res) => {
       res.send(csv);
     }
 
-    console.log('✅ Daily report exported successfully');
+    console.log('âœ… Daily report exported successfully');
     console.log('=== END REQUEST ===\n');
   } catch (error) {
-    console.error('❌ Daily report export error:', error);
+    console.error('âŒ Daily report export error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to export daily report'
@@ -742,10 +742,10 @@ app.get('/api/reports/monthly', authenticate, async (req, res) => {
       res.send(csv);
     }
 
-    console.log('✅ Monthly report exported successfully');
+    console.log('âœ… Monthly report exported successfully');
     console.log('=== END REQUEST ===\n');
   } catch (error) {
-    console.error('❌ Monthly report export error:', error);
+    console.error('âŒ Monthly report export error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to export monthly report'
@@ -778,19 +778,19 @@ app.post('/api/reports/orders/export', authenticate, requirePermission('export_r
             search: filters?.orderIdSearch || filters?.unifiedCustomerSearch || filters?.unifiedMerchantSearch || filters?.unifiedDriverSearch || undefined
           };
           tasks = await taskModel.getAllTasks(dbFilters);
-          console.log(`📦 Found ${tasks.length} tasks from database for export`);
+          console.log(`ðŸ“¦ Found ${tasks.length} tasks from database for export`);
         } catch (error) {
           console.warn('Database fetch failed, falling back to file storage:', error.message);
           // Fallback to file-based storage
           const tasksData = taskStorage.getAllTasks();
           tasks = Object.values(tasksData.tasks || {});
-          console.log(`📦 Found ${tasks.length} tasks from file cache for export`);
+          console.log(`ðŸ“¦ Found ${tasks.length} tasks from file cache for export`);
         }
       } else {
         // Fallback to file-based storage
         const tasksData = taskStorage.getAllTasks();
         tasks = Object.values(tasksData.tasks || {});
-        console.log(`📦 Found ${tasks.length} tasks from file cache for export`);
+        console.log(`ðŸ“¦ Found ${tasks.length} tasks from file cache for export`);
       }
 
       // Transform tasks to export format
@@ -862,9 +862,9 @@ app.post('/api/reports/orders/export', authenticate, requirePermission('export_r
         }
       }
 
-      console.log(`✅ Exported ${ordersData.length} orders from cache`);
+      console.log(`âœ… Exported ${ordersData.length} orders from cache`);
     } catch (cacheError) {
-      console.warn('⚠️  Cache export failed, using mock data:', cacheError);
+      console.warn('âš ï¸  Cache export failed, using mock data:', cacheError);
       // Fallback to mock data if cache fails
       ordersData = [
         {
@@ -967,10 +967,10 @@ app.post('/api/reports/orders/export', authenticate, requirePermission('export_r
       res.send(csv);
     }
 
-    console.log('✅ Orders export completed successfully');
+    console.log('âœ… Orders export completed successfully');
     console.log('=== END REQUEST ===\n');
   } catch (error) {
-    console.error('❌ Orders export error:', error);
+    console.error('âŒ Orders export error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to export orders'
@@ -1025,10 +1025,10 @@ app.post('/api/logs/export', authenticate, requirePermission('export_reports'), 
       res.send(csv);
     }
 
-    console.log('✅ System logs export completed successfully');
+    console.log('âœ… System logs export completed successfully');
     console.log('=== END REQUEST ===\n');
   } catch (error) {
-    console.error('❌ System logs export error:', error);
+    console.error('âŒ System logs export error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to export system logs'
@@ -1077,8 +1077,8 @@ app.post('/api/tookan/fleet/add', authenticate, requireRole('admin'), async (req
       timezone: '+0300' // Bahrain timezone
     };
 
-    console.log('⚠️  Attempting to call Tookan API: https://api.tookanapp.com/v2/fleet/add');
-    console.log('⚠️  Note: This endpoint may not exist in Tookan API');
+    console.log('âš ï¸  Attempting to call Tookan API: https://api.tookanapp.com/v2/fleet/add');
+    console.log('âš ï¸  Note: This endpoint may not exist in Tookan API');
     console.log('Tookan API payload:', JSON.stringify({ ...payload, fleet_password: '***HIDDEN***' }, null, 2));
 
     const response = await fetch('https://api.tookanapp.com/v2/fleet/add', {
@@ -1104,7 +1104,7 @@ app.post('/api/tookan/fleet/add', authenticate, requireRole('admin'), async (req
 
     // Check if endpoint exists (404 or 405 means endpoint doesn't exist)
     if (response.status === 404 || response.status === 405) {
-      console.log('⚠️  Fleet/add endpoint not found in Tookan API');
+      console.log('âš ï¸  Fleet/add endpoint not found in Tookan API');
       console.log('=== END REQUEST (ENDPOINT NOT AVAILABLE) ===\n');
       return res.status(501).json({
         status: 'error',
@@ -1128,7 +1128,7 @@ app.post('/api/tookan/fleet/add', authenticate, requireRole('admin'), async (req
 
     const fleetId = data.data?.fleet_id || data.data?.data?.fleet_id || data.data?.id;
 
-    console.log('✅ Fleet/Agent added successfully:', fleetId);
+    console.log('âœ… Fleet/Agent added successfully:', fleetId);
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -1144,7 +1144,7 @@ app.post('/api/tookan/fleet/add', authenticate, requireRole('admin'), async (req
       }
     });
   } catch (error) {
-    console.error('❌ Add fleet error:', error);
+    console.error('âŒ Add fleet error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -1215,7 +1215,7 @@ app.post('/api/tookan/customer/add', authenticate, requireRole('admin'), async (
     }
 
     if (response.ok && responseData.status === 200) {
-      console.log('✅ Customer added successfully');
+      console.log('âœ… Customer added successfully');
       console.log('=== END REQUEST (SUCCESS) ===\n');
       res.json({
         status: 'success',
@@ -1223,7 +1223,7 @@ app.post('/api/tookan/customer/add', authenticate, requireRole('admin'), async (
         data: responseData.data || responseData
       });
     } else {
-      console.error('❌ Tookan API error:', responseData.message || responseData);
+      console.error('âŒ Tookan API error:', responseData.message || responseData);
       console.log('=== END REQUEST (ERROR) ===\n');
       res.status(response.status || 500).json({
         status: 'error',
@@ -1232,7 +1232,7 @@ app.post('/api/tookan/customer/add', authenticate, requireRole('admin'), async (
       });
     }
   } catch (error) {
-    console.error('❌ Add customer error:', error);
+    console.error('âŒ Add customer error:', error);
     console.error('Error stack:', error.stack);
     console.log('=== END REQUEST (ERROR) ===\n');
     res.status(500).json({
@@ -1341,7 +1341,7 @@ app.get('/api/tookan/order/:orderId', authenticate, async (req, res) => {
       rawData: taskData // Include raw data for reference
     };
 
-    console.log('✅ Order fetched successfully:', orderId);
+    console.log('âœ… Order fetched successfully:', orderId);
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -1352,7 +1352,7 @@ app.get('/api/tookan/order/:orderId', authenticate, async (req, res) => {
       data: orderData
     });
   } catch (error) {
-    console.error('❌ Get order error:', error);
+    console.error('âŒ Get order error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -1434,7 +1434,7 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
     // Warn but allow editing successful orders (status 6, 7, 8)
     const successfulStatuses = [2]; // Tookan status 2 = Successful/Completed
     if (successfulStatuses.includes(parseInt(currentStatus))) {
-      console.log('⚠️  Warning: Attempting to edit successful order. Tookan API may reject this.');
+      console.log('âš ï¸  Warning: Attempting to edit successful order. Tookan API may reject this.');
     }
 
     // Build update payload using custom_field_template and meta_data
@@ -1513,7 +1513,7 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
       });
     }
 
-    console.log('✅ Tookan API update successful');
+    console.log('âœ… Tookan API update successful');
 
     // Update local Supabase database
     let dbUpdated = false;
@@ -1527,10 +1527,10 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
         if (Object.keys(updateData).length > 0) {
           await taskModel.updateTask(numericOrderId, updateData);
           dbUpdated = true;
-          console.log('✅ Database updated');
+          console.log('âœ… Database updated');
         }
       } catch (dbError) {
-        console.warn('⚠️ Database update failed:', dbError.message);
+        console.warn('âš ï¸ Database update failed:', dbError.message);
       }
     }
 
@@ -1564,7 +1564,7 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
         { codAmount, orderFees, assignedDriver, notes }
       );
 
-      console.log('✅ Order updated successfully (could not fetch updated data)');
+      console.log('âœ… Order updated successfully (could not fetch updated data)');
       console.log('=== END REQUEST (SUCCESS) ===\n');
       return res.json({
         status: 'success',
@@ -1617,7 +1617,7 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
       newValue
     );
 
-    console.log('✅ Order updated successfully:', orderId);
+    console.log('âœ… Order updated successfully:', orderId);
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -1628,7 +1628,7 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
       data: updatedOrderData
     });
   } catch (error) {
-    console.error('❌ Update order error:', error);
+    console.error('âŒ Update order error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -1667,7 +1667,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
 
     // Check if we need to fetch order data
     if (!customerName || !customerPhone || !pickupAddress || !deliveryAddress) {
-      console.log('📋 Fetching order data from Tookan...');
+      console.log('ðŸ“‹ Fetching order data from Tookan...');
 
       const getTaskPayload = {
         api_key: apiKey,
@@ -1704,7 +1704,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
 
       const currentTask = getData.data || {};
 
-      console.log('📋 Tookan task data received:', JSON.stringify(currentTask, null, 2));
+      console.log('ðŸ“‹ Tookan task data received:', JSON.stringify(currentTask, null, 2));
 
       // Use fetched data if not provided
       // Tookan uses different field names, so we need to check multiple possibilities
@@ -1724,7 +1724,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
         notes: effectiveNotes
       };
 
-      console.log('📋 Merged order data:', JSON.stringify(orderData, null, 2));
+      console.log('ðŸ“‹ Merged order data:', JSON.stringify(orderData, null, 2));
     }
 
     // Validate required fields - only addresses are truly required
@@ -1775,8 +1775,8 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
     let createPayload;
 
     if (isPickupTask) {
-      // Original was PICKUP task → Create new PICKUP task
-      console.log('Original was pickup task → Creating PICKUP re-order');
+      // Original was PICKUP task â†’ Create new PICKUP task
+      console.log('Original was pickup task â†’ Creating PICKUP re-order');
       console.log(`  Pickup address: ${originalPickupAddr}`);
 
       createPayload = {
@@ -1796,8 +1796,8 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
         auto_assignment: 0,
       };
     } else {
-      // Original was DELIVERY task → Create new DELIVERY task
-      console.log('Original was delivery task → Creating DELIVERY re-order');
+      // Original was DELIVERY task â†’ Create new DELIVERY task
+      console.log('Original was delivery task â†’ Creating DELIVERY re-order');
       console.log(`  Delivery address: ${originalDeliveryAddr}`);
 
       createPayload = {
@@ -1863,7 +1863,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
 
     const newOrderId = data.data?.job_id || data.data?.jobId || null;
 
-    console.log('✅ Re-order created successfully:', newOrderId);
+    console.log('âœ… Re-order created successfully:', newOrderId);
 
     // Save the new task to Supabase for caching
     if (newOrderId && isConfigured()) {
@@ -1888,9 +1888,9 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
         };
 
         await taskModel.upsertTask(newOrderId, newTaskRecord);
-        console.log('✅ New re-order task saved to Supabase:', newOrderId);
+        console.log('âœ… New re-order task saved to Supabase:', newOrderId);
       } catch (dbError) {
-        console.error('⚠️ Failed to save re-order to Supabase (task still created in Tookan):', dbError.message);
+        console.error('âš ï¸ Failed to save re-order to Supabase (task still created in Tookan):', dbError.message);
       }
     }
 
@@ -1904,7 +1904,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       data: { newOrderId: newOrderId, originalOrderId: orderId }
     });
   } catch (error) {
-    console.error('❌ Re-order error:', error);
+    console.error('âŒ Re-order error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -1948,7 +1948,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
 
     // Only fetch from Tookan if addresses not provided
     if (!orderData.pickupAddress || !orderData.deliveryAddress) {
-      console.log('📋 Fetching order data from Tookan for return...');
+      console.log('ðŸ“‹ Fetching order data from Tookan for return...');
       const getTaskPayload = {
         api_key: apiKey,
         job_id: orderId
@@ -2015,7 +2015,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
 
     // Return Order is ONLY available for delivery tasks
     if (isPickupTask || !originalDeliveryAddr) {
-      console.log('❌ Return Order not available: This is a pickup task (pickup and delivery addresses are the same)');
+      console.log('âŒ Return Order not available: This is a pickup task (pickup and delivery addresses are the same)');
       return res.status(400).json({
         status: 'error',
         message: 'Return Order is not available for pickup tasks. Pickup tasks already involve collecting items from the customer location - there is nothing to return. Return Order is only available for delivery tasks where items were delivered to a customer and need to be picked up back.',
@@ -2023,7 +2023,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
       });
     }
 
-    console.log('✅ Original task is a delivery task → Creating PICKUP + DELIVERY return tasks');
+    console.log('âœ… Original task is a delivery task â†’ Creating PICKUP + DELIVERY return tasks');
     console.log(`  Original pickup (merchant): ${originalPickupAddr}`);
     console.log(`  Original delivery (customer): ${originalDeliveryAddr}`);
     console.log(`  Return PICKUP: From customer location: ${originalDeliveryAddr}`);
@@ -2106,7 +2106,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
     }
 
     const pickupOrderId = pickupData.data?.job_id || pickupData.data?.jobId || null;
-    console.log('✅ Pickup task created:', pickupOrderId);
+    console.log('âœ… Pickup task created:', pickupOrderId);
 
     // ========== TASK 2: DELIVERY to merchant ==========
     // DELIVERY tasks only need customer_address
@@ -2169,8 +2169,8 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
 
     const deliveryOrderId = data.data?.job_id || data.data?.jobId || null;
 
-    console.log('✅ Delivery task created:', deliveryOrderId);
-    console.log('✅ Return order complete - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
+    console.log('âœ… Delivery task created:', deliveryOrderId);
+    console.log('âœ… Return order complete - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
 
     // Save BOTH return tasks to Supabase for caching
     if (isConfigured()) {
@@ -2196,7 +2196,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
             last_synced_at: new Date().toISOString()
           };
           await taskModel.upsertTask(pickupOrderId, pickupTaskRecord);
-          console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
+          console.log('âœ… Pickup task saved to Supabase:', pickupOrderId);
         }
 
         // Save DELIVERY task with both addresses
@@ -2220,10 +2220,10 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
             last_synced_at: new Date().toISOString()
           };
           await taskModel.upsertTask(deliveryOrderId, deliveryTaskRecord);
-          console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);
+          console.log('âœ… Delivery task saved to Supabase:', deliveryOrderId);
         }
       } catch (dbError) {
-        console.error('⚠️ Failed to save return tasks to Supabase:', dbError.message);
+        console.error('âš ï¸ Failed to save return tasks to Supabase:', dbError.message);
       }
     }
 
@@ -2242,7 +2242,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
       }
     });
   } catch (error) {
-    console.error('❌ Return order error:', error);
+    console.error('âŒ Return order error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -2339,7 +2339,7 @@ app.get('/api/tookan/order/:orderId/conflicts', authenticate, async (req, res) =
       }
     });
   } catch (error) {
-    console.error('❌ Conflict check error:', error);
+    console.error('âŒ Conflict check error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -2375,9 +2375,9 @@ app.post('/api/tookan/webhook', async (req, res) => {
           payload: webhookData
         });
         eventId = event.id;
-        console.log('✅ Webhook event persisted to database, ID:', eventId);
+        console.log('âœ… Webhook event persisted to database, ID:', eventId);
       } catch (persistError) {
-        console.error('⚠️  Failed to persist webhook event:', persistError.message);
+        console.error('âš ï¸  Failed to persist webhook event:', persistError.message);
         // Continue processing even if persistence fails
       }
     }
@@ -2390,7 +2390,7 @@ app.post('/api/tookan/webhook', async (req, res) => {
     // Common events: task_created, task_updated, task_completed, task_assigned, etc.
     if (eventType.includes('task') || eventType.includes('order') || eventType.includes('job') || orderId !== 'unknown') {
       console.log('Processing order-related webhook event');
-      console.log('⏳ Waiting 10 seconds for Tookan data propagation...');
+      console.log('â³ Waiting 10 seconds for Tookan data propagation...');
       await new Promise(resolve => setTimeout(resolve, 10000));
 
       let taskDataToUpdate = webhookData;
@@ -2398,7 +2398,7 @@ app.post('/api/tookan/webhook', async (req, res) => {
       // Fetch fresh task details from Tookan API
       if (orderId && orderId !== 'unknown') {
         try {
-          console.log(`🔄 Fetching fresh details for Job ID: ${orderId}`);
+          console.log(`ðŸ”„ Fetching fresh details for Job ID: ${orderId}`);
           const apiKey = getApiKey();
           const getTaskPayload = {
             api_key: apiKey,
@@ -2414,7 +2414,7 @@ app.post('/api/tookan/webhook', async (req, res) => {
           if (getResponse.ok) {
             const getData = await getResponse.json();
             if (getData.status === 200 && getData.data) {
-              console.log('✅ Fresh task details fetched successfully');
+              console.log('âœ… Fresh task details fetched successfully');
 
               // Merge fresh data with webhook data, prioritizing fresh data
               // We keep webhook event info (type, etc.) but overwrite task properties
@@ -2438,17 +2438,17 @@ app.post('/api/tookan/webhook', async (req, res) => {
                 custom_fields: { ...(webhookData.custom_fields || {}), ...(freshTask.custom_fields || {}) }
               };
 
-              console.log('📅 Confirmed completed_datetime:', taskDataToUpdate.completed_datetime);
+              console.log('ðŸ“… Confirmed completed_datetime:', taskDataToUpdate.completed_datetime);
             }
           }
         } catch (fetchError) {
-          console.error('⚠️ Failed to fetch fresh task details:', fetchError.message);
+          console.error('âš ï¸ Failed to fetch fresh task details:', fetchError.message);
           // Fallback to original webhook data
         }
 
         // Fetch COD amount from get_job_details with job_additional_info
         try {
-          console.log(`💰 Fetching COD amount for Job ID: ${orderId}`);
+          console.log(`ðŸ’° Fetching COD amount for Job ID: ${orderId}`);
           const apiKey = getApiKey();
 
           const codResponse = await fetch('https://api.tookanapp.com/v2/get_job_details', {
@@ -2479,7 +2479,7 @@ app.post('/api/tookan/webhook', async (req, res) => {
                   const codValue = parseFloat(codField.data);
                   if (!isNaN(codValue)) {
                     taskDataToUpdate.cod_amount = codValue;
-                    console.log('✅ COD amount found:', codValue);
+                    console.log('âœ… COD amount found:', codValue);
                   }
                 }
               }
@@ -2491,7 +2491,7 @@ app.post('/api/tookan/webhook', async (req, res) => {
             }
           }
         } catch (codFetchError) {
-          console.error('⚠️ Failed to fetch COD amount:', codFetchError.message);
+          console.error('âš ï¸ Failed to fetch COD amount:', codFetchError.message);
           // Continue without COD
         }
       }
@@ -2503,7 +2503,7 @@ app.post('/api/tookan/webhook', async (req, res) => {
         if (updatedTask) {
           processed = true;
           eventAction = 'task_updated';
-          console.log('✅ Task updated in local storage');
+          console.log('âœ… Task updated in local storage');
           console.log('  COD Amount:', updatedTask.cod_amount);
           console.log('  COD Collected:', updatedTask.cod_collected);
 
@@ -2512,7 +2512,7 @@ app.post('/api/tookan/webhook', async (req, res) => {
             try {
               await webhookEventsModel.markProcessed(eventId);
             } catch (markError) {
-              console.error('⚠️  Failed to mark event as processed:', markError.message);
+              console.error('âš ï¸  Failed to mark event as processed:', markError.message);
             }
           }
 
@@ -2520,17 +2520,17 @@ app.post('/api/tookan/webhook', async (req, res) => {
           // 1. Notify frontend if order is currently loaded (via WebSocket/SSE)
           // 2. Trigger conflict detection if needed
         } else {
-          console.log('⚠️  Could not update task (missing job_id)');
+          console.log('âš ï¸  Could not update task (missing job_id)');
           if (eventId && isConfigured()) {
             try {
               await webhookEventsModel.markProcessed(eventId);
             } catch (markError) {
-              console.error('⚠️  Failed to mark event as processed:', markError.message);
+              console.error('âš ï¸  Failed to mark event as processed:', markError.message);
             }
           }
         }
       } catch (storageError) {
-        console.error('❌ Error updating task storage:', storageError);
+        console.error('âŒ Error updating task storage:', storageError);
         processingError = storageError.message || 'Task storage update failed';
 
         // Mark event as failed
@@ -2538,7 +2538,7 @@ app.post('/api/tookan/webhook', async (req, res) => {
           try {
             await webhookEventsModel.markFailed(eventId, processingError);
           } catch (markError) {
-            console.error('⚠️  Failed to mark event as failed:', markError.message);
+            console.error('âš ï¸  Failed to mark event as failed:', markError.message);
           }
         }
         // Continue processing even if storage fails
@@ -2549,13 +2549,13 @@ app.post('/api/tookan/webhook', async (req, res) => {
         try {
           await webhookEventsModel.markProcessed(eventId);
         } catch (markError) {
-          console.error('⚠️  Failed to mark event as processed:', markError.message);
+          console.error('âš ï¸  Failed to mark event as processed:', markError.message);
         }
       }
     }
 
     // Always return 200 OK to acknowledge receipt (even if processing fails)
-    console.log(`✅ Webhook processed: ${eventAction}`);
+    console.log(`âœ… Webhook processed: ${eventAction}`);
     console.log('=== END WEBHOOK ===\n');
 
     res.status(200).json({
@@ -2571,7 +2571,7 @@ app.post('/api/tookan/webhook', async (req, res) => {
       note: processed ? 'Task data updated from webhook template fields.' : 'Webhook logged but no task update performed.'
     });
   } catch (error) {
-    console.error('❌ Webhook processing error:', error);
+    console.error('âŒ Webhook processing error:', error);
     console.error('Error stack:', error.stack);
 
     // Mark event as failed if we have an eventId
@@ -2579,7 +2579,7 @@ app.post('/api/tookan/webhook', async (req, res) => {
       try {
         await webhookEventsModel.markFailed(eventId, error.message || 'Webhook processing failed');
       } catch (markError) {
-        console.error('⚠️  Failed to mark event as failed:', markError.message);
+        console.error('âš ï¸  Failed to mark event as failed:', markError.message);
       }
     }
 
@@ -2780,7 +2780,7 @@ app.get('/api/tookan/task/:jobId', authenticate, async (req, res) => {
       data: task
     });
   } catch (error) {
-    console.error('❌ Get task error:', error);
+    console.error('âŒ Get task error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to get task',
@@ -2811,7 +2811,7 @@ app.get('/api/tookan/task/:jobId/history', authenticate, async (req, res) => {
       data: history
     });
   } catch (error) {
-    console.error('❌ Get task history error:', error);
+    console.error('âŒ Get task history error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to get task history',
@@ -2945,7 +2945,7 @@ app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_ord
         tookanData = JSON.parse(textResponse);
         console.log('Tookan API Parsed Response:', JSON.stringify(tookanData, null, 2));
       } catch (parseError) {
-        console.warn('⚠️  Tookan API returned non-JSON response, template field update may not be supported');
+        console.warn('âš ï¸  Tookan API returned non-JSON response, template field update may not be supported');
         console.warn('Parse Error:', parseError.message);
         console.warn('Raw Response:', textResponse);
         tookanData = { status: 0, message: 'Non-JSON response' };
@@ -2967,7 +2967,7 @@ app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_ord
       console.log('Is Job ID Error:', isJobIdError);
 
       if (isSuccess) {
-        console.log('✅ COD updated in Tookan successfully');
+        console.log('âœ… COD updated in Tookan successfully');
         res.json({
           status: 'success',
           message: 'COD updated successfully in both local storage and Tookan',
@@ -2978,7 +2978,7 @@ app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_ord
           }
         });
       } else {
-        console.warn('⚠️  Tookan API update failed or template fields not supported');
+        console.warn('âš ï¸  Tookan API update failed or template fields not supported');
         console.warn('Response Status:', response.status);
         console.warn('Response Message:', errorMessage);
         console.warn('Full Response:', JSON.stringify(tookanData, null, 2));
@@ -2995,13 +2995,13 @@ app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_ord
             tookan_http_status: response.status,
             tookan_api_status: tookanData.status,
             note: isJobIdError
-              ? '⚠️ job_id conversion may not be working correctly. Check server logs for details.'
+              ? 'âš ï¸ job_id conversion may not be working correctly. Check server logs for details.'
               : 'Template field updates may not be supported by Tookan API. Please update manually in Tookan dashboard if needed.'
           }
         });
       }
     } catch (tookanError) {
-      console.error('❌ Error updating Tookan:', tookanError);
+      console.error('âŒ Error updating Tookan:', tookanError);
       console.error('Error stack:', tookanError.stack);
       // Still return success since local storage was updated
       const errorMsg = tookanError.message || String(tookanError);
@@ -3023,7 +3023,7 @@ app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_ord
 
     console.log('=== END REQUEST ===\n');
   } catch (error) {
-    console.error('❌ Update COD error:', error);
+    console.error('âŒ Update COD error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to update COD',
@@ -3032,134 +3032,6 @@ app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_ord
   }
 });
 
-// PUT Update Order (COD, Notes, Fees) - Called by OrderEditorPanel
-app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
-  try {
-    console.log('\n=== UPDATE ORDER REQUEST ===');
-    const { orderId } = req.params;
-    const { codAmount, orderFees, notes } = req.body;
-    console.log('Order ID:', orderId);
-    console.log('Request body:', JSON.stringify(req.body, null, 2));
-
-    if (!orderId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Order ID is required',
-        data: {}
-      });
-    }
-
-    const apiKey = getApiKey();
-    const numericJobId = parseInt(orderId, 10);
-    if (isNaN(numericJobId)) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Invalid Order ID - must be a number',
-        data: {}
-      });
-    }
-
-    // Build the meta_data array for COD custom field
-    const metaData = [];
-    if (codAmount !== undefined) {
-      metaData.push({
-        label: 'CASH_NEEDS_TO_BE_COLLECTED',
-        data: String(codAmount)
-      });
-    }
-
-    // Build Tookan payload
-    const tookanPayload = {
-      api_key: apiKey,
-      job_id: numericJobId,
-      custom_field_template: 'Order_editor_test'
-    };
-
-    // Only add meta_data if we have fields to update
-    if (metaData.length > 0) {
-      tookanPayload.meta_data = metaData;
-    }
-
-    // Add job_description (notes) if provided
-    if (notes !== undefined) {
-      tookanPayload.job_description = notes;
-    }
-
-    console.log('Calling Tookan edit_task API...');
-    console.log('Template:', tookanPayload.custom_field_template);
-    console.log('Meta Data:', JSON.stringify(metaData, null, 2));
-    if (notes !== undefined) {
-      console.log('Notes (job_description):', notes);
-    }
-
-    // Call Tookan edit_task endpoint
-    const response = await fetch('https://api.tookanapp.com/v2/edit_task', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(tookanPayload),
-    });
-
-    const textResponse = await response.text();
-    console.log('Tookan API Response Status:', response.status);
-    console.log('Tookan API Response:', textResponse.substring(0, 500));
-
-    let tookanData;
-    try {
-      tookanData = JSON.parse(textResponse);
-    } catch (parseError) {
-      console.warn('Failed to parse Tookan response, continuing with DB update');
-      tookanData = { status: 0, message: 'Non-JSON response' };
-    }
-
-    const tookanSuccess = response.ok && tookanData.status === 200;
-    if (tookanSuccess) {
-      console.log('✅ Tookan update successful');
-    } else {
-      console.warn('⚠️ Tookan update failed:', tookanData.message || textResponse);
-    }
-
-    // Update local database
-    let dbUpdated = false;
-    if (isConfigured()) {
-      try {
-        const updateData = {};
-        if (codAmount !== undefined) updateData.cod_amount = parseFloat(codAmount);
-        if (orderFees !== undefined) updateData.order_fees = parseFloat(orderFees);
-        if (notes !== undefined) updateData.notes = notes;
-
-        if (Object.keys(updateData).length > 0) {
-          await taskModel.updateTask(numericJobId, updateData);
-          dbUpdated = true;
-          console.log('✅ Database updated');
-        }
-      } catch (dbError) {
-        console.warn('⚠️ Database update failed:', dbError.message);
-      }
-    }
-
-    console.log('=== END REQUEST (SUCCESS) ===\n');
-
-    res.json({
-      status: 'success',
-      message: tookanSuccess
-        ? 'Order updated in Tookan and database'
-        : 'Order updated in database only. Tookan update may have failed.',
-      data: {
-        orderId,
-        tookan_synced: tookanSuccess,
-        database_synced: dbUpdated,
-        tookan_response: tookanData
-      }
-    });
-  } catch (error) {
-    console.error('❌ Update order error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message || 'Failed to update order',
-      data: {}
-    });
-  }
-});
 
 // ============================================
 // TASK METADATA - INTERNAL CUSTOM FIELDS
@@ -3185,19 +3057,19 @@ app.get('/api/cod/confirmations', authenticate, requirePermission('confirm_cod_p
           customerId: merchantId || undefined // merchantId maps to vendor_id/customer_id
         };
         tasks = await taskModel.getAllTasks(filters);
-        console.log(`📦 Found ${tasks.length} tasks from database for COD confirmations`);
+        console.log(`ðŸ“¦ Found ${tasks.length} tasks from database for COD confirmations`);
       } catch (error) {
         console.warn('Database fetch failed, falling back to file storage:', error.message);
         // Fallback to file-based storage
         const tasksData = taskStorage.getAllTasks();
         tasks = Object.values(tasksData.tasks || {});
-        console.log(`📦 Found ${tasks.length} tasks from file cache for COD confirmations`);
+        console.log(`ðŸ“¦ Found ${tasks.length} tasks from file cache for COD confirmations`);
       }
     } else {
       // Fallback to file-based storage
       const tasksData = taskStorage.getAllTasks();
       tasks = Object.values(tasksData.tasks || {});
-      console.log(`📦 Found ${tasks.length} tasks from file cache for COD confirmations`);
+      console.log(`ðŸ“¦ Found ${tasks.length} tasks from file cache for COD confirmations`);
     }
 
     // Filter tasks that have COD
@@ -3254,7 +3126,7 @@ app.get('/api/cod/confirmations', authenticate, requirePermission('confirm_cod_p
       );
     }
 
-    console.log(`✅ Returning ${filteredConfirmations.length} COD confirmations`);
+    console.log(`âœ… Returning ${filteredConfirmations.length} COD confirmations`);
 
     res.json({
       status: 'success',
@@ -3262,7 +3134,7 @@ app.get('/api/cod/confirmations', authenticate, requirePermission('confirm_cod_p
       data: filteredConfirmations
     });
   } catch (error) {
-    console.error('❌ Get COD confirmations error:', error);
+    console.error('âŒ Get COD confirmations error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to fetch COD confirmations',
@@ -3287,19 +3159,19 @@ app.get('/api/cod/calendar', authenticate, requirePermission('confirm_cod_paymen
           dateTo: dateTo || undefined
         };
         tasks = await taskModel.getAllTasks(filters);
-        console.log(`📦 Found ${tasks.length} tasks from database for COD calendar`);
+        console.log(`ðŸ“¦ Found ${tasks.length} tasks from database for COD calendar`);
       } catch (error) {
         console.warn('Database fetch failed, falling back to file storage:', error.message);
         // Fallback to file-based storage
         const tasksData = taskStorage.getAllTasks();
         tasks = Object.values(tasksData.tasks || {});
-        console.log(`📦 Found ${tasks.length} tasks from file cache for COD calendar`);
+        console.log(`ðŸ“¦ Found ${tasks.length} tasks from file cache for COD calendar`);
       }
     } else {
       // Fallback to file-based storage
       const tasksData = taskStorage.getAllTasks();
       tasks = Object.values(tasksData.tasks || {});
-      console.log(`📦 Found ${tasks.length} tasks from file cache for COD calendar`);
+      console.log(`ðŸ“¦ Found ${tasks.length} tasks from file cache for COD calendar`);
     }
 
     // Filter tasks that have COD
@@ -3363,7 +3235,7 @@ app.get('/api/cod/calendar', authenticate, requirePermission('confirm_cod_paymen
     // Sort by date (most recent first)
     calendarData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    console.log(`✅ Returning ${calendarData.length} calendar entries`);
+    console.log(`âœ… Returning ${calendarData.length} calendar entries`);
 
     res.json({
       status: 'success',
@@ -3371,7 +3243,7 @@ app.get('/api/cod/calendar', authenticate, requirePermission('confirm_cod_paymen
       data: calendarData
     });
   } catch (error) {
-    console.error('❌ Get COD calendar error:', error);
+    console.error('âŒ Get COD calendar error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to fetch COD calendar data',
@@ -3392,7 +3264,7 @@ app.get('/api/cod/queue', authenticate, async (req, res) => {
       data: queue
     });
   } catch (error) {
-    console.error('❌ Get COD queue error:', error);
+    console.error('âŒ Get COD queue error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to fetch COD queue',
@@ -3455,7 +3327,7 @@ app.get('/api/customers/wallets', authenticate, async (req, res) => {
       phone: wallet.phone || wallet.customer_phone || ''
     }));
 
-    console.log(`✅ Returning ${wallets.length} customer wallets`);
+    console.log(`âœ… Returning ${wallets.length} customer wallets`);
 
     res.json({
       status: 'success',
@@ -3467,7 +3339,7 @@ app.get('/api/customers/wallets', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Get customer wallets error:', error);
+    console.error('âŒ Get customer wallets error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to fetch customer wallets',
@@ -3557,13 +3429,13 @@ app.put('/api/cod/settle/:codId', authenticate, requirePermission('confirm_cod_p
 
       if (walletResponse.ok && walletData.status === 200) {
         walletUpdateResult = walletData.data;
-        console.log('✅ Merchant wallet updated successfully');
+        console.log('âœ… Merchant wallet updated successfully');
       } else {
-        console.warn('⚠️  Wallet update failed:', walletData.message);
+        console.warn('âš ï¸  Wallet update failed:', walletData.message);
         walletUpdateResult = { error: walletData.message };
       }
     } catch (walletError) {
-      console.error('❌ Error updating wallet:', walletError);
+      console.error('âŒ Error updating wallet:', walletError);
       walletUpdateResult = { error: walletError.message };
     }
 
@@ -3583,7 +3455,7 @@ app.put('/api/cod/settle/:codId', authenticate, requirePermission('confirm_cod_p
       source: 'api'
     });
 
-    console.log(`✅ COD ${codId} settled successfully`);
+    console.log(`âœ… COD ${codId} settled successfully`);
 
     res.json({
       status: 'success',
@@ -3602,7 +3474,7 @@ app.put('/api/cod/settle/:codId', authenticate, requirePermission('confirm_cod_p
       }
     });
   } catch (error) {
-    console.error('❌ Settle COD error:', error);
+    console.error('âŒ Settle COD error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to settle COD',
@@ -3632,7 +3504,7 @@ app.get('/api/tookan/task/:jobId/metadata', optionalAuth, async (req, res) => {
       data: metadata
     });
   } catch (error) {
-    console.error('❌ Get task metadata error:', error);
+    console.error('âŒ Get task metadata error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to get task metadata',
@@ -3672,7 +3544,7 @@ app.put('/api/tookan/task/:jobId/metadata', authenticate, requirePermission('edi
       data: updatedMetadata
     });
   } catch (error) {
-    console.error('❌ Update task metadata error:', error);
+    console.error('âŒ Update task metadata error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to update task metadata',
@@ -3695,7 +3567,7 @@ app.get('/api/tookan/tags/config', authenticate, async (req, res) => {
       data: config
     });
   } catch (error) {
-    console.error('❌ Get tag config error:', error);
+    console.error('âŒ Get tag config error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to get tag configuration',
@@ -3734,7 +3606,7 @@ app.put('/api/tookan/tags/config', authenticate, requirePermission('edit_order_f
       });
     }
   } catch (error) {
-    console.error('❌ Update tag config error:', error);
+    console.error('âŒ Update tag config error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to update tag configuration',
@@ -3759,7 +3631,7 @@ app.post('/api/tookan/tags/suggest', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Suggest tags error:', error);
+    console.error('âŒ Suggest tags error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to suggest tags',
@@ -3778,7 +3650,7 @@ app.get('/api/tookan/tags', authenticate, async (req, res) => {
       data: { tags }
     });
   } catch (error) {
-    console.error('❌ Get tags error:', error);
+    console.error('âŒ Get tags error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to get tags',
@@ -3849,10 +3721,10 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
     const requestedStart = new Date(startDate);
     if (requestedStart < sixMonthsAgoDate) {
       startDate = formatDate(sixMonthsAgoDate);
-      console.log(`⚠️  Start date adjusted to 6 months ago: ${startDate}`);
+      console.log(`âš ï¸  Start date adjusted to 6 months ago: ${startDate}`);
     }
 
-    console.log(`📅 Date range: ${startDate} to ${endDate}`);
+    console.log(`ðŸ“… Date range: ${startDate} to ${endDate}`);
 
     // Check if Supabase is configured and cache is available
     let useCache = false;
@@ -3864,11 +3736,11 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
         const isFresh = await taskModel.isCacheFresh(24);
         const cachedCount = await taskModel.getCachedTaskCount(startDate, endDate);
 
-        console.log(`📦 Cache status: ${isFresh ? 'FRESH' : 'STALE'}, ${cachedCount} orders in range`);
+        console.log(`ðŸ“¦ Cache status: ${isFresh ? 'FRESH' : 'STALE'}, ${cachedCount} orders in range`);
 
         if (isFresh && cachedCount > 0) {
           useCache = true;
-          console.log('✅ Using cached orders from Supabase');
+          console.log('âœ… Using cached orders from Supabase');
 
           // Fetch from cache with filters
           cacheOrders = await taskModel.getCachedOrders({
@@ -3880,10 +3752,10 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
             search: search || null
           });
 
-          console.log(`📦 Retrieved ${cacheOrders.length} orders from cache`);
+          console.log(`ðŸ“¦ Retrieved ${cacheOrders.length} orders from cache`);
         }
       } catch (cacheError) {
-        console.warn('⚠️  Cache check failed, falling back to API:', cacheError.message);
+        console.warn('âš ï¸  Cache check failed, falling back to API:', cacheError.message);
       }
     }
 
@@ -3893,7 +3765,7 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
       allOrders = cacheOrders;
     } else {
       // Fallback to Tookan API with retry logic
-      console.log('📥 Fetching from Tookan API (cache miss or stale)...');
+      console.log('ðŸ“¥ Fetching from Tookan API (cache miss or stale)...');
 
       const apiKey = getApiKey();
       const batchLimit = 50;
@@ -3926,7 +3798,7 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
         currentEnd.setDate(currentEnd.getDate() - 1);
       }
 
-      console.log(`📅 Split into ${dateBatches.length} date batches (31-day chunks)`);
+      console.log(`ðŸ“… Split into ${dateBatches.length} date batches (31-day chunks)`);
 
       // Helper function with retry logic
       const fetchWithRetry = async (url, options, retries = 3) => {
@@ -3942,7 +3814,7 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
 
             if (isSSLError && attempt < retries) {
               const delay = 1000 * Math.pow(2, attempt - 1);
-              console.log(`⚠️  Retry ${attempt}/${retries} after ${delay}ms`);
+              console.log(`âš ï¸  Retry ${attempt}/${retries} after ${delay}ms`);
               await new Promise(r => setTimeout(r, delay));
               continue;
             }
@@ -3995,14 +3867,14 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
                 hasMore = false;
               }
             } catch (err) {
-              console.error(`❌ Error fetching ${jobTypeNames[jobType]} tasks:`, err.message);
+              console.error(`âŒ Error fetching ${jobTypeNames[jobType]} tasks:`, err.message);
               hasMore = false;
             }
           }
         }
       }
 
-      console.log(`✅ Fetched ${tasks.length} tasks from Tookan API`);
+      console.log(`âœ… Fetched ${tasks.length} tasks from Tookan API`);
 
       // Transform and cache the results if Supabase is configured
       if (tasks.length > 0 && isConfigured()) {
@@ -4012,12 +3884,12 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
 
           // Bulk upsert to cache (don't await to avoid blocking response)
           taskModel.bulkUpsertTasks(cacheRecords).then(result => {
-            console.log(`📦 Cached ${result.inserted} orders to Supabase`);
+            console.log(`ðŸ“¦ Cached ${result.inserted} orders to Supabase`);
           }).catch(err => {
-            console.warn('⚠️  Failed to cache orders:', err.message);
+            console.warn('âš ï¸  Failed to cache orders:', err.message);
           });
         } catch (cacheErr) {
-          console.warn('⚠️  Failed to prepare cache:', cacheErr.message);
+          console.warn('âš ï¸  Failed to prepare cache:', cacheErr.message);
         }
       }
 
@@ -4067,14 +3939,14 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
           totalValue: totalValue,
           pickupAddress: task.job_pickup_address || task.pickup_address || '',
           deliveryAddress: task.job_address || task.delivery_address || '',
-          addresses: `${task.job_pickup_address || task.pickup_address || ''} → ${task.job_address || task.delivery_address || ''}`,
+          addresses: `${task.job_pickup_address || task.pickup_address || ''} â†’ ${task.job_address || task.delivery_address || ''}`,
           notes: task.customer_comments || task.job_description || '',
           source: 'api'
         };
       });
     }
 
-    console.log(`✅ Total orders: ${allOrders.length}`);
+    console.log(`âœ… Total orders: ${allOrders.length}`);
 
     // Apply additional client-side filtering (for filters not applied at cache/API level)
     let filteredOrders = allOrders;
@@ -4114,8 +3986,8 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
     const startIndex = (pageNum - 1) * limitNum;
     const paginatedOrders = filteredOrders.slice(startIndex, startIndex + limitNum);
 
-    console.log(`✅ Returning ${paginatedOrders.length} orders (page ${pageNum}, total filtered: ${filteredOrders.length})`);
-    console.log(`📦 Source: ${useCache ? 'CACHE' : 'API'}`);
+    console.log(`âœ… Returning ${paginatedOrders.length} orders (page ${pageNum}, total filtered: ${filteredOrders.length})`);
+    console.log(`ðŸ“¦ Source: ${useCache ? 'CACHE' : 'API'}`);
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -4142,7 +4014,7 @@ app.get('/api/tookan/orders', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Get orders error:', error);
+    console.error('âŒ Get orders error:', error);
     res.status(500).json({
       status: 'error',
       action: 'fetch_orders',
@@ -4238,7 +4110,7 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
 
     const hasMore = (result.page * result.limit) < result.total;
 
-    console.log(`✅ Returning ${orders.length} cached orders (page ${result.page}, total: ${result.total})`);
+    console.log(`âœ… Returning ${orders.length} cached orders (page ${result.page}, total: ${result.total})`);
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -4264,7 +4136,7 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Get cached orders error:', error);
+    console.error('âŒ Get cached orders error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -4304,14 +4176,14 @@ app.post('/api/webhooks/tookan/task', async (req, res) => {
           .from('tasks')
           .delete()
           .eq('job_id', parseInt(jobId));
-        console.log('✅ Webhook: Deleted task removed from Supabase:', jobId);
+        console.log('âœ… Webhook: Deleted task removed from Supabase:', jobId);
       }
       return res.status(200).json({ status: 'success', message: 'Task deleted from cache' });
     }
 
     // Debug: Log payload keys to identify completed_datetime field name
-    console.log('📥 Webhook payload keys:', Object.keys(payload));
-    console.log('📅 completed_datetime candidates:', {
+    console.log('ðŸ“¥ Webhook payload keys:', Object.keys(payload));
+    console.log('ðŸ“… completed_datetime candidates:', {
       completed_datetime: payload.completed_datetime,
       job_delivered_datetime: payload.job_delivered_datetime,
       acknowledged_datetime: payload.acknowledged_datetime,
@@ -4342,13 +4214,13 @@ app.post('/api/webhooks/tookan/task', async (req, res) => {
       last_synced_at: new Date().toISOString()
     };
 
-    console.log('📝 Record completed_datetime value:', record.completed_datetime);
+    console.log('ðŸ“ Record completed_datetime value:', record.completed_datetime);
 
     await taskModel.upsertTask(record.job_id, record);
 
     return res.status(200).json({ status: 'success', message: 'Task upserted' });
   } catch (error) {
-    console.error('❌ Webhook task error:', error);
+    console.error('âŒ Webhook task error:', error);
     return res.status(500).json({ status: 'error', message: error.message || 'Internal error' });
   }
 });
@@ -4410,7 +4282,7 @@ app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
       return res.json({ status: 'success', data: [] });
     }
 
-    console.log('🔍 Driver IDs found:', JSON.stringify(driverIds));
+    console.log('ðŸ” Driver IDs found:', JSON.stringify(driverIds));
 
     // Use RPC function for optimized stats calculation
     const results = await Promise.all(driverIds.map(async (driver) => {
@@ -4433,7 +4305,7 @@ app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
         };
       }
 
-      console.log(`🔍 RPC response for driver ${driver.id}:`, JSON.stringify(data));
+      console.log(`ðŸ” RPC response for driver ${driver.id}:`, JSON.stringify(data));
       const stats = data && data[0] ? data[0] : { total_orders: 0, cod_total: 0, order_fees: 0, avg_delivery_time_minutes: 0 };
       return {
         fleet_id: driver.id,
@@ -4522,7 +4394,7 @@ app.put('/api/settings/tookan-fee', authenticate, async (req, res) => {
       return res.status(500).json({ status: 'error', message: error.message });
     }
 
-    console.log('✅ Tookan fee rate updated to:', feeRate);
+    console.log('âœ… Tookan fee rate updated to:', feeRate);
     res.json({ status: 'success', data: { feeRate } });
   } catch (error) {
     console.error('Update tookan fee error:', error);
@@ -4679,7 +4551,7 @@ app.get('/api/orders/:jobId/sync-cod', authenticate, async (req, res) => {
       if (error) {
         console.error('Failed to update COD in Supabase:', error.message);
       } else {
-        console.log('✅ COD updated in Supabase');
+        console.log('âœ… COD updated in Supabase');
       }
     }
 
@@ -4740,7 +4612,7 @@ app.get('/api/reports/customer-performance', authenticate, async (req, res) => {
       p_customer_name = searchTerm;
     }
 
-    console.log('🔍 Search params:', { p_customer_name, p_vendor_id, p_customer_phone });
+    console.log('ðŸ” Search params:', { p_customer_name, p_vendor_id, p_customer_phone });
 
     // Use RPC function for optimized stats calculation
     const { data, error } = await supabase.rpc('get_customer_statistics', {
@@ -4757,7 +4629,7 @@ app.get('/api/reports/customer-performance', authenticate, async (req, res) => {
       throw error;
     }
 
-    console.log('🔍 RPC results:', data?.length || 0);
+    console.log('ðŸ” RPC results:', data?.length || 0);
 
     if (!data || data.length === 0) {
       return res.json({ status: 'success', data: [] });
@@ -4774,7 +4646,7 @@ app.get('/api/reports/customer-performance', authenticate, async (req, res) => {
 
     }));
 
-    console.log('🔍 Final results:', results.length);
+    console.log('ðŸ” Final results:', results.length);
 
     res.json({ status: 'success', data: results });
   } catch (error) {
@@ -4805,7 +4677,7 @@ app.post('/api/webhooks/tookan/agent', async (req, res) => {
 
     if (isDeleted) {
       // Remove agent from Supabase if deleted
-      console.log('🗑️  Webhook: Agent deleted in Tookan, removing from DB:', fleetId);
+      console.log('ðŸ—‘ï¸  Webhook: Agent deleted in Tookan, removing from DB:', fleetId);
       if (isConfigured()) {
         await supabase
           .from('agents')
@@ -4820,7 +4692,7 @@ app.post('/api/webhooks/tookan/agent', async (req, res) => {
 
     return res.status(200).json({ status: 'success', message: 'Agent upserted' });
   } catch (error) {
-    console.error('❌ Webhook agent error:', error);
+    console.error('âŒ Webhook agent error:', error);
     return res.status(500).json({ status: 'error', message: error.message || 'Internal error' });
   }
 });
@@ -4934,7 +4806,7 @@ app.post('/api/agents/sync', authenticate, requirePermission('manage_system'), a
       });
     }
   } catch (error) {
-    console.error('❌ Sync agents error:', error);
+    console.error('âŒ Sync agents error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to sync agents',
@@ -4954,7 +4826,7 @@ app.get('/api/agents/sync/status', authenticate, async (req, res) => {
       data: status || { totalAgents: 0, activeAgents: 0, lastSyncedAt: null }
     });
   } catch (error) {
-    console.error('❌ Get sync status error:', error);
+    console.error('âŒ Get sync status error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to get sync status',
@@ -5074,7 +4946,7 @@ app.put('/api/orders/:jobId/assign', authenticate, requirePermission('edit_order
       });
     }
 
-    console.log('✅ Task updated in Tookan');
+    console.log('âœ… Task updated in Tookan');
 
     // Step 3: Update task in Supabase database
     let databaseUpdated = false;
@@ -5099,9 +4971,9 @@ app.put('/api/orders/:jobId/assign', authenticate, requirePermission('edit_order
 
         await taskModel.updateTask(parseInt(jobId), updateData);
         databaseUpdated = true;
-        console.log('✅ Task updated in database');
+        console.log('âœ… Task updated in database');
       } catch (dbError) {
-        console.warn('⚠️  Database update failed (will rely on next sync):', dbError.message);
+        console.warn('âš ï¸  Database update failed (will rely on next sync):', dbError.message);
       }
     }
 
@@ -5115,7 +4987,7 @@ app.put('/api/orders/:jobId/assign', authenticate, requirePermission('edit_order
       { fleet_id: fleet_id }
     );
 
-    console.log('✅ Driver assignment completed');
+    console.log('âœ… Driver assignment completed');
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -5130,7 +5002,7 @@ app.put('/api/orders/:jobId/assign', authenticate, requirePermission('edit_order
       }
     });
   } catch (error) {
-    console.error('❌ Assign driver error:', error);
+    console.error('âŒ Assign driver error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to assign driver',
@@ -5176,7 +5048,7 @@ app.get('/api/tookan/fleets', authenticate, async (req, res) => {
       data = JSON.parse(textResponse);
     } catch (parseError) {
       // If endpoint doesn't exist or returns non-JSON, return structure
-      console.log('⚠️  Tookan API may not have get_all_fleets endpoint');
+      console.log('âš ï¸  Tookan API may not have get_all_fleets endpoint');
       console.log('Response:', textResponse.substring(0, 200));
       console.log('=== END REQUEST ===\n');
 
@@ -5195,7 +5067,7 @@ app.get('/api/tookan/fleets', authenticate, async (req, res) => {
 
     if (!response.ok || data.status !== 200) {
       // If endpoint fails, return empty structure
-      console.log('⚠️  Tookan API returned error:', data.message);
+      console.log('âš ï¸  Tookan API returned error:', data.message);
       console.log('=== END REQUEST ===\n');
 
       return res.json({
@@ -5223,7 +5095,7 @@ app.get('/api/tookan/fleets', authenticate, async (req, res) => {
       rawData: fleet
     })) : [];
 
-    console.log('✅ Fleets (Drivers/Agents) fetched successfully:', fleets.length);
+    console.log('âœ… Fleets (Drivers/Agents) fetched successfully:', fleets.length);
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -5237,7 +5109,7 @@ app.get('/api/tookan/fleets', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Get fleets error:', error);
+    console.error('âŒ Get fleets error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -5545,11 +5417,11 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
       }
     }
 
-    console.log(`📊 Processing analytics for ${orders.length} orders, ${drivers.length} drivers, ${totalCustomers} customers (from DB)`);
+    console.log(`ðŸ“Š Processing analytics for ${orders.length} orders, ${drivers.length} drivers, ${totalCustomers} customers (from DB)`);
 
     // Log if orders are empty but we have drivers (indicates API issue)
     if (orders.length === 0 && drivers.length > 0) {
-      console.log('⚠️  No orders found, but drivers exist. This may indicate a Tookan API issue with order fetching.');
+      console.log('âš ï¸  No orders found, but drivers exist. This may indicate a Tookan API issue with order fetching.');
     }
 
     // Calculate KPIs - Match Reports Panel (Total Orders, Drivers, Customers, Deliveries)
@@ -5653,7 +5525,7 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
       completed: '+0%'
     };
 
-    console.log('✅ Analytics calculated successfully');
+    console.log('âœ… Analytics calculated successfully');
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -5681,7 +5553,7 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Get analytics error:', error);
+    console.error('âŒ Get analytics error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -5743,7 +5615,7 @@ app.get('/api/reports/totals', authenticate, async (req, res) => {
     totals.drivers = driversResp.data?.length || 0;
 
     const elapsed = Date.now() - startTime;
-    console.log(`📊 Totals fetched in ${elapsed}ms: orders=${totals.orders}, drivers=${totals.drivers}, customers=${totals.customers}, deliveries=${totals.deliveries}`);
+    console.log(`ðŸ“Š Totals fetched in ${elapsed}ms: orders=${totals.orders}, drivers=${totals.drivers}, customers=${totals.customers}, deliveries=${totals.deliveries}`);
 
     res.json({
       status: 'success',
@@ -5926,7 +5798,7 @@ app.get('/api/tookan/customers', authenticate, async (req, res) => {
 
     if (error) throw error;
 
-    console.log('✅ Customers fetched from database:', customers?.length || 0);
+    console.log('âœ… Customers fetched from database:', customers?.length || 0);
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -5936,7 +5808,7 @@ app.get('/api/tookan/customers', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Fetch all customers error:', error);
+    console.error('âŒ Fetch all customers error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -6130,11 +6002,11 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
       deliveries: rpcTotals?.completed_deliveries || orders.filter(o => [2].includes(parseInt(o.status))).length
     };
 
-    console.log(`🚀 [BACKEND] Reports Summary: dbCustomerCount=${dbCustomerCount}, totals.merchants=${totals.merchants}`);
-    console.log('📊 Reports Summary Totals:', JSON.stringify(totals, null, 2));
-    console.log('📊 Supabase RPC stats: orders=%d, deliveries=%d', totals.orders, totals.deliveries);
+    console.log(`ðŸš€ [BACKEND] Reports Summary: dbCustomerCount=${dbCustomerCount}, totals.merchants=${totals.merchants}`);
+    console.log('ðŸ“Š Reports Summary Totals:', JSON.stringify(totals, null, 2));
+    console.log('ðŸ“Š Supabase RPC stats: orders=%d, deliveries=%d', totals.orders, totals.deliveries);
 
-    console.log('✅ Reports summary calculated successfully');
+    console.log('âœ… Reports summary calculated successfully');
     console.log(`   - Total drivers in summary: ${driverSummaries.length}`);
     console.log(`   - Drivers with orders: ${driverSummaries.filter(d => d.numberOfOrders > 0).length}`);
     console.log('=== END REQUEST (SUCCESS) ===\n');
@@ -6156,7 +6028,7 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Get reports summary error:', error);
+    console.error('âŒ Get reports summary error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -6249,7 +6121,7 @@ app.post('/api/withdrawal/request', authenticate, async (req, res) => {
       { type: withdrawalRequest.request_type, amount: withdrawalRequest.amount, status: 'pending' }
     );
 
-    console.log('✅ Withdrawal request created:', withdrawalRequest.id);
+    console.log('âœ… Withdrawal request created:', withdrawalRequest.id);
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -6260,7 +6132,7 @@ app.post('/api/withdrawal/request', authenticate, async (req, res) => {
       data: { withdrawalRequest: transformedRequest }
     });
   } catch (error) {
-    console.error('❌ Create withdrawal request error:', error);
+    console.error('âŒ Create withdrawal request error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -6452,7 +6324,7 @@ app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('
       { status: 'approved', amount: approvedRequest.amount, approvedBy: approvedRequest.approved_by }
     );
 
-    console.log('✅ Withdrawal request approved:', requestId);
+    console.log('âœ… Withdrawal request approved:', requestId);
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -6463,7 +6335,7 @@ app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('
       data: { withdrawalRequest: transformedRequest }
     });
   } catch (error) {
-    console.error('❌ Approve withdrawal error:', error);
+    console.error('âŒ Approve withdrawal error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -6596,7 +6468,7 @@ app.post('/api/auth/login', async (req, res) => {
 
       // If that fails, try get_all_fleets
       if (!fleetResponse.ok) {
-        console.log('⚠️  get_all_agents failed, trying get_all_fleets...');
+        console.log('âš ï¸  get_all_agents failed, trying get_all_fleets...');
         fleetResponse = await fetch('https://api.tookanapp.com/v2/get_all_fleets', {
           method: 'POST',
           headers: {
@@ -6612,7 +6484,7 @@ app.post('/api/auth/login', async (req, res) => {
       try {
         fleetData = JSON.parse(fleetTextResponse);
       } catch (parseError) {
-        console.log('⚠️  Could not parse fleet response');
+        console.log('âš ï¸  Could not parse fleet response');
         console.log('Response text:', fleetTextResponse.substring(0, 500));
       }
 
@@ -6671,14 +6543,14 @@ app.post('/api/auth/login', async (req, res) => {
               fleetId.toString() === email ||
               fleetId.toString() === searchId.toString();
             if (idMatch) {
-              console.log('✅ Matched agent/fleet by ID:', fleetId);
+              console.log('âœ… Matched agent/fleet by ID:', fleetId);
               return true;
             }
           }
 
           // Match by email
           if (fleetEmail && fleetEmail === searchEmail) {
-            console.log('✅ Matched agent/fleet by email:', fleetEmail);
+            console.log('âœ… Matched agent/fleet by email:', fleetEmail);
             return true;
           }
 
@@ -6687,7 +6559,7 @@ app.post('/api/auth/login', async (req, res) => {
             const phoneNormalized = fleetPhone.replace(/\D/g, '');
             const searchNormalized = email.replace(/\D/g, '');
             if (fleetPhone === email || (phoneNormalized && searchNormalized && phoneNormalized === searchNormalized)) {
-              console.log('✅ Matched agent/fleet by phone:', fleetPhone);
+              console.log('âœ… Matched agent/fleet by phone:', fleetPhone);
               return true;
             }
           }
@@ -6697,20 +6569,20 @@ app.post('/api/auth/login', async (req, res) => {
 
         if (tookanUser) {
           userType = 'driver';
-          console.log('✅ Found user in Tookan Fleets (Driver/Agent)');
+          console.log('âœ… Found user in Tookan Fleets (Driver/Agent)');
         } else {
-          console.log('❌ No matching fleet found. Searched email/phone:', email);
+          console.log('âŒ No matching fleet found. Searched email/phone:', email);
           if (fleets.length > 0) {
             console.log('Sample fleet emails:', fleets.slice(0, 3).map(f => f.fleet_email || f.email).filter(Boolean));
           }
         }
       } else {
-        console.log('⚠️  Fleet API returned error or unexpected format');
+        console.log('âš ï¸  Fleet API returned error or unexpected format');
         console.log('Status:', fleetResponse.status);
         console.log('Response:', fleetTextResponse.substring(0, 500));
       }
     } catch (fleetError) {
-      console.error('❌ Error fetching fleets:', fleetError.message);
+      console.error('âŒ Error fetching fleets:', fleetError.message);
       console.error('Stack:', fleetError.stack);
     }
 
@@ -6738,7 +6610,7 @@ app.post('/api/auth/login', async (req, res) => {
         try {
           customerData = JSON.parse(customerTextResponse);
         } catch (parseError) {
-          console.log('⚠️  Could not parse customer response');
+          console.log('âš ï¸  Could not parse customer response');
           console.log('Response text:', customerTextResponse.substring(0, 500));
         }
 
@@ -6792,14 +6664,14 @@ app.post('/api/auth/login', async (req, res) => {
                 vendorId.toString() === email ||
                 vendorId.toString() === searchId.toString();
               if (idMatch) {
-                console.log('✅ Matched customer/merchant by ID:', vendorId);
+                console.log('âœ… Matched customer/merchant by ID:', vendorId);
                 return true;
               }
             }
 
             // Match by email
             if (customerEmail && customerEmail === searchEmail) {
-              console.log('✅ Matched customer/merchant by email:', customerEmail);
+              console.log('âœ… Matched customer/merchant by email:', customerEmail);
               return true;
             }
 
@@ -6808,7 +6680,7 @@ app.post('/api/auth/login', async (req, res) => {
               const phoneNormalized = customerPhone.replace(/\D/g, '');
               const searchNormalized = email.replace(/\D/g, '');
               if (customerPhone === email || (phoneNormalized && searchNormalized && phoneNormalized === searchNormalized)) {
-                console.log('✅ Matched customer/merchant by phone:', customerPhone);
+                console.log('âœ… Matched customer/merchant by phone:', customerPhone);
                 return true;
               }
             }
@@ -6818,20 +6690,20 @@ app.post('/api/auth/login', async (req, res) => {
 
           if (tookanUser) {
             userType = 'merchant';
-            console.log('✅ Found user in Tookan Customers (Merchant)');
+            console.log('âœ… Found user in Tookan Customers (Merchant)');
           } else {
-            console.log('❌ No matching customer found. Searched email/phone:', email);
+            console.log('âŒ No matching customer found. Searched email/phone:', email);
             if (customers.length > 0) {
               console.log('Sample customer emails:', customers.slice(0, 3).map(c => c.customer_email || c.email).filter(Boolean));
             }
           }
         } else {
-          console.log('⚠️  Customer API returned error or unexpected format');
+          console.log('âš ï¸  Customer API returned error or unexpected format');
           console.log('Status:', customerResponse.status);
           console.log('Response:', customerTextResponse.substring(0, 500));
         }
       } catch (customerError) {
-        console.error('❌ Error fetching customers:', customerError.message);
+        console.error('âŒ Error fetching customers:', customerError.message);
         console.error('Stack:', customerError.stack);
       }
     }
@@ -6850,7 +6722,7 @@ app.post('/api/auth/login', async (req, res) => {
 
           // Check if user is disabled or banned
           if (userProfile && userProfile.status === 'disabled') {
-            console.log('❌ User account is disabled:', data.user.email);
+            console.log('âŒ User account is disabled:', data.user.email);
             return res.status(403).json({
               status: 'error',
               message: 'Your account has been disabled. Please contact the administrator.',
@@ -6859,7 +6731,7 @@ app.post('/api/auth/login', async (req, res) => {
           }
 
           if (userProfile && userProfile.status === 'banned') {
-            console.log('❌ User account is banned:', data.user.email);
+            console.log('âŒ User account is banned:', data.user.email);
             return res.status(403).json({
               status: 'error',
               message: 'Your account has been banned. Please contact the administrator.',
@@ -6867,7 +6739,7 @@ app.post('/api/auth/login', async (req, res) => {
             });
           }
 
-          console.log('✅ Found user in Supabase (Admin/Internal User)');
+          console.log('âœ… Found user in Supabase (Admin/Internal User)');
 
           return res.json({
             status: 'success',
@@ -6889,7 +6761,7 @@ app.post('/api/auth/login', async (req, res) => {
           });
         }
       } catch (supabaseError) {
-        console.log('⚠️  Supabase auth failed:', supabaseError.message);
+        console.log('âš ï¸  Supabase auth failed:', supabaseError.message);
       }
     }
 
@@ -6923,21 +6795,21 @@ app.post('/api/auth/login', async (req, res) => {
               passwordValid = await bcrypt.compare(password, localUser.password_hash);
 
               if (!passwordValid) {
-                console.log('❌ Password verification failed for Tookan user');
+                console.log('âŒ Password verification failed for Tookan user');
                 return res.status(401).json({
                   status: 'error',
                   message: 'Invalid password',
                   data: {}
                 });
               }
-              console.log('✅ Password verified for Tookan user');
+              console.log('âœ… Password verified for Tookan user');
             } catch (bcryptError) {
-              console.log('⚠️  Bcrypt error, allowing login:', bcryptError.message);
+              console.log('âš ï¸  Bcrypt error, allowing login:', bcryptError.message);
               passwordValid = true;
             }
           } else {
             // First time login - store password hash for future logins
-            console.log('⚠️  First login for Tookan user - storing password');
+            console.log('âš ï¸  First login for Tookan user - storing password');
             try {
               const bcrypt = require('bcryptjs');
               const passwordHash = await bcrypt.hash(password, 10);
@@ -6950,19 +6822,19 @@ app.post('/api/auth/login', async (req, res) => {
                 password_hash: passwordHash,
                 role: userType === 'driver' ? 'driver' : 'merchant'
               });
-              console.log('✅ Password stored for future logins');
+              console.log('âœ… Password stored for future logins');
             } catch (createError) {
-              console.log('⚠️  Could not store password, allowing login anyway:', createError.message);
+              console.log('âš ï¸  Could not store password, allowing login anyway:', createError.message);
               // Allow login even if storage fails
             }
           }
         } catch (dbError) {
-          console.log('⚠️  Database error, allowing login:', dbError.message);
+          console.log('âš ï¸  Database error, allowing login:', dbError.message);
           // Allow login if DB check fails (for development)
         }
       } else {
         // No database configured, allow login (for development)
-        console.log('⚠️  No database configured - allowing login without password verification');
+        console.log('âš ï¸  No database configured - allowing login without password verification');
       }
 
       // Check if user is disabled or banned (check by email in users table)
@@ -6970,7 +6842,7 @@ app.post('/api/auth/login', async (req, res) => {
         try {
           const userProfile = await userModel.getUserByEmail(userEmail);
           if (userProfile && userProfile.status === 'disabled') {
-            console.log('❌ Tookan user account is disabled:', userEmail);
+            console.log('âŒ Tookan user account is disabled:', userEmail);
             return res.status(403).json({
               status: 'error',
               message: 'Your account has been disabled. Please contact the administrator.',
@@ -6978,7 +6850,7 @@ app.post('/api/auth/login', async (req, res) => {
             });
           }
           if (userProfile && userProfile.status === 'banned') {
-            console.log('❌ Tookan user account is banned:', userEmail);
+            console.log('âŒ Tookan user account is banned:', userEmail);
             return res.status(403).json({
               status: 'error',
               message: 'Your account has been banned. Please contact the administrator.',
@@ -6986,7 +6858,7 @@ app.post('/api/auth/login', async (req, res) => {
             });
           }
         } catch (statusError) {
-          console.log('⚠️  Could not check user status:', statusError.message);
+          console.log('âš ï¸  Could not check user status:', statusError.message);
           // Continue with login if status check fails
         }
       }
@@ -6995,7 +6867,7 @@ app.post('/api/auth/login', async (req, res) => {
       const sessionToken = Buffer.from(`${userId}:${Date.now()}:${userEmail}`).toString('base64');
       const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
 
-      console.log('✅ Login successful for Tookan user');
+      console.log('âœ… Login successful for Tookan user');
       console.log('   User ID:', userId);
       console.log('   Name:', userName);
       console.log('   Type:', userType);
@@ -7024,7 +6896,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // User not found
-    console.log('❌ User not found in Tookan or Supabase');
+    console.log('âŒ User not found in Tookan or Supabase');
     console.log('=== END LOGIN (FAILED) ===\n');
 
     return res.status(401).json({
@@ -7033,7 +6905,7 @@ app.post('/api/auth/login', async (req, res) => {
       data: {}
     });
   } catch (error) {
-    console.error('❌ Login error:', error);
+    console.error('âŒ Login error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Login failed',
@@ -7948,7 +7820,7 @@ app.post('/api/webhooks/tookan/customer', async (req, res) => {
     const bodySecret = req.body?.tookan_shared_secret;
 
     if (expectedSecret && (secretHeader !== expectedSecret && bodySecret !== expectedSecret)) {
-      console.warn('⚠️  Unauthorized webhook attempt');
+      console.warn('âš ï¸  Unauthorized webhook attempt');
       return res.status(401).json({ status: 'error', message: 'Unauthorized' });
     }
 
@@ -7966,7 +7838,7 @@ app.post('/api/webhooks/tookan/customer', async (req, res) => {
       data: result
     });
   } catch (error) {
-    console.error('❌ Customer webhook error:', error.message);
+    console.error('âŒ Customer webhook error:', error.message);
     res.status(500).json({
       status: 'error',
       message: error.message
@@ -7975,39 +7847,39 @@ app.post('/api/webhooks/tookan/customer', async (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`🚀 Tookan API Proxy Server running on http://localhost:${PORT}`);
-  console.log(`📡 Proxying requests to Tookan API`);
+  console.log(`ðŸš€ Tookan API Proxy Server running on http://localhost:${PORT}`);
+  console.log(`ðŸ“¡ Proxying requests to Tookan API`);
 
   // Auto-sync agents on startup (non-blocking)
   if (isConfigured()) {
-    console.log('\n🔄 Starting automatic agent sync...');
+    console.log('\nðŸ”„ Starting automatic agent sync...');
     agentSyncService.syncAgents()
       .then(result => {
         if (result.success) {
-          console.log(`✅ Agent sync completed: ${result.synced} agents synced`);
+          console.log(`âœ… Agent sync completed: ${result.synced} agents synced`);
         } else {
-          console.log(`⚠️  Agent sync failed: ${result.message}`);
+          console.log(`âš ï¸  Agent sync failed: ${result.message}`);
         }
       })
       .catch(err => {
-        console.error('❌ Agent sync error:', err.message);
+        console.error('âŒ Agent sync error:', err.message);
       });
 
     // Auto-sync customers on startup (non-blocking)
-    console.log('🔄 Starting automatic customer sync (if table empty)...');
+    console.log('ðŸ”„ Starting automatic customer sync (if table empty)...');
     customerSyncService.syncAllCustomers({ ifEmptyOnly: true })
       .then(result => {
         if (result.success) {
-          console.log(`✅ Customer sync completed: ${result.synced} customers synced`);
+          console.log(`âœ… Customer sync completed: ${result.synced} customers synced`);
         } else {
-          console.log(`⚠️  Customer sync failed: ${result.message}`);
+          console.log(`âš ï¸  Customer sync failed: ${result.message}`);
         }
       })
       .catch(err => {
-        console.error('❌ Customer sync error:', err.message);
+        console.error('âŒ Customer sync error:', err.message);
       });
   } else {
-    console.log('⚠️  Supabase not configured, skipping auto-sync');
+    console.log('âš ï¸  Supabase not configured, skipping auto-sync');
   }
 });
 
@@ -8060,7 +7932,7 @@ app.post('/api/tookan/delete-task', authenticate, requirePermission('perform_reo
 
     // Ensure we have unique IDs (in case logic adds duplicates)
     connectedJobIds = [...new Set(connectedJobIds)];
-    console.log(`🗑️ Deleting tasks: ${connectedJobIds.join(', ')}`);
+    console.log(`ðŸ—‘ï¸ Deleting tasks: ${connectedJobIds.join(', ')}`);
 
     const apiKey = getApiKey();
     const results = [];
@@ -8086,7 +7958,7 @@ app.post('/api/tookan/delete-task', authenticate, requirePermission('perform_reo
       console.error('Failed to delete from Supabase:', deleteError);
     }
 
-    console.log('✅ Delete operation completed');
+    console.log('âœ… Delete operation completed');
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -8096,7 +7968,7 @@ app.post('/api/tookan/delete-task', authenticate, requirePermission('perform_reo
     });
 
   } catch (error) {
-    console.error('❌ Delete task error:', error);
+    console.error('âŒ Delete task error:', error);
     res.status(500).json({ status: 'error', message: error.message });
   }
 });
