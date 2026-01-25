@@ -2728,7 +2728,7 @@ function getApp() {
 
         // Build order data with fallbacks
         const orderData = {
-          customerName: customerName || original.customer_username || original.customer_name || 'Customer',
+          customerName: customerName || original.customer_username || original.customer_name || original.job_pickup_name || 'Customer',
           customerPhone: customerPhone || original.customer_phone || '+97300000000',
           customerEmail: customerEmail || original.customer_email || '',
           pickupAddress: pickupAddress || original.job_pickup_address || original.pickup_address || '',
@@ -2866,7 +2866,7 @@ function getApp() {
                 job_hash: pickupResponseData.job_hash || null,
                 job_token: pickupResponseData.job_token || null,
                 tracking_link: pickupResponseData.tracking_link || null,
-                vendor_id: pickupResponseData.customer_id || original.customer_id || null,
+                vendor_id: pickupResponseData.customer_id || original.customer_id || original.vendor_id || original.user_id || null,
                 tags: normalizeTags(original.tags),
                 raw_data: { ...pickupPayload, ...pickupResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });
@@ -2894,7 +2894,7 @@ function getApp() {
                 job_hash: deliveryResponseData.job_hash || null,
                 job_token: deliveryResponseData.job_token || null,
                 tracking_link: deliveryResponseData.tracking_link || null,
-                vendor_id: deliveryResponseData.customer_id || original.customer_id || null,
+                vendor_id: deliveryResponseData.customer_id || original.customer_id || original.vendor_id || original.user_id || null,
                 tags: normalizeTags(original.tags),
                 raw_data: { ...deliveryPayload, ...deliveryResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });

@@ -1721,7 +1721,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
         orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(currentTask.order_payment) || 0),
         assignedDriver: assignedDriver !== undefined ? assignedDriver : null, // Default unassigned
         notes: effectiveNotes,
-        customerId: currentTask.customer_id || currentTask.vendor_id
+        customerId: currentTask.customer_id || currentTask.vendor_id || currentTask.user_id
       };
 
       console.log('📋 Merged order data:', JSON.stringify(orderData, null, 2));
