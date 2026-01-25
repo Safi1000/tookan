@@ -2759,7 +2759,14 @@ function getApp() {
           cod: orderData.codAmount,
           order_payment: orderData.orderFees,
           job_description: orderData.notes,
-          auto_assignment: 0
+          auto_assignment: 0,
+          custom_field_template: 'Order editor test',
+          meta_data: [
+            {
+              label: 'CASH NEEDS TO BE COLLECTED',
+              data: String(orderData.codAmount)
+            }
+          ]
         };
 
         if (orderData.assignedDriver) {
@@ -2800,7 +2807,14 @@ function getApp() {
           cod: orderData.codAmount,
           order_payment: orderData.orderFees,
           job_description: orderData.notes,
-          auto_assignment: 0
+          auto_assignment: 0,
+          custom_field_template: 'Order editor test',
+          meta_data: [
+            {
+              label: 'CASH NEEDS TO BE COLLECTED',
+              data: String(orderData.codAmount)
+            }
+          ]
         };
 
         if (orderData.assignedDriver) {
