@@ -1665,67 +1665,88 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, codAmount, orderFees, assignedDriver, notes
     };
 
-    // Check if we need to fetch order data
-    if (!customerName || !customerPhone || !pickupAddress || !deliveryAddress) {
-      console.log('📋 Fetching order data from Tookan...');
+    // Mandatory fetch to resolve relationships and source correct data
+    console.log('📋 Fetching order data from Tookan...');
 
-      const getTaskPayload = {
-        api_key: apiKey,
-        job_id: orderId
-      };
+    const getTaskPayload = {
+      api_key: apiKey,
+      job_id: orderId
+    };
 
-      const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(getTaskPayload),
+    const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(getTaskPayload),
+    });
+
+    const getTextResponse = await getResponse.text();
+    let getData;
+    try {
+      getData = JSON.parse(getTextResponse);
+    } catch (parseError) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to fetch original order data',
+        data: {}
       });
-
-      const getTextResponse = await getResponse.text();
-      let getData;
-      try {
-        getData = JSON.parse(getTextResponse);
-      } catch (parseError) {
-        return res.status(500).json({
-          status: 'error',
-          message: 'Failed to fetch original order data',
-          data: {}
-        });
-      }
-
-      if (!getResponse.ok || getData.status !== 200) {
-        return res.status(getResponse.status || 500).json({
-          status: 'error',
-          message: getData.message || 'Original order not found',
-          data: {}
-        });
-      }
-
-      const currentTask = getData.data || {};
-
-      console.log('📋 Tookan task data received:', JSON.stringify(currentTask, null, 2));
-
-      // Use fetched data if not provided
-      // Tookan uses different field names, so we need to check multiple possibilities
-      // For notes: only use provided notes if it has actual content, otherwise use original
-      const originalNotes = currentTask.customer_comments || currentTask.job_description || '';
-      // User requested empty notes by default unless entered
-      const effectiveNotes = (notes && notes.trim()) ? notes.trim() : '';
-
-      orderData = {
-        customerName: customerName || currentTask.customer_username || currentTask.customer_name || currentTask.job_pickup_name || 'Customer',
-        customerPhone: customerPhone || currentTask.customer_phone || currentTask.job_pickup_phone || '+97300000000',
-        customerEmail: customerEmail || currentTask.customer_email || currentTask.job_pickup_email || '',
-        pickupAddress: pickupAddress || currentTask.job_pickup_address || currentTask.pickup_address || '',
-        deliveryAddress: deliveryAddress || currentTask.customer_address || currentTask.job_address || currentTask.delivery_address || '',
-        codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0, // Default to 0 for reorder
-        orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(currentTask.order_payment) || 0),
-        assignedDriver: assignedDriver !== undefined ? assignedDriver : null, // Default unassigned
-        notes: effectiveNotes,
-        customerId: currentTask.customer_id || currentTask.vendor_id || currentTask.user_id
-      };
-
-      console.log('📋 Merged order data:', JSON.stringify(orderData, null, 2));
     }
+
+    if (!getResponse.ok || getData.status !== 200) {
+      return res.status(getResponse.status || 500).json({
+        status: 'error',
+        message: getData.message || 'Original order not found',
+        data: {}
+      });
+    }
+
+    const primaryTask = getData.data || {};
+    let pickupTask = null;
+    let deliveryTask = null;
+    const relationshipId = primaryTask.pickup_delivery_relationship;
+
+    if (relationshipId) {
+      try {
+        const relResponse = await fetch('https://api.tookanapp.com/v2/get_related_tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, pickup_delivery_relationship: relationshipId })
+        });
+        const relData = await relResponse.json();
+        if (relData.status === 200 && Array.isArray(relData.data)) {
+          pickupTask = relData.data.find(t => t.job_type === 0);
+          deliveryTask = relData.data.find(t => t.job_type === 1);
+        }
+      } catch (e) {
+        console.error('Failed to fetch related tasks:', e);
+      }
+    }
+
+    if (!pickupTask && primaryTask.job_type === 0) pickupTask = primaryTask;
+    if (!deliveryTask && primaryTask.job_type === 1) deliveryTask = primaryTask;
+
+    const metaSource = pickupTask || primaryTask;
+    // Define currentTask for compatibility if needed, but we use metaSource mostly
+    const currentTask = metaSource;
+
+    // Use original notes if new notes not provided
+    const originalNotes = metaSource.customer_comments || metaSource.job_description || '';
+    // User requested empty notes by default unless entered
+    const effectiveNotes = (notes && notes.trim()) ? notes.trim() : '';
+
+    orderData = {
+      customerName: customerName || metaSource.customer_username || metaSource.customer_name || metaSource.job_pickup_name || 'Customer',
+      customerPhone: customerPhone || metaSource.customer_phone || metaSource.job_pickup_phone || '+97300000000',
+      customerEmail: customerEmail || metaSource.customer_email || metaSource.job_pickup_email || '',
+      pickupAddress: pickupAddress || pickupTask?.job_pickup_address || pickupTask?.pickup_address || primaryTask.job_pickup_address || '',
+      deliveryAddress: deliveryAddress || deliveryTask?.customer_address || deliveryTask?.delivery_address || primaryTask.customer_address || '',
+      codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0,
+      orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(metaSource.order_payment) || 0),
+      assignedDriver: assignedDriver !== undefined ? assignedDriver : null,
+      notes: effectiveNotes,
+      customerId: metaSource.customer_id || metaSource.vendor_id || metaSource.user_id
+    };
+
+    console.log('📋 Merged order data:', JSON.stringify(orderData, null, 2));
 
     // Validate required fields
     if (!orderData.pickupAddress || !orderData.deliveryAddress) {
@@ -1751,7 +1772,11 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       deliveryAddress: orderData.deliveryAddress,
       ...orderData
     };
-    const tags = tagService.getTagsForTask(taskDataForTags);
+    let sourceTags = metaSource.tags;
+    if (sourceTags && typeof sourceTags === 'string') {
+      sourceTags = sourceTags.split(',').map(t => t.trim()).filter(Boolean);
+    }
+    const tags = (sourceTags && sourceTags.length > 0) ? sourceTags : tagService.getTagsForTask(taskDataForTags);
 
     // ========== TASK 1: PICKUP from merchant/warehouse ==========
     const pickupPayload = {

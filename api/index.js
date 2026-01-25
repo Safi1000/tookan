@@ -2707,7 +2707,7 @@ function getApp() {
           return res.status(400).json({ status: 'error', message: 'Original order ID is required' });
         }
 
-        // First get original order details
+        // First get primary task details
         const getResponse = await fetch('https://api.tookanapp.com/v2/get_task_details', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2719,25 +2719,62 @@ function getApp() {
           return res.status(404).json({ status: 'error', message: 'Original order not found' });
         }
 
-        const original = originalData.data || {};
+        const primaryTask = originalData.data || {};
+
+        // Fetch Connected Tasks if relationship exists
+        let pickupTask = null;
+        let deliveryTask = null;
+        const relationshipId = primaryTask.pickup_delivery_relationship;
+
+        if (relationshipId) {
+          try {
+            const relResponse = await fetch('https://api.tookanapp.com/v2/get_related_tasks', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ api_key: apiKey, pickup_delivery_relationship: relationshipId })
+            });
+            const relData = await relResponse.json();
+            if (relData.status === 200 && Array.isArray(relData.data)) {
+              // 0 = Pickup, 1 = Delivery
+              pickupTask = relData.data.find(t => t.job_type === 0);
+              deliveryTask = relData.data.find(t => t.job_type === 1);
+            }
+          } catch (e) {
+            console.error('Failed to fetch related tasks:', e);
+          }
+        }
+
+        // Fallback identification if fetch failed or logic mismatch
+        if (!pickupTask && primaryTask.job_type === 0) pickupTask = primaryTask;
+        if (!deliveryTask && primaryTask.job_type === 1) deliveryTask = primaryTask;
+
+        // Source Metadata from Pickup Task (User preference)
+        const metaSource = pickupTask || primaryTask;
+        const deliverySource = deliveryTask || primaryTask;
 
         // Use original notes if new notes not provided
-        const originalNotes = original.customer_comments || original.job_description || '';
+        const originalNotes = metaSource.customer_comments || metaSource.job_description || '';
         // User requested empty notes by default unless entered
         const effectiveNotes = (notes && notes.trim()) ? notes.trim() : '';
 
-        // Build order data with fallbacks
+        // Build order data with intelligent sourcing
+        // Priority for Customer/Tags: Pickup Task
+        // Priority for Addresses: PickupAddr from PickupTask, DeliveryAddr from DeliveryTask
         const orderData = {
-          customerName: customerName || original.customer_username || original.customer_name || original.job_pickup_name || 'Customer',
-          customerPhone: customerPhone || original.customer_phone || '+97300000000',
-          customerEmail: customerEmail || original.customer_email || '',
-          pickupAddress: pickupAddress || original.job_pickup_address || original.pickup_address || '',
-          deliveryAddress: deliveryAddress || original.customer_address || original.job_address || original.delivery_address || '',
-          codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0, // Default to 0 for reorder
-          orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(original.order_payment) || 0),
-          assignedDriver: assignedDriver !== undefined ? assignedDriver : null, // Default unassigned
-          notes: effectiveNotes
+          customerName: customerName || metaSource.customer_username || metaSource.customer_name || metaSource.job_pickup_name || 'Customer',
+          customerPhone: customerPhone || metaSource.customer_phone || '+97300000000',
+          customerEmail: customerEmail || metaSource.customer_email || '',
+          pickupAddress: pickupAddress || pickupTask?.job_pickup_address || pickupTask?.pickup_address || primaryTask.job_pickup_address || '',
+          deliveryAddress: deliveryAddress || deliveryTask?.customer_address || deliveryTask?.delivery_address || primaryTask.customer_address || '',
+          codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0,
+          orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(metaSource.order_payment) || 0),
+          assignedDriver: assignedDriver !== undefined ? assignedDriver : null,
+          notes: effectiveNotes,
+          // Store raw source data logic for Supabase
+          metaSource: metaSource,
+          deliverySource: deliverySource
         };
+        const original = metaSource;
 
         // Task times
         const now = new Date();
