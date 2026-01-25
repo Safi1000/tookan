@@ -1576,6 +1576,34 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
     }
 
     const updatedTaskData = updatedData.data || {};
+
+    // UPDATE: Sync full updated task data to Supabase (including raw_data)
+    if (isConfigured()) {
+      try {
+        await taskModel.upsertTask(updatedTaskData.job_id || numericOrderId, {
+          job_id: updatedTaskData.job_id || numericOrderId,
+          job_hash: updatedTaskData.job_hash,
+          job_token: updatedTaskData.job_token,
+          status: updatedTaskData.job_status,
+          job_description: updatedTaskData.job_description,
+          customer_name: updatedTaskData.customer_username || updatedTaskData.customer_name || updatedTaskData.job_pickup_name,
+          customer_phone: updatedTaskData.customer_phone || updatedTaskData.job_pickup_phone,
+          customer_email: updatedTaskData.customer_email || updatedTaskData.job_pickup_email,
+          pickup_address: updatedTaskData.job_pickup_address || updatedTaskData.pickup_address,
+          delivery_address: updatedTaskData.customer_address || updatedTaskData.delivery_address,
+          cod_amount: parseFloat(updatedTaskData.cod || 0),
+          order_fees: parseFloat(updatedTaskData.order_payment || 0),
+          notes: updatedTaskData.customer_comments || updatedTaskData.job_description || '',
+          fleet_id: updatedTaskData.fleet_id || null,
+          creation_datetime: updatedTaskData.creation_datetime,
+          last_synced_at: new Date().toISOString(),
+          raw_data: updatedTaskData // Important: Updates Custom Fields in raw_data
+        });
+        console.log('✅ Full task synced to Supabase (including raw_data)');
+      } catch (upsertError) {
+        console.error('⚠️ Failed to sync full task to Supabase:', upsertError.message);
+      }
+    }
     const updatedOrderData = {
       orderId: updatedTaskData.job_id || orderId,
       orderDate: updatedTaskData.creation_datetime || updatedTaskData.created_at || new Date().toISOString(),
@@ -1669,73 +1697,75 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
 
     // Check if we need to fetch order data
     if (!customerName || !customerPhone || !pickupAddress || !deliveryAddress) {
-      console.log('📋 Fetching order data from Supabase...');
+      console.log('📋 Fetching order data from Tookan...');
+
       if (!isConfigured()) {
-        throw new Error('Supabase not configured');
+        return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
       }
 
-      const { data: dbTask, error: dbTaskError } = await supabase
+      // Fetch original task from Supabase
+      const { data: dbTasks, error: dbError } = await supabase
         .from('tasks')
         .select('*')
-        .eq('job_id', orderId)
-        .single();
+        .eq('job_id', orderId);
 
-      if (dbTaskError || !dbTask || !dbTask.raw_data) {
-        console.error('Original order not found in Supabase:', dbTaskError);
+      if (dbError || !dbTasks || dbTasks.length === 0) {
+        console.error('Failed to fetch original task from DB:', dbError);
         return res.status(404).json({ status: 'error', message: 'Original order not found in database' });
       }
 
-      const currentTask = dbTask.raw_data || {};
-      originalPickup = currentTask;
-      originalDelivery = currentTask;
+      const original = dbTasks[0];
+      const rawData = original.raw_data || {};
 
-      // Fetch connected tasks if relationship exists
-      if (currentTask.pickup_delivery_relationship) {
+      const currentTask = original;
+      originalPickup = original;
+      originalDelivery = original;
+
+      const relationshipId = rawData.pickup_delivery_relationship;
+
+      if (relationshipId) {
         try {
-          const relatedRes = await fetch('https://api.tookanapp.com/v2/get_related_tasks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              api_key: apiKey,
-              pickup_delivery_relationship: currentTask.pickup_delivery_relationship
-            })
-          });
-          const relatedData = await relatedRes.json();
-          if (relatedData.status === 200 && Array.isArray(relatedData.data)) {
-            const foundPickup = relatedData.data.find(t => t.job_type === 0 || (t.has_pickup === 1 && t.has_delivery === 0));
-            const foundDelivery = relatedData.data.find(t => t.job_type === 1 || (t.has_pickup === 0 && t.has_delivery === 1));
+          const { data: relatedTasks, error: relatedError } = await supabase
+            .from('tasks')
+            .select('*')
+            .eq('raw_data->>pickup_delivery_relationship', relationshipId);
+
+          if (!relatedError && relatedTasks && relatedTasks.length > 0) {
+            const foundPickup = relatedTasks.find(t => {
+              const rd = t.raw_data || {};
+              return rd.job_type === 0 || (rd.has_pickup === 1 && rd.has_delivery === 0);
+            });
+            const foundDelivery = relatedTasks.find(t => {
+              const rd = t.raw_data || {};
+              return rd.job_type === 1 || (rd.has_pickup === 0 && rd.has_delivery === 1);
+            });
 
             if (foundPickup) originalPickup = foundPickup;
             if (foundDelivery) originalDelivery = foundDelivery;
           }
         } catch (err) {
-          console.error('Failed to fetch related tasks:', err.message);
+          console.error('Failed to fetch related tasks from DB:', err.message);
         }
       }
 
-      console.log('📋 Tookan task data received:', JSON.stringify(currentTask, null, 2));
-
-      // Use fetched data if not provided
-      // Tookan uses different field names, so we need to check multiple possibilities
-      // For notes: only use provided notes if it has actual content, otherwise use original
-      const originalNotes = currentTask.customer_comments || currentTask.job_description || '';
-      // User requested empty notes by default unless entered
-      const effectiveNotes = (notes && notes.trim()) ? notes.trim() : '';
+      // Populate orderData from DB records
+      const effectiveNotes = (notes && notes.trim()) ? notes.trim() : (original.notes || rawData.customer_comments || rawData.job_description || '');
+      const ordAmt = parseFloat(original.order_fees || rawData.order_payment || 0);
 
       orderData = {
-        customerName: customerName || currentTask.customer_username || currentTask.customer_name || currentTask.job_pickup_name || 'Customer',
-        customerPhone: customerPhone || currentTask.customer_phone || currentTask.job_pickup_phone || '+97300000000',
-        customerEmail: customerEmail || currentTask.customer_email || currentTask.job_pickup_email || '',
-        pickupAddress: pickupAddress || currentTask.job_pickup_address || currentTask.pickup_address || '',
-        deliveryAddress: deliveryAddress || currentTask.customer_address || currentTask.job_address || currentTask.delivery_address || '',
-        codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0, // Default to 0 for reorder
-        orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(currentTask.order_payment) || 0),
-        assignedDriver: assignedDriver !== undefined ? assignedDriver : null, // Default unassigned
+        customerName: customerName || original.customer_name || rawData.customer_username || rawData.job_pickup_name || 'Customer',
+        customerPhone: customerPhone || original.customer_phone || rawData.customer_phone || rawData.job_pickup_phone || '+97300000000',
+        customerEmail: customerEmail || original.customer_email || rawData.customer_email || rawData.job_pickup_email || '',
+        pickupAddress: pickupAddress || original.pickup_address || rawData.job_pickup_address || rawData.pickup_address || '',
+        deliveryAddress: deliveryAddress || original.delivery_address || rawData.customer_address || rawData.job_address || rawData.delivery_address || '',
+        codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0,
+        orderFees: orderFees !== undefined ? parseFloat(orderFees) : ordAmt,
+        assignedDriver: assignedDriver !== undefined ? assignedDriver : null,
         notes: effectiveNotes,
-        customerId: currentTask.customer_id || currentTask.vendor_id || currentTask.user_id
+        customerId: original.vendor_id || rawData.customer_id || rawData.vendor_id || rawData.user_id
       };
 
-      console.log('📋 Merged order data:', JSON.stringify(orderData, null, 2));
+      console.log('📋 Merged order data from DB:', JSON.stringify(orderData, null, 2));
     }
 
     // Validate required fields
@@ -1864,9 +1894,9 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
           const pickupResponseData = pickupData.data || {};
           await taskModel.upsertTask(pickupOrderId, {
             job_id: pickupOrderId,
-            customer_name: customerName || originalPickup.customer_username || originalPickup.customer_name || originalPickup.job_pickup_name || 'Customer',
-            customer_phone: customerPhone || originalPickup.customer_phone || originalPickup.job_pickup_phone || '+97300000000',
-            customer_email: customerEmail || originalPickup.customer_email || originalPickup.job_pickup_email || '',
+            customer_name: customerName || originalPickup.customer_name || (originalPickup.raw_data && (originalPickup.raw_data.customer_username || originalPickup.raw_data.job_pickup_name)) || 'Customer',
+            customer_phone: customerPhone || originalPickup.customer_phone || (originalPickup.raw_data && (originalPickup.raw_data.customer_phone || originalPickup.raw_data.job_pickup_phone)) || '+97300000000',
+            customer_email: customerEmail || originalPickup.customer_email || (originalPickup.raw_data && (originalPickup.raw_data.customer_email || originalPickup.raw_data.job_pickup_email)) || '',
             pickup_address: orderData.pickupAddress,
             delivery_address: orderData.pickupAddress,
             cod_amount: orderData.codAmount,
@@ -1876,12 +1906,12 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
             status: 0,
             creation_datetime: new Date().toISOString(),
             source: 'reorder_pickup',
-            tags: tags || null,
+            tags: originalPickup.tags || (originalPickup.raw_data && originalPickup.raw_data.tags) || tags || null,
             last_synced_at: new Date().toISOString(),
             job_hash: pickupResponseData.job_hash || null,
             job_token: pickupResponseData.job_token || null,
             tracking_link: pickupResponseData.tracking_link || null,
-            vendor_id: pickupResponseData.customer_id || originalPickup.customer_id || originalPickup.vendor_id || originalPickup.user_id || null,
+            vendor_id: pickupResponseData.customer_id || originalPickup.vendor_id || (originalPickup.raw_data && (originalPickup.raw_data.customer_id || originalPickup.raw_data.vendor_id || originalPickup.raw_data.user_id)) || null,
             raw_data: { ...pickupPayload, ...pickupResponseData, job_status: 0 }
           });
           console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
@@ -1891,9 +1921,9 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
           const deliveryResponseData = deliveryData.data || {};
           await taskModel.upsertTask(deliveryOrderId, {
             job_id: deliveryOrderId,
-            customer_name: customerName || originalDelivery.customer_username || originalDelivery.customer_name || originalDelivery.job_pickup_name || 'Customer',
-            customer_phone: customerPhone || originalDelivery.customer_phone || originalDelivery.job_pickup_phone || '+97300000000',
-            customer_email: customerEmail || originalDelivery.customer_email || originalDelivery.job_pickup_email || '',
+            customer_name: customerName || originalDelivery.customer_name || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_username || originalDelivery.raw_data.job_pickup_name)) || 'Customer',
+            customer_phone: customerPhone || originalDelivery.customer_phone || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_phone || originalDelivery.raw_data.job_pickup_phone)) || '+97300000000',
+            customer_email: customerEmail || originalDelivery.customer_email || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_email || originalDelivery.raw_data.job_pickup_email)) || '',
             pickup_address: orderData.pickupAddress,
             delivery_address: orderData.deliveryAddress,
             cod_amount: orderData.codAmount,
@@ -1903,12 +1933,12 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
             status: 0,
             creation_datetime: new Date().toISOString(),
             source: 'reorder_delivery',
-            tags: tags || null,
+            tags: originalDelivery.tags || (originalDelivery.raw_data && originalDelivery.raw_data.tags) || tags || null,
             last_synced_at: new Date().toISOString(),
             job_hash: deliveryResponseData.job_hash || null,
             job_token: deliveryResponseData.job_token || null,
             tracking_link: deliveryResponseData.tracking_link || null,
-            vendor_id: deliveryResponseData.customer_id || originalDelivery.customer_id || originalDelivery.vendor_id || originalDelivery.user_id || null,
+            vendor_id: deliveryResponseData.customer_id || originalDelivery.vendor_id || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_id || originalDelivery.raw_data.vendor_id || originalDelivery.raw_data.user_id)) || null,
             raw_data: { ...deliveryPayload, ...deliveryResponseData, job_status: 0 }
           });
           console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);

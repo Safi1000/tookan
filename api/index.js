@@ -2707,73 +2707,74 @@ function getApp() {
           return res.status(400).json({ status: 'error', message: 'Original order ID is required' });
         }
 
-        // 1. Fetch original order from Supabase
-        console.log('Fetching original order data from Supabase...');
-        if (!isSupabaseConfigured || !supabase) {
-          throw new Error('Supabase not configured');
+        if (!isSupabaseConfigured) {
+          return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
         }
 
-        const { data: dbTask, error: dbTaskError } = await supabase
+        // Fetch original task from Supabase
+        const { data: dbTasks, error: dbError } = await supabase
           .from('tasks')
           .select('*')
-          .eq('job_id', orderIdToUse)
-          .single();
+          .eq('job_id', orderIdToUse);
 
-        if (dbTaskError || !dbTask || !dbTask.raw_data) {
-          console.error('Original order not found in Supabase:', dbTaskError);
+        if (dbError || !dbTasks || dbTasks.length === 0) {
+          console.error('Failed to fetch original task from DB:', dbError);
           return res.status(404).json({ status: 'error', message: 'Original order not found in database' });
         }
 
-        const original = dbTask.raw_data || {};
+        const original = dbTasks[0];
+        const rawData = original.raw_data || {};
 
-        // Fetch connected tasks if relationship exists
         let originalPickup = original;
         let originalDelivery = original;
 
-        if (original.pickup_delivery_relationship) {
+        // Check relationships in raw_data
+        const relationshipId = rawData.pickup_delivery_relationship;
+
+        if (relationshipId) {
           try {
-            const relatedRes = await fetch('https://api.tookanapp.com/v2/get_related_tasks', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                api_key: apiKey,
-                pickup_delivery_relationship: original.pickup_delivery_relationship
-              })
-            });
-            const relatedData = await relatedRes.json();
-            if (relatedData.status === 200 && Array.isArray(relatedData.data)) {
-              // Heuristic to identify Pickup vs Delivery
-              // Usually Pickup task has job_type=0 or has_pickup=1 (and has_delivery=0)
-              // Delivery task has job_type=1 or has_pickup=0 (and has_delivery=1)
-              const foundPickup = relatedData.data.find(t => t.job_type === 0 || (t.has_pickup === 1 && t.has_delivery === 0));
-              const foundDelivery = relatedData.data.find(t => t.job_type === 1 || (t.has_pickup === 0 && t.has_delivery === 1));
+            const { data: relatedTasks, error: relatedError } = await supabase
+              .from('tasks')
+              .select('*')
+              .eq('raw_data->>pickup_delivery_relationship', relationshipId);
+
+            if (!relatedError && relatedTasks && relatedTasks.length > 0) {
+              const foundPickup = relatedTasks.find(t => {
+                const rd = t.raw_data || {};
+                return rd.job_type === 0 || (rd.has_pickup === 1 && rd.has_delivery === 0);
+              });
+              const foundDelivery = relatedTasks.find(t => {
+                const rd = t.raw_data || {};
+                return rd.job_type === 1 || (rd.has_pickup === 0 && rd.has_delivery === 1);
+              });
 
               if (foundPickup) originalPickup = foundPickup;
               if (foundDelivery) originalDelivery = foundDelivery;
-              console.log('Fetched related tasks:', {
+
+              console.log('Fetched related tasks from DB:', {
                 pickupId: foundPickup?.job_id,
                 deliveryId: foundDelivery?.job_id
               });
             }
           } catch (err) {
-            console.error('Failed to fetch related tasks:', err.message);
+            console.error('Failed to fetch related tasks from DB:', err.message);
           }
         }
 
         // Use original notes if new notes not provided
-        const originalNotes = original.customer_comments || original.job_description || '';
+        const originalNotes = original.notes || rawData.customer_comments || rawData.job_description || '';
         // User requested empty notes by default unless entered
         const effectiveNotes = (notes && notes.trim()) ? notes.trim() : '';
 
-        // Build order data with fallbacks
+        // Build order data with fallbacks using DB columns and raw_data
         const orderData = {
-          customerName: customerName || original.customer_username || original.customer_name || original.job_pickup_name || 'Customer',
-          customerPhone: customerPhone || original.customer_phone || '+97300000000',
-          customerEmail: customerEmail || original.customer_email || '',
-          pickupAddress: pickupAddress || original.job_pickup_address || original.pickup_address || '',
-          deliveryAddress: deliveryAddress || original.customer_address || original.job_address || original.delivery_address || '',
+          customerName: customerName || original.customer_name || rawData.customer_username || rawData.job_pickup_name || 'Customer',
+          customerPhone: customerPhone || original.customer_phone || rawData.customer_phone || rawData.job_pickup_phone || '+97300000000',
+          customerEmail: customerEmail || original.customer_email || rawData.customer_email || rawData.job_pickup_email || '',
+          pickupAddress: pickupAddress || original.pickup_address || rawData.job_pickup_address || rawData.pickup_address || '',
+          deliveryAddress: deliveryAddress || original.delivery_address || rawData.customer_address || rawData.job_address || rawData.delivery_address || '',
           codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0, // Default to 0 for reorder
-          orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(original.order_payment) || 0),
+          orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(original.order_fees || rawData.order_payment) || 0),
           assignedDriver: assignedDriver !== undefined ? assignedDriver : null, // Default unassigned
           notes: effectiveNotes
         };
@@ -2889,9 +2890,9 @@ function getApp() {
               const pickupResponseData = pickupData.data || {};
               await supabase.from('tasks').upsert({
                 job_id: pickupOrderId,
-                customer_name: customerName || originalPickup.customer_username || originalPickup.customer_name || originalPickup.job_pickup_name || 'Customer',
-                customer_phone: customerPhone || originalPickup.customer_phone || originalPickup.job_pickup_phone || '+97300000000',
-                customer_email: customerEmail || originalPickup.customer_email || originalPickup.job_pickup_email || '',
+                customer_name: customerName || originalPickup.customer_name || (originalPickup.raw_data && (originalPickup.raw_data.customer_username || originalPickup.raw_data.job_pickup_name)) || 'Customer',
+                customer_phone: customerPhone || originalPickup.customer_phone || (originalPickup.raw_data && (originalPickup.raw_data.customer_phone || originalPickup.raw_data.job_pickup_phone)) || '+97300000000',
+                customer_email: customerEmail || originalPickup.customer_email || (originalPickup.raw_data && (originalPickup.raw_data.customer_email || originalPickup.raw_data.job_pickup_email)) || '',
                 pickup_address: orderData.pickupAddress,
                 delivery_address: orderData.pickupAddress, // Same as pickup for pickup tasks
                 cod_amount: orderData.codAmount,
@@ -2905,8 +2906,8 @@ function getApp() {
                 job_hash: pickupResponseData.job_hash || null,
                 job_token: pickupResponseData.job_token || null,
                 tracking_link: pickupResponseData.tracking_link || null,
-                vendor_id: pickupResponseData.customer_id || originalPickup.customer_id || originalPickup.vendor_id || originalPickup.user_id || null,
-                tags: normalizeTags(originalPickup.tags),
+                vendor_id: pickupResponseData.customer_id || originalPickup.vendor_id || (originalPickup.raw_data && (originalPickup.raw_data.customer_id || originalPickup.raw_data.vendor_id || originalPickup.raw_data.user_id)) || null,
+                tags: originalPickup.tags || normalizeTags(originalPickup.raw_data?.tags),
                 raw_data: { ...pickupPayload, ...pickupResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });
               console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
@@ -2917,9 +2918,9 @@ function getApp() {
               const deliveryResponseData = deliveryData.data || {};
               await supabase.from('tasks').upsert({
                 job_id: deliveryOrderId,
-                customer_name: customerName || originalDelivery.customer_username || originalDelivery.customer_name || originalDelivery.job_pickup_name || 'Customer',
-                customer_phone: customerPhone || originalDelivery.customer_phone || originalDelivery.job_pickup_phone || '+97300000000',
-                customer_email: customerEmail || originalDelivery.customer_email || originalDelivery.job_pickup_email || '',
+                customer_name: customerName || originalDelivery.customer_name || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_username || originalDelivery.raw_data.job_pickup_name)) || 'Customer',
+                customer_phone: customerPhone || originalDelivery.customer_phone || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_phone || originalDelivery.raw_data.job_pickup_phone)) || '+97300000000',
+                customer_email: customerEmail || originalDelivery.customer_email || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_email || originalDelivery.raw_data.job_pickup_email)) || '',
                 pickup_address: orderData.pickupAddress,
                 delivery_address: orderData.deliveryAddress,
                 cod_amount: orderData.codAmount,
@@ -2933,8 +2934,8 @@ function getApp() {
                 job_hash: deliveryResponseData.job_hash || null,
                 job_token: deliveryResponseData.job_token || null,
                 tracking_link: deliveryResponseData.tracking_link || null,
-                vendor_id: deliveryResponseData.customer_id || originalDelivery.customer_id || originalDelivery.vendor_id || originalDelivery.user_id || null,
-                tags: normalizeTags(originalDelivery.tags),
+                vendor_id: deliveryResponseData.customer_id || originalDelivery.vendor_id || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_id || originalDelivery.raw_data.vendor_id || originalDelivery.raw_data.user_id)) || null,
+                tags: originalDelivery.tags || normalizeTags(originalDelivery.raw_data?.tags),
                 raw_data: { ...deliveryPayload, ...deliveryResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });
               console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);
