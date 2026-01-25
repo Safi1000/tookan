@@ -25,6 +25,8 @@ type OrderDetails = {
   pickupAddress?: string;
   deliveryAddress?: string;
   status?: number | null; // 0=Assigned, 1=Started, 2=Successful, 3=Failed, etc.
+  connectedTaskId?: string | number | null; // Connected pickup/delivery task ID
+  isPickupTask?: boolean; // True if original task is a pickup task (original pickup == delivery)
 };
 
 // Helper to determine if order is successful (completed)
@@ -124,14 +126,24 @@ export function OrderEditorPanel() {
 
       let pickupAddr = first.pickupAddress || '';
       let deliveryAddr = first.deliveryAddress || '';
+      let connectedTaskId: string | number | null = null;
 
-      // If pickup === delivery (pickup task), fetch the related delivery address
-      if (pickupAddr.trim().toLowerCase() === deliveryAddr.trim().toLowerCase() && first.jobId) {
+      // Determine task type BEFORE modifying addresses (original addresses comparison)
+      const isPickupTask = pickupAddr.trim().toLowerCase() === deliveryAddr.trim().toLowerCase();
+
+      // If pickup === delivery (pickup task), fetch the related delivery address for display
+      if (isPickupTask && first.jobId) {
         console.log('Pickup task detected, fetching related delivery address...');
         const relatedResult = await fetchRelatedDeliveryAddress(first.jobId);
-        if (relatedResult.status === 'success' && relatedResult.hasRelatedTask && relatedResult.deliveryAddress) {
-          console.log('Found related delivery address:', relatedResult.deliveryAddress);
-          deliveryAddr = relatedResult.deliveryAddress;
+        if (relatedResult.status === 'success' && relatedResult.hasRelatedTask) {
+          if (relatedResult.deliveryAddress) {
+            console.log('Found related delivery address:', relatedResult.deliveryAddress);
+            deliveryAddr = relatedResult.deliveryAddress;
+          }
+          if (relatedResult.deliveryJobId) {
+            connectedTaskId = relatedResult.deliveryJobId;
+            console.log('Found connected task ID:', connectedTaskId);
+          }
         }
       }
 
@@ -148,7 +160,9 @@ export function OrderEditorPanel() {
         customerEmail: first.customerEmail || '',
         pickupAddress: pickupAddr,
         deliveryAddress: deliveryAddr,
-        status: typeof first.status === 'number' ? first.status : (typeof first.status === 'string' ? parseInt(first.status, 10) : null)
+        status: typeof first.status === 'number' ? first.status : (typeof first.status === 'string' ? parseInt(first.status, 10) : null),
+        connectedTaskId: connectedTaskId,
+        isPickupTask: isPickupTask
       });
       setEditCod((first.codAmount || 0).toString());
       setEditFees((first.orderFees || 0).toString());
@@ -537,38 +551,74 @@ export function OrderEditorPanel() {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && order && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-card dark:bg-[#1A2C53] rounded-2xl border border-border dark:border-[#2A3C63] w-full max-w-sm shadow-2xl p-6 space-y-4">
+          <div className="bg-card dark:bg-[#1A2C53] rounded-2xl border border-border dark:border-[#2A3C63] w-[90vw] max-w-[340px] mx-auto shadow-2xl p-5 sm:p-6 space-y-4 sm:space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 text-red-600 dark:text-red-400">
-              <div className="p-3 bg-red-100 dark:bg-red-900/20 rounded-full">
-                <Trash2 className="w-6 h-6" />
+              <div className="p-3 bg-red-100 dark:bg-red-900/20 rounded-full shrink-0">
+                <Trash2 className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
               <h2 className="text-lg font-bold text-heading">Delete Order?</h2>
             </div>
 
-            <div className="text-sm text-muted-foreground space-y-2">
+            <div className="text-sm text-muted-foreground space-y-3">
               <p>Are you sure you want to delete this order? This action cannot be undone.</p>
-              <div className="bg-muted/30 p-3 rounded-lg border border-border/50 text-xs font-mono space-y-1">
-                <p><span className="font-semibold">Task ID:</span> {order.jobId}</p>
-                <p><span className="font-semibold">Pickup:</span> {order.pickupAddress}</p>
-                <p><span className="font-semibold">Delivery:</span> {order.deliveryAddress}</p>
+              <div
+                className="bg-muted/30 p-3 rounded-lg border border-border/50 text-xs font-mono space-y-1.5 break-all"
+                style={{ margin: 15 }}
+              >
+                <p>
+                  <span className="font-semibold text-heading">Task ID:</span> {order.jobId}
+                </p>
+
+                <p>
+                  <span className="font-semibold text-heading">Task Type:</span>{' '}
+                  <span className={order.isPickupTask
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-green-600 dark:text-green-400'}>
+                    {order.isPickupTask ? 'Pickup Task' : 'Delivery Task'}
+                  </span>
+                </p>
+
+                <p>
+                  <span className="font-semibold text-heading">Connected Task ID:</span>{' '}
+                  {order.connectedTaskId ? (
+                    <span className="text-orange-600 dark:text-orange-400">{order.connectedTaskId} (will also be deleted)</span>
+                  ) : (
+                    <span className="text-muted-foreground">None (Standalone Task)</span>
+                  )}
+                </p>
+
+                <div className="flex gap-2">
+                  <span className="font-semibold text-heading shrink-0">Pickup:</span>
+                  <span className="truncate">{order.pickupAddress}</span>
+                </div>
+
+                <div className="flex gap-2">
+                  <span className="font-semibold text-heading shrink-0">Delivery:</span>
+                  <span className="truncate">{order.deliveryAddress}</span>
+                </div>
               </div>
-              <p className="text-red-500 text-xs">Note: This will delete both the pickup and delivery tasks.</p>
+              <div
+                className="flex gap-2 items-start text-red-500/90 dark:text-red-400/90 text-xs bg-red-50 dark:bg-red-900/10 p-2.5 rounded-md"
+                style={{ margin: 15 }}
+              >
+                <p>Alert: This will delete both the pickup and delivery tasks associated with this order.</p>
+              </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
               <button
                 onClick={() => setShowDeleteModal(false)}
                 disabled={isDeleting}
-                className="px-4 py-2 text-sm font-medium text-heading bg-muted dark:bg-[#2A3C63] rounded-lg hover:bg-muted/80 transition"
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-medium text-heading bg-muted dark:bg-[#2A3C63] rounded-lg hover:bg-muted/80 transition order-1 sm:order-none"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteCallback}
                 disabled={isDeleting}
-                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition flex items-center gap-2 disabled:opacity-50"
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
               >
-                {isDeleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
+                {isDeleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 Confirm Delete
               </button>
             </div>
