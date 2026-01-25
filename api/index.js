@@ -4992,34 +4992,6 @@ function getApp() {
     // USER PASSWORD ENDPOINT
     // ============================================
 
-    // PUT Update User Password
-    app.put('/api/users/:id/password', authenticate, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { newPassword } = req.body;
-        if (!newPassword || newPassword.length < 6) {
-          return res.status(400).json({ status: 'error', message: 'Password must be at least 6 characters' });
-        }
-        if (!isSupabaseConfigured || !supabase) {
-          return res.status(500).json({ status: 'error', message: 'Database not configured' });
-        }
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        const { error } = await supabase.from('users').update({ password_hash: hashedPassword }).eq('id', id);
-        if (error) throw error;
-        res.json({ status: 'success', message: 'Password updated' });
-      } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
-      }
-    });
-
-    // Catch-all for other API routes
-    app.all('/api/*', (req, res) => {
-      res.status(404).json({
-        status: 'error',
-        message: `API endpoint ${req.method} ${req.path} not found in serverless mode. For full functionality, run the server locally.`
-      });
-    });
-
     // DELETE Task (and connected task)
     app.post('/api/tookan/delete-task', authenticate, requirePermission('perform_reorder'), async (req, res) => {
       try {
@@ -5103,10 +5075,40 @@ function getApp() {
         });
 
       } catch (error) {
-        console.error('❌ Delete task error:', error);
+        console.error('Delete task error:', error);
         res.status(500).json({ status: 'error', message: error.message });
       }
     });
+
+    // PUT Update User Password
+    app.put('/api/users/:id/password', authenticate, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { newPassword } = req.body;
+        if (!newPassword || newPassword.length < 6) {
+          return res.status(400).json({ status: 'error', message: 'Password must be at least 6 characters' });
+        }
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        const { error } = await supabase.from('users').update({ password_hash: hashedPassword }).eq('id', id);
+        if (error) throw error;
+        res.json({ status: 'success', message: 'Password updated' });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // Catch-all for other API routes
+    app.all('/api/*', (req, res) => {
+      res.status(404).json({
+        status: 'error',
+        message: `API endpoint ${req.method} ${req.path} not found in serverless mode. For full functionality, run the server locally.`
+      });
+    });
+
+
   }
 
   return app;
