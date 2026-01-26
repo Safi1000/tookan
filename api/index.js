@@ -3067,7 +3067,8 @@ function getApp() {
 
             if (tasksToSync.length > 0) {
               console.log(`🔄 Syncing reordered tasks: ${tasksToSync.join(', ')}...`);
-              await new Promise(r => setTimeout(r, 2000));
+              // Wait 500ms for Tookan to index (reduced from 2s for Vercel timeout)
+              await new Promise(r => setTimeout(r, 500));
 
               const promises = [];
               if (syncTask) promises.push(...tasksToSync.map(id => syncTask(id)));

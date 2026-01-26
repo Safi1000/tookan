@@ -178,7 +178,9 @@ async function syncCodAmounts(options = {}) {
             }
 
             if (jobId) {
-                query = query.eq('job_id', jobId);
+                const numericJobId = parseInt(jobId, 10);
+                console.log(`   🔍 Querying for specific job_id: ${numericJobId}`);
+                query = query.eq('job_id', numericJobId);
             } else {
                 if (dateFrom) {
                     query = query.gte('creation_datetime', dateFrom);
