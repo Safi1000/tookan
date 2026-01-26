@@ -3018,15 +3018,25 @@ function getApp() {
           }
         }
 
-        // Trigger Sync for today to ensure everything is consistent
+        // Trigger Sync for today (Orders & COD)
         try {
           const { syncOrders } = require('../server/services/orderSyncService');
+          const { syncCodAmounts } = require('../sync-cod-amounts');
           const today = new Date().toISOString().split('T')[0];
-          console.log(`🔄 Triggering Order Sync for ${today}...`);
-          syncOrders({ forceSync: true, dateFrom: today, dateTo: today })
-            .catch(err => console.error('❌ Post-reorder sync failed:', err));
+          console.log(`🔄 Triggering Order & COD Sync for ${today}...`);
+
+          Promise.allSettled([
+            syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
+            syncCodAmounts({ dateFrom: today, dateTo: today })
+          ]).then(results => {
+            results.forEach((res, idx) => {
+              const type = idx === 0 ? 'Orders' : 'COD';
+              if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
+              else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
+            });
+          });
         } catch (moduleError) {
-          console.warn('⚠️ Could not load orderSyncService:', moduleError.message);
+          console.warn('⚠️ Could not load sync services (sync-cod-amounts or orderSyncService):', moduleError.message);
         }
 
         res.json({

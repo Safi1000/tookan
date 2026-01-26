@@ -114,10 +114,18 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function main() {
-    if (showHelp) {
-        printHelp();
-        process.exit(0);
+async function syncCodAmounts(options = {}) {
+    const {
+        syncAll = false,
+        limit = null,
+        dateFrom = null,
+        dateTo = null,
+        showStatus = false
+    } = options;
+
+    if (showStatus) {
+        await showCodStatus();
+        return;
     }
 
     console.log('\n🚀 COD AMOUNT SYNC');
@@ -126,14 +134,12 @@ async function main() {
     // Check environment
     if (!process.env.TOOKAN_API_KEY) {
         console.error('❌ TOOKAN_API_KEY not found in environment');
-        console.error('   Please set it in your .env file');
-        process.exit(1);
+        throw new Error('TOOKAN_API_KEY not found');
     }
 
     if (!isConfigured()) {
         console.error('❌ Supabase is not configured');
-        console.error('   Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
-        process.exit(1);
+        throw new Error('Supabase not configured');
     }
 
     console.log('✅ Environment configured');
@@ -273,15 +279,36 @@ async function main() {
         console.log(`   Errors: ${totalErrors}`);
         console.log('='.repeat(50) + '\n');
 
-        process.exit(0);
+        return { success: true, updated: totalUpdated };
 
     } catch (error) {
         console.error('\n❌ FATAL ERROR');
         console.error(`   ${error.message}`);
         console.error(error.stack);
-        process.exit(1);
+        if (require.main === module) process.exit(1);
+        throw error;
     }
 }
 
-// Run the script
-main();
+// Run if called directly
+if (require.main === module) {
+    const args = process.argv.slice(2);
+    const syncAll = args.includes('--all') || args.includes('-a');
+    const showStatus = args.includes('--status') || args.includes('-s');
+    const showHelp = args.includes('--help') || args.includes('-h');
+    const limitArg = args.find(a => a.startsWith('--limit='));
+    const limit = limitArg ? parseInt(limitArg.split('=')[1]) : null;
+    const dateFromArg = args.find(a => a.startsWith('--from='));
+    const dateFrom = dateFromArg ? dateFromArg.split('=')[1] : null;
+    const dateToArg = args.find(a => a.startsWith('--to='));
+    const dateTo = dateToArg ? dateToArg.split('=')[1] : null;
+
+    if (showHelp) {
+        printHelp();
+        process.exit(0);
+    }
+
+    syncCodAmounts({ syncAll, limit, dateFrom, dateTo, showStatus });
+}
+
+module.exports = { syncCodAmounts };

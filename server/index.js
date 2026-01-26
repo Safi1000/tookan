@@ -1951,12 +1951,21 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
     // Trigger Sync for today to ensure everything is consistent
     try {
       const { syncOrders } = require('./services/orderSyncService');
+      const { syncCodAmounts } = require('../sync-cod-amounts'); // Adjusted path to root
       const today = new Date().toISOString().split('T')[0];
-      console.log(`🔄 Triggering Order Sync for ${today}...`);
-      // Run in background (don't await to keep response fast)
-      syncOrders({ forceSync: true, dateFrom: today, dateTo: today })
-        .then(result => console.log(`✅ Post-reorder sync complete: ${result.success ? 'Success' : 'Passed'}`))
-        .catch(err => console.error('❌ Post-reorder sync failed:', err));
+      console.log(`🔄 Triggering Order & COD Sync for ${today}...`);
+
+      // Run both syncs in background
+      Promise.allSettled([
+        syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
+        syncCodAmounts({ dateFrom: today, dateTo: today })
+      ]).then(results => {
+        results.forEach((res, idx) => {
+          const type = idx === 0 ? 'Orders' : 'COD';
+          if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
+          else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
+        });
+      });
     } catch (syncError) {
       console.error('⚠️ Failed to trigger sync:', syncError);
     }
