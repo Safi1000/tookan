@@ -2689,6 +2689,79 @@ function getApp() {
       }
     });
 
+    // PUT Update Order (Custom Fields, Description, etc.)
+    app.put('/api/tookan/order/:orderId', authenticate, requirePermission(PERMISSIONS.EDIT_ORDER_FINANCIALS), async (req, res) => {
+      try {
+        const { orderId } = req.params;
+        const numericOrderId = parseInt(orderId);
+        const { codAmount, orderFees, assignedDriver, notes } = req.body;
+        const apiKey = getApiKey();
+
+        if (!orderId) {
+          return res.status(400).json({ status: 'error', message: 'Order ID is required' });
+        }
+
+        // Build Tookan payload
+        const updatePayload = {
+          api_key: apiKey,
+          job_id: numericOrderId,
+          custom_field_template: 'Order_editor_test'
+        };
+
+        const metaData = [];
+        if (codAmount !== undefined) metaData.push({ label: 'CASH_NEEDS_TO_BE_COLLECTED', data: String(codAmount) });
+        if (metaData.length > 0) updatePayload.meta_data = metaData;
+        if (notes !== undefined) updatePayload.job_description = notes;
+        if (assignedDriver) updatePayload.fleet_id = assignedDriver;
+
+        const response = await fetch('https://api.tookanapp.com/v2/edit_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatePayload),
+        });
+        const data = await response.json();
+
+        if (!response.ok || data.status !== 200) {
+          return res.status(500).json({ status: 'error', message: data.message || 'Failed to update order' });
+        }
+
+        // Fetch updated data to sync FULL state
+        const getResponse = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, job_ids: [numericOrderId], include_task_history: 0 })
+        });
+        const getData = await getResponse.json();
+        const updatedTaskData = (getData.data && Array.isArray(getData.data)) ? getData.data[0] : (getData.data || {});
+
+        // Upsert to Supabase
+        if (isSupabaseConfigured && updatedTaskData.job_id) {
+          await supabase.from('tasks').upsert({
+            job_id: updatedTaskData.job_id,
+            status: parseInt(updatedTaskData.job_status) || 0,
+            job_description: updatedTaskData.job_description,
+            customer_name: updatedTaskData.customer_username || updatedTaskData.customer_name || updatedTaskData.job_pickup_name,
+            customer_phone: updatedTaskData.customer_phone || updatedTaskData.job_pickup_phone,
+            customer_email: updatedTaskData.customer_email || updatedTaskData.job_pickup_email,
+            pickup_address: updatedTaskData.job_pickup_address || updatedTaskData.pickup_address,
+            delivery_address: updatedTaskData.customer_address || updatedTaskData.delivery_address,
+            cod_amount: parseFloat(updatedTaskData.cod || 0),
+            order_fees: parseFloat(updatedTaskData.order_payment || 0),
+            notes: updatedTaskData.customer_comments || updatedTaskData.job_description,
+            fleet_id: updatedTaskData.fleet_id ? parseInt(updatedTaskData.fleet_id) : null,
+            creation_datetime: updatedTaskData.creation_datetime,
+            last_synced_at: new Date().toISOString(),
+            raw_data: updatedTaskData
+          }, { onConflict: 'job_id' });
+        }
+
+        res.json({ status: 'success', message: 'Order updated', data: updatedTaskData });
+
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
 
 
 
@@ -2943,6 +3016,17 @@ function getApp() {
           } catch (dbErr) {
             console.error('Failed to save reorder tasks to Supabase:', dbErr.message);
           }
+        }
+
+        // Trigger Sync for today to ensure everything is consistent
+        try {
+          const { syncOrders } = require('../server/services/orderSyncService');
+          const today = new Date().toISOString().split('T')[0];
+          console.log(`🔄 Triggering Order Sync for ${today}...`);
+          syncOrders({ forceSync: true, dateFrom: today, dateTo: today })
+            .catch(err => console.error('❌ Post-reorder sync failed:', err));
+        } catch (moduleError) {
+          console.warn('⚠️ Could not load orderSyncService:', moduleError.message);
         }
 
         res.json({

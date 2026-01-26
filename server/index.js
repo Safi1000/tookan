@@ -1948,6 +1948,19 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       }
     }
 
+    // Trigger Sync for today to ensure everything is consistent
+    try {
+      const { syncOrders } = require('./services/orderSyncService');
+      const today = new Date().toISOString().split('T')[0];
+      console.log(`🔄 Triggering Order Sync for ${today}...`);
+      // Run in background (don't await to keep response fast)
+      syncOrders({ forceSync: true, dateFrom: today, dateTo: today })
+        .then(result => console.log(`✅ Post-reorder sync complete: ${result.success ? 'Success' : 'Passed'}`))
+        .catch(err => console.error('❌ Post-reorder sync failed:', err));
+    } catch (syncError) {
+      console.error('⚠️ Failed to trigger sync:', syncError);
+    }
+
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
