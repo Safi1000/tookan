@@ -2763,8 +2763,7 @@ function getApp() {
           const { syncCodAmounts } = require('../sync-cod-amounts');
           console.log(`🔄 Triggering Single Job Sync for ${numericOrderId} (Order & COD)...`);
 
-          // CRITICAL: Await sync in Vercel environment to ensure completion
-          await Promise.allSettled([
+          Promise.allSettled([
             syncTask(numericOrderId),
             syncCodAmounts({ jobId: numericOrderId })
           ]).then(results => {
@@ -3041,50 +3040,27 @@ function getApp() {
           }
         }
 
-        // Run sync BEFORE response (Vercel terminates after res.json)
-        // FULLY DEFENSIVE: Even require() failures won't crash the request
-        let syncTask = null;
-        let syncCodAmounts = null;
-
+        // Trigger Sync for today (Orders & COD)
         try {
-          syncTask = require('../server/services/orderSyncService').syncTask;
-        } catch (e) {
-          console.error('⚠️ Could not load orderSyncService:', e.message);
+          const { syncOrders } = require('../server/services/orderSyncService');
+          const { syncCodAmounts } = require('../sync-cod-amounts');
+          const today = new Date().toISOString().split('T')[0];
+          console.log(`🔄 Triggering Order & COD Sync for ${today}...`);
+
+          Promise.allSettled([
+            syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
+            syncCodAmounts({ dateFrom: today, dateTo: today })
+          ]).then(results => {
+            results.forEach((res, idx) => {
+              const type = idx === 0 ? 'Orders' : 'COD';
+              if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
+              else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
+            });
+          });
+        } catch (moduleError) {
+          console.warn('⚠️ Could not load sync services (sync-cod-amounts or orderSyncService):', moduleError.message);
         }
 
-        try {
-          syncCodAmounts = require('../sync-cod-amounts').syncCodAmounts;
-        } catch (e) {
-          console.error('⚠️ Could not load sync-cod-amounts:', e.message);
-        }
-
-        // Only run sync if modules loaded successfully
-        if (syncTask || syncCodAmounts) {
-          try {
-            const tasksToSync = [];
-            if (pickupOrderId) tasksToSync.push(pickupOrderId);
-            if (deliveryOrderId) tasksToSync.push(deliveryOrderId);
-
-            if (tasksToSync.length > 0) {
-              console.log(`🔄 Syncing reordered tasks: ${tasksToSync.join(', ')}...`);
-              // Wait 500ms for Tookan to index (reduced from 2s for Vercel timeout)
-              await new Promise(r => setTimeout(r, 500));
-
-              const promises = [];
-              if (syncTask) promises.push(...tasksToSync.map(id => syncTask(id)));
-              if (syncCodAmounts) promises.push(...tasksToSync.map(id => syncCodAmounts({ jobId: id })));
-
-              await Promise.allSettled(promises);
-              console.log(`✅ Sync completed for reorder tasks`);
-            }
-          } catch (syncErr) {
-            console.error('⚠️ Sync execution failed:', syncErr.message);
-          }
-        } else {
-          console.log('⚠️ Sync skipped - modules not available');
-        }
-
-        // Send response AFTER sync completes
         res.json({
           status: 'success',
           message: 'Re-order created successfully (2 tasks: Pickup + Delivery)',

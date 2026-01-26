@@ -1970,32 +1970,24 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       }
     }
 
-    // Trigger Sync for new tasks (Delayed 2s to ensure Tookan indexing + Timezone safe)
+    // Trigger Sync for today to ensure everything is consistent
     try {
-      const { syncTask } = require('./services/orderSyncService');
-      const { syncCodAmounts } = require('../sync-cod-amounts');
+      const { syncOrders } = require('./services/orderSyncService');
+      const { syncCodAmounts } = require('../sync-cod-amounts'); // Adjusted path to root
+      const today = new Date().toISOString().split('T')[0];
+      console.log(`🔄 Triggering Order & COD Sync for ${today}...`);
 
-      const tasksToSync = [];
-      if (pickupOrderId) tasksToSync.push(pickupOrderId);
-      if (deliveryOrderId) tasksToSync.push(deliveryOrderId);
-
-      console.log(`🔄 Queuing Delayed Sync for reordered tasks: ${tasksToSync.join(', ')}...`);
-
-      // Run in background with 2s delay (fire and forget for local server)
-      setTimeout(() => {
-        console.log(`🔄 Executing delayed sync for reorder tasks...`);
-        const promises = tasksToSync.map(id => syncTask(id));
-        // Also trigger COD sync just in case
-        tasksToSync.forEach(id => promises.push(syncCodAmounts({ jobId: id })));
-
-        Promise.allSettled(promises).then(results => {
-          results.forEach(r => {
-            if (r.status === 'fulfilled') console.log(`✅ Reorder sync success:`, r.value);
-            else console.error(`❌ Reorder sync failed:`, r.reason);
-          });
+      // Run both syncs in background
+      Promise.allSettled([
+        syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
+        syncCodAmounts({ dateFrom: today, dateTo: today })
+      ]).then(results => {
+        results.forEach((res, idx) => {
+          const type = idx === 0 ? 'Orders' : 'COD';
+          if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
+          else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
         });
-      }, 2000);
-
+      });
     } catch (syncError) {
       console.error('⚠️ Failed to trigger sync:', syncError);
     }
