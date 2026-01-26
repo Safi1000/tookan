@@ -3043,18 +3043,18 @@ function getApp() {
         // Trigger Sync for newly created Job IDs
         try {
           const { syncTask } = require('../server/services/orderSyncService');
-          const { syncCodAmounts } = require('../sync-cod-amounts');
+          const { syncCodForJobId } = require('../sync-cod-amounts');
           console.log(`🔄 Triggering Sync for new tasks: Pickup=${pickupOrderId}, Delivery=${deliveryOrderId}...`);
 
           // Run syncs for both new job IDs in background
           const syncPromises = [];
           if (pickupOrderId) {
             syncPromises.push(syncTask(pickupOrderId));
-            syncPromises.push(syncCodAmounts({ jobId: pickupOrderId }));
+            syncPromises.push(syncCodForJobId(pickupOrderId));
           }
           if (deliveryOrderId) {
             syncPromises.push(syncTask(deliveryOrderId));
-            syncPromises.push(syncCodAmounts({ jobId: deliveryOrderId }));
+            syncPromises.push(syncCodForJobId(deliveryOrderId));
           }
 
           Promise.allSettled(syncPromises).then(results => {
