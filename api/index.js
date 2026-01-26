@@ -2757,25 +2757,22 @@ function getApp() {
 
 
 
-        // Trigger Single Job Sync (Order & COD)
+        // Trigger Single Job Sync (Order)
         try {
           const { syncTask } = require('../server/services/orderSyncService');
-          const { syncCodAmounts } = require('../sync-cod-amounts');
-          console.log(`🔄 Triggering Single Job Sync for ${numericOrderId} (Order & COD)...`);
+          console.log(`🔄 Triggering Single Job Sync for ${numericOrderId}...`);
 
           // CRITICAL: Await sync in Vercel environment to ensure completion
           await Promise.allSettled([
-            syncTask(numericOrderId),
-            syncCodAmounts({ jobId: numericOrderId })
+            syncTask(numericOrderId)
           ]).then(results => {
             results.forEach((res, idx) => {
-              const type = idx === 0 ? 'Order' : 'COD';
-              if (res.status === 'fulfilled') console.log(`✅ Post-update ${type} sync complete for ${numericOrderId}`);
-              else console.error(`❌ Post-update ${type} sync failed for ${numericOrderId}:`, res.reason);
+              if (res.status === 'fulfilled') console.log(`✅ Post-update sync complete for ${numericOrderId}`);
+              else console.error(`❌ Post-update sync failed for ${numericOrderId}:`, res.reason);
             });
           });
         } catch (moduleError) {
-          console.warn('⚠️ Could not load sync services:', moduleError.message);
+          console.warn('⚠️ Could not load orderSyncService:', moduleError.message);
         }
 
         res.json({ status: 'success', message: 'Order updated', data: updatedTaskData });
@@ -3044,7 +3041,6 @@ function getApp() {
         // Trigger Sync for new tasks (Delayed 2s to ensure Tookan indexing + Timezone safe)
         try {
           const { syncTask } = require('../server/services/orderSyncService');
-          const { syncCodAmounts } = require('../sync-cod-amounts');
 
           const tasksToSync = [];
           if (pickupOrderId) tasksToSync.push(pickupOrderId);
@@ -3058,10 +3054,9 @@ function getApp() {
             console.log(`🔄 Executing delayed sync for reorder tasks...`);
 
             // Run sequentially or parallel, but MUST await
-            await Promise.allSettled([
-              ...tasksToSync.map(id => syncTask(id)),
-              ...tasksToSync.map(id => syncCodAmounts({ jobId: id }))
-            ]).then(results => {
+            await Promise.allSettled(
+              tasksToSync.map(id => syncTask(id))
+            ).then(results => {
               results.forEach(r => {
                 if (r.status === 'fulfilled') console.log(`✅ Reorder sync success:`, r.value);
                 else console.error(`❌ Reorder sync failed:`, r.reason);
@@ -3069,7 +3064,7 @@ function getApp() {
             });
           }
         } catch (moduleError) {
-          console.warn('⚠️ Could not load sync services:', moduleError.message);
+          console.warn('⚠️ Could not load orderSyncService:', moduleError.message);
         }
 
         res.json({
