@@ -1645,7 +1645,29 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
       newValue
     );
 
-    console.log('âœ… Order updated successfully:', orderId);
+    console.log('✅ Order updated successfully:', orderId);
+
+    // Trigger Single Job Sync (Order & COD)
+    try {
+      const { syncTask } = require('./services/orderSyncService');
+      const { syncCodAmounts } = require('../sync-cod-amounts'); // Adjusted path to root
+      console.log(`🔄 Triggering Single Job Sync for ${numericOrderId} (Order & COD)...`);
+
+      // Run both syncs in background
+      Promise.allSettled([
+        syncTask(numericOrderId),
+        syncCodAmounts({ jobId: numericOrderId })
+      ]).then(results => {
+        results.forEach((res, idx) => {
+          const type = idx === 0 ? 'Order' : 'COD';
+          if (res.status === 'fulfilled') console.log(`✅ Post-update ${type} sync complete for ${numericOrderId}`);
+          else console.error(`❌ Post-update ${type} sync failed for ${numericOrderId}:`, res.reason);
+        });
+      });
+    } catch (syncError) {
+      console.error('⚠️ Failed to trigger sync:', syncError);
+    }
+
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({

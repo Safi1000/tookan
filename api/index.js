@@ -2755,6 +2755,28 @@ function getApp() {
           }, { onConflict: 'job_id' });
         }
 
+
+
+        // Trigger Single Job Sync (Order & COD)
+        try {
+          const { syncTask } = require('../server/services/orderSyncService');
+          const { syncCodAmounts } = require('../sync-cod-amounts');
+          console.log(`🔄 Triggering Single Job Sync for ${numericOrderId} (Order & COD)...`);
+
+          Promise.allSettled([
+            syncTask(numericOrderId),
+            syncCodAmounts({ jobId: numericOrderId })
+          ]).then(results => {
+            results.forEach((res, idx) => {
+              const type = idx === 0 ? 'Order' : 'COD';
+              if (res.status === 'fulfilled') console.log(`✅ Post-update ${type} sync complete for ${numericOrderId}`);
+              else console.error(`❌ Post-update ${type} sync failed for ${numericOrderId}:`, res.reason);
+            });
+          });
+        } catch (moduleError) {
+          console.warn('⚠️ Could not load sync services:', moduleError.message);
+        }
+
         res.json({ status: 'success', message: 'Order updated', data: updatedTaskData });
 
       } catch (error) {
