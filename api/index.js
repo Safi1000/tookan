@@ -3041,7 +3041,32 @@ function getApp() {
           }
         }
 
-        // Send response FIRST, then attempt sync (fire-and-forget)
+        // Run sync BEFORE response (Vercel terminates after res.json)
+        // Wrapped in try-catch so sync failures don't affect response
+        try {
+          const { syncTask } = require('../server/services/orderSyncService');
+          const { syncCodAmounts } = require('../sync-cod-amounts');
+
+          const tasksToSync = [];
+          if (pickupOrderId) tasksToSync.push(pickupOrderId);
+          if (deliveryOrderId) tasksToSync.push(deliveryOrderId);
+
+          if (tasksToSync.length > 0) {
+            console.log(`🔄 Syncing reordered tasks: ${tasksToSync.join(', ')}...`);
+            // Wait 2s for Tookan to index, then sync
+            await new Promise(r => setTimeout(r, 2000));
+
+            await Promise.allSettled([
+              ...tasksToSync.map(id => syncTask(id)),
+              ...tasksToSync.map(id => syncCodAmounts({ jobId: id }))
+            ]);
+            console.log(`✅ Sync completed for reorder tasks`);
+          }
+        } catch (syncErr) {
+          console.error('⚠️ Sync failed (non-blocking):', syncErr.message);
+        }
+
+        // Send response AFTER sync completes
         res.json({
           status: 'success',
           message: 'Re-order created successfully (2 tasks: Pickup + Delivery)',
@@ -3050,31 +3075,6 @@ function getApp() {
             deliveryOrderId,
             originalOrderId: orderIdToUse,
             tasksCreated: 2
-          }
-        });
-
-        // Background sync (runs after response sent)
-        setImmediate(async () => {
-          try {
-            const { syncTask } = require('../server/services/orderSyncService');
-            const { syncCodAmounts } = require('../sync-cod-amounts');
-
-            const tasksToSync = [];
-            if (pickupOrderId) tasksToSync.push(pickupOrderId);
-            if (deliveryOrderId) tasksToSync.push(deliveryOrderId);
-
-            if (tasksToSync.length > 0) {
-              console.log(`🔄 [Background] Syncing reordered tasks: ${tasksToSync.join(', ')}...`);
-              await new Promise(r => setTimeout(r, 2000));
-
-              await Promise.allSettled([
-                ...tasksToSync.map(id => syncTask(id)),
-                ...tasksToSync.map(id => syncCodAmounts({ jobId: id }))
-              ]);
-              console.log(`✅ Background sync completed for reorder tasks`);
-            }
-          } catch (e) {
-            console.error('⚠️ Background sync failed:', e.message);
           }
         });
       } catch (error) {
