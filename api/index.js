@@ -2763,7 +2763,8 @@ function getApp() {
           const { syncCodAmounts } = require('../sync-cod-amounts');
           console.log(`🔄 Triggering Single Job Sync for ${numericOrderId} (Order & COD)...`);
 
-          Promise.allSettled([
+          // CRITICAL: Await sync in Vercel environment to ensure completion
+          await Promise.allSettled([
             syncTask(numericOrderId),
             syncCodAmounts({ jobId: numericOrderId })
           ]).then(results => {
