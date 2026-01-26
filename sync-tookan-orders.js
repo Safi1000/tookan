@@ -19,7 +19,7 @@
 
 require('dotenv').config();
 
-const { syncOrders, incrementalSync, getSyncStatus } = require('./server/services/orderSyncService');
+const { syncOrders, incrementalSync, getSyncStatus, syncTask } = require('./server/services/orderSyncService');
 const { isConfigured } = require('./server/db/supabase');
 
 // Parse command line arguments
@@ -32,6 +32,8 @@ const dateFromArg = args.find(a => a.startsWith('--dateFrom=')) || args.find(a =
 const dateToArg = args.find(a => a.startsWith('--dateTo=')) || args.find(a => a.startsWith('--to='));
 const dateFrom = dateFromArg ? dateFromArg.split('=')[1] : null;
 const dateTo = dateToArg ? dateToArg.split('=')[1] : null;
+const jobIdArg = args.find(a => a.startsWith('--jobId=') || a.startsWith('--job=') || a.startsWith('--id='));
+const jobId = jobIdArg ? jobIdArg.split('=')[1] : null;
 
 function printHelp() {
   console.log(`
@@ -69,35 +71,35 @@ Examples:
 async function showSyncStatus() {
   console.log('\n📊 SYNC STATUS');
   console.log('='.repeat(50));
-  
+
   if (!isConfigured()) {
     console.log('❌ Supabase is not configured');
     console.log('   Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     return;
   }
-  
+
   const status = await getSyncStatus();
-  
+
   if (!status) {
     console.log('ℹ️  No sync has been performed yet');
     return;
   }
-  
+
   console.log(`Status: ${status.status}`);
   console.log(`Last successful sync: ${status.last_successful_sync || 'Never'}`);
   console.log(`Total synced records: ${status.synced_records || 0}`);
   console.log(`Failed records: ${status.failed_records || 0}`);
   console.log(`Completed batches: ${status.completed_batches || 0}/${status.total_batches || 0}`);
-  
+
   if (status.status === 'in_progress') {
     console.log(`\n🔄 Sync in progress...`);
     console.log(`   Current batch: ${status.current_batch_start} to ${status.current_batch_end}`);
   }
-  
+
   if (status.last_error) {
     console.log(`\n⚠️  Last error: ${status.last_error}`);
   }
-  
+
   console.log('='.repeat(50));
 }
 
@@ -106,23 +108,23 @@ async function main() {
     printHelp();
     process.exit(0);
   }
-  
+
   console.log('\n🚀 TOOKAN ORDER SYNC');
   console.log('='.repeat(50));
-  
+
   // Check environment
   if (!process.env.TOOKAN_API_KEY) {
     console.error('❌ TOOKAN_API_KEY not found in environment');
     console.error('   Please set it in your .env file');
     process.exit(1);
   }
-  
+
   if (!isConfigured()) {
     console.error('❌ Supabase is not configured');
     console.error('   Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
     process.exit(1);
   }
-  
+
   console.log('✅ Environment configured');
   console.log(`   Tookan API Key: ${process.env.TOOKAN_API_KEY.substring(0, 10)}...`);
   console.log(`   Supabase URL: ${process.env.SUPABASE_URL}`);
@@ -130,16 +132,19 @@ async function main() {
     console.log(`   Date override: ${dateFrom || '(auto)'} to ${dateTo || '(now)'}`);
   }
   console.log('='.repeat(50));
-  
+
   if (showStatus) {
     await showSyncStatus();
     process.exit(0);
   }
-  
+
   try {
     let result;
-    
-    if (isIncremental) {
+
+    if (jobId) {
+      console.log(`\n📥 Starting SINGLE TASK sync for Job ID: ${jobId}...`);
+      result = await syncTask(jobId);
+    } else if (isIncremental) {
       console.log('\n📥 Starting INCREMENTAL sync...');
       console.log('   This will only sync orders since the last successful sync.\n');
       result = await incrementalSync();
@@ -148,7 +153,7 @@ async function main() {
       console.log('   This may take several minutes depending on order volume.\n');
       result = await syncOrders({ forceSync, dateFrom, dateTo });
     }
-    
+
     if (result.success) {
       console.log('\n✅ SYNC COMPLETED SUCCESSFULLY');
       console.log('='.repeat(50));

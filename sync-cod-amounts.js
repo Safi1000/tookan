@@ -120,6 +120,8 @@ async function syncCodAmounts(options = {}) {
         limit = null,
         dateFrom = null,
         dateTo = null,
+
+        jobId = null,
         showStatus = false
     } = options;
 
@@ -169,15 +171,21 @@ async function syncCodAmounts(options = {}) {
                 .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
             if (!syncAll) {
-                // Only sync tasks with null or 0 cod_amount
-                query = query.or('cod_amount.is.null,cod_amount.eq.0');
+                // Only sync tasks with null or 0 cod_amount (unless jobId provided)
+                if (!jobId) {
+                    query = query.or('cod_amount.is.null,cod_amount.eq.0');
+                }
             }
 
-            if (dateFrom) {
-                query = query.gte('creation_datetime', dateFrom);
-            }
-            if (dateTo) {
-                query = query.lte('creation_datetime', dateTo);
+            if (jobId) {
+                query = query.eq('job_id', jobId);
+            } else {
+                if (dateFrom) {
+                    query = query.gte('creation_datetime', dateFrom);
+                }
+                if (dateTo) {
+                    query = query.lte('creation_datetime', dateTo);
+                }
             }
 
             const { data: tasks, error } = await query;
@@ -299,16 +307,20 @@ if (require.main === module) {
     const limitArg = args.find(a => a.startsWith('--limit='));
     const limit = limitArg ? parseInt(limitArg.split('=')[1]) : null;
     const dateFromArg = args.find(a => a.startsWith('--from='));
-    const dateFrom = dateFromArg ? dateFromArg.split('=')[1] : null;
+
     const dateToArg = args.find(a => a.startsWith('--to='));
     const dateTo = dateToArg ? dateToArg.split('=')[1] : null;
+    const jobIdArg = args.find(a => a.startsWith('--jobId=') || a.startsWith('--job=') || a.startsWith('--id='));
+    const jobId = jobIdArg ? jobIdArg.split('=')[1] : null;
+
+
 
     if (showHelp) {
         printHelp();
         process.exit(0);
     }
 
-    syncCodAmounts({ syncAll, limit, dateFrom, dateTo, showStatus });
+    syncCodAmounts({ syncAll, limit, dateFrom, dateTo, jobId, showStatus });
 }
 
 module.exports = { syncCodAmounts };

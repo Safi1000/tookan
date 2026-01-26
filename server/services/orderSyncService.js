@@ -810,6 +810,47 @@ async function syncTaskTags(options = {}) {
   }
 }
 
+/**
+ * Sync a single task by Job ID
+ */
+async function syncTask(jobId) {
+  console.log(`\n📥 Syncing single task: ${jobId}`);
+  const apiKey = getApiKey();
+
+  try {
+    const response = await fetchWithRetry(`${TOOKAN_API_BASE}/get_job_details`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        job_ids: [jobId],
+        include_task_history: 0,
+        job_additional_info: 1
+      })
+    });
+
+    const data = await response.json();
+    if (data.status !== 200 || !data.data) {
+      console.error(`❌ Failed to fetch task ${jobId}: ${data.message}`);
+      return { success: false, message: data.message };
+    }
+
+    const tasks = Array.isArray(data.data) ? data.data : [data.data];
+    if (tasks.length === 0) {
+      console.error(`❌ Task ${jobId} not found in Tookan`);
+      return { success: false, message: 'Task not found' };
+    }
+
+    const result = await bulkUpsertTasks(tasks);
+    console.log(`✅ Task ${jobId} synced successfully`);
+    return { success: true, ...result };
+
+  } catch (error) {
+    console.error(`❌ Sync task error: ${error.message}`);
+    return { success: false, message: error.message };
+  }
+}
+
 module.exports = {
   syncOrders,
   incrementalSync,
@@ -823,6 +864,7 @@ module.exports = {
   bulkUpsertTasks,
   transformTaskToRecord,
   fetchJobDetailsForJobIds,
-  fetchTagsForJobIds
+  fetchTagsForJobIds,
+  syncTask
 };
 
