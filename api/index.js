@@ -2757,22 +2757,25 @@ function getApp() {
 
 
 
-        // Trigger Single Job Sync (Order)
+        // Trigger Single Job Sync (Order & COD)
         try {
           const { syncTask } = require('../server/services/orderSyncService');
-          console.log(`🔄 Triggering Single Job Sync for ${numericOrderId}...`);
+          const { syncCodAmounts } = require('../sync-cod-amounts');
+          console.log(`🔄 Triggering Single Job Sync for ${numericOrderId} (Order & COD)...`);
 
           // CRITICAL: Await sync in Vercel environment to ensure completion
           await Promise.allSettled([
-            syncTask(numericOrderId)
+            syncTask(numericOrderId),
+            syncCodAmounts({ jobId: numericOrderId })
           ]).then(results => {
             results.forEach((res, idx) => {
-              if (res.status === 'fulfilled') console.log(`✅ Post-update sync complete for ${numericOrderId}`);
-              else console.error(`❌ Post-update sync failed for ${numericOrderId}:`, res.reason);
+              const type = idx === 0 ? 'Order' : 'COD';
+              if (res.status === 'fulfilled') console.log(`✅ Post-update ${type} sync complete for ${numericOrderId}`);
+              else console.error(`❌ Post-update ${type} sync failed for ${numericOrderId}:`, res.reason);
             });
           });
         } catch (moduleError) {
-          console.warn('⚠️ Could not load orderSyncService:', moduleError.message);
+          console.warn('⚠️ Could not load sync services:', moduleError.message);
         }
 
         res.json({ status: 'success', message: 'Order updated', data: updatedTaskData });
@@ -3038,35 +3041,7 @@ function getApp() {
           }
         }
 
-        // Trigger Sync for new tasks (Delayed 2s to ensure Tookan indexing + Timezone safe)
-        try {
-          const { syncTask } = require('../server/services/orderSyncService');
-
-          const tasksToSync = [];
-          if (pickupOrderId) tasksToSync.push(pickupOrderId);
-          if (deliveryOrderId) tasksToSync.push(deliveryOrderId);
-
-          console.log(`🔄 Queuing Delayed Sync for reordered tasks: ${tasksToSync.join(', ')}...`);
-
-          // CRITICAL: Await the delay and sync in Vercel to prevent termination
-          if (tasksToSync.length > 0) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            console.log(`🔄 Executing delayed sync for reorder tasks...`);
-
-            // Run sequentially or parallel, but MUST await
-            await Promise.allSettled(
-              tasksToSync.map(id => syncTask(id))
-            ).then(results => {
-              results.forEach(r => {
-                if (r.status === 'fulfilled') console.log(`✅ Reorder sync success:`, r.value);
-                else console.error(`❌ Reorder sync failed:`, r.reason);
-              });
-            });
-          }
-        } catch (moduleError) {
-          console.warn('⚠️ Could not load orderSyncService:', moduleError.message);
-        }
-
+        // Send response FIRST, then attempt sync (fire-and-forget)
         res.json({
           status: 'success',
           message: 'Re-order created successfully (2 tasks: Pickup + Delivery)',
@@ -3075,6 +3050,31 @@ function getApp() {
             deliveryOrderId,
             originalOrderId: orderIdToUse,
             tasksCreated: 2
+          }
+        });
+
+        // Background sync (runs after response sent)
+        setImmediate(async () => {
+          try {
+            const { syncTask } = require('../server/services/orderSyncService');
+            const { syncCodAmounts } = require('../sync-cod-amounts');
+
+            const tasksToSync = [];
+            if (pickupOrderId) tasksToSync.push(pickupOrderId);
+            if (deliveryOrderId) tasksToSync.push(deliveryOrderId);
+
+            if (tasksToSync.length > 0) {
+              console.log(`🔄 [Background] Syncing reordered tasks: ${tasksToSync.join(', ')}...`);
+              await new Promise(r => setTimeout(r, 2000));
+
+              await Promise.allSettled([
+                ...tasksToSync.map(id => syncTask(id)),
+                ...tasksToSync.map(id => syncCodAmounts({ jobId: id }))
+              ]);
+              console.log(`✅ Background sync completed for reorder tasks`);
+            }
+          } catch (e) {
+            console.error('⚠️ Background sync failed:', e.message);
           }
         });
       } catch (error) {
