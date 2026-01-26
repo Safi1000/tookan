@@ -3042,28 +3042,45 @@ function getApp() {
         }
 
         // Run sync BEFORE response (Vercel terminates after res.json)
-        // Wrapped in try-catch so sync failures don't affect response
+        // FULLY DEFENSIVE: Even require() failures won't crash the request
+        let syncTask = null;
+        let syncCodAmounts = null;
+
         try {
-          const { syncTask } = require('../server/services/orderSyncService');
-          const { syncCodAmounts } = require('../sync-cod-amounts');
+          syncTask = require('../server/services/orderSyncService').syncTask;
+        } catch (e) {
+          console.error('⚠️ Could not load orderSyncService:', e.message);
+        }
 
-          const tasksToSync = [];
-          if (pickupOrderId) tasksToSync.push(pickupOrderId);
-          if (deliveryOrderId) tasksToSync.push(deliveryOrderId);
+        try {
+          syncCodAmounts = require('../sync-cod-amounts').syncCodAmounts;
+        } catch (e) {
+          console.error('⚠️ Could not load sync-cod-amounts:', e.message);
+        }
 
-          if (tasksToSync.length > 0) {
-            console.log(`🔄 Syncing reordered tasks: ${tasksToSync.join(', ')}...`);
-            // Wait 2s for Tookan to index, then sync
-            await new Promise(r => setTimeout(r, 2000));
+        // Only run sync if modules loaded successfully
+        if (syncTask || syncCodAmounts) {
+          try {
+            const tasksToSync = [];
+            if (pickupOrderId) tasksToSync.push(pickupOrderId);
+            if (deliveryOrderId) tasksToSync.push(deliveryOrderId);
 
-            await Promise.allSettled([
-              ...tasksToSync.map(id => syncTask(id)),
-              ...tasksToSync.map(id => syncCodAmounts({ jobId: id }))
-            ]);
-            console.log(`✅ Sync completed for reorder tasks`);
+            if (tasksToSync.length > 0) {
+              console.log(`🔄 Syncing reordered tasks: ${tasksToSync.join(', ')}...`);
+              await new Promise(r => setTimeout(r, 2000));
+
+              const promises = [];
+              if (syncTask) promises.push(...tasksToSync.map(id => syncTask(id)));
+              if (syncCodAmounts) promises.push(...tasksToSync.map(id => syncCodAmounts({ jobId: id })));
+
+              await Promise.allSettled(promises);
+              console.log(`✅ Sync completed for reorder tasks`);
+            }
+          } catch (syncErr) {
+            console.error('⚠️ Sync execution failed:', syncErr.message);
           }
-        } catch (syncErr) {
-          console.error('⚠️ Sync failed (non-blocking):', syncErr.message);
+        } else {
+          console.log('⚠️ Sync skipped - modules not available');
         }
 
         // Send response AFTER sync completes
