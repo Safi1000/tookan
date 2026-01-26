@@ -1970,27 +1970,23 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       }
     }
 
-    // Trigger Sync for newly created Job IDs
+    // Trigger Sync for today to ensure everything is consistent
     try {
-      const { syncTask } = require('./services/orderSyncService');
-      const { syncCodForJobId } = require('../sync-cod-amounts');
-      console.log(`🔄 Triggering Sync for new tasks: Pickup=${pickupOrderId}, Delivery=${deliveryOrderId}...`);
+      const { syncOrders } = require('./services/orderSyncService');
+      const { syncCodAmounts } = require('../sync-cod-amounts'); // Adjusted path to root
+      const today = new Date().toISOString().split('T')[0];
+      console.log(`🔄 Triggering Order & COD Sync for ${today}...`);
 
-      // Run syncs for both new job IDs in background
-      const syncPromises = [];
-      if (pickupOrderId) {
-        syncPromises.push(syncTask(pickupOrderId));
-        syncPromises.push(syncCodForJobId(pickupOrderId));
-      }
-      if (deliveryOrderId) {
-        syncPromises.push(syncTask(deliveryOrderId));
-        syncPromises.push(syncCodForJobId(deliveryOrderId));
-      }
-
-      Promise.allSettled(syncPromises).then(results => {
-        const succeeded = results.filter(r => r.status === 'fulfilled').length;
-        const failed = results.filter(r => r.status === 'rejected').length;
-        console.log(`✅ Post-reorder sync: ${succeeded} succeeded, ${failed} failed`);
+      // Run both syncs in background
+      Promise.allSettled([
+        syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
+        syncCodAmounts({ dateFrom: today, dateTo: today })
+      ]).then(results => {
+        results.forEach((res, idx) => {
+          const type = idx === 0 ? 'Orders' : 'COD';
+          if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
+          else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
+        });
       });
     } catch (syncError) {
       console.error('⚠️ Failed to trigger sync:', syncError);
