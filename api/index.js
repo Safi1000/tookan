@@ -3040,25 +3040,35 @@ function getApp() {
           }
         }
 
-        // Trigger Sync for today (Orders & COD)
+        // Trigger Sync for new tasks (Delayed 2s to ensure Tookan indexing + Timezone safe)
         try {
-          const { syncOrders } = require('../server/services/orderSyncService');
+          const { syncTask } = require('../server/services/orderSyncService');
           const { syncCodAmounts } = require('../sync-cod-amounts');
-          const today = new Date().toISOString().split('T')[0];
-          console.log(`🔄 Triggering Order & COD Sync for ${today}...`);
 
-          Promise.allSettled([
-            syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
-            syncCodAmounts({ dateFrom: today, dateTo: today })
-          ]).then(results => {
-            results.forEach((res, idx) => {
-              const type = idx === 0 ? 'Orders' : 'COD';
-              if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
-              else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
+          const tasksToSync = [];
+          if (pickupOrderId) tasksToSync.push(pickupOrderId);
+          if (deliveryOrderId) tasksToSync.push(deliveryOrderId);
+
+          console.log(`🔄 Queuing Delayed Sync for reordered tasks: ${tasksToSync.join(', ')}...`);
+
+          // CRITICAL: Await the delay and sync in Vercel to prevent termination
+          if (tasksToSync.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log(`🔄 Executing delayed sync for reorder tasks...`);
+
+            // Run sequentially or parallel, but MUST await
+            await Promise.allSettled([
+              ...tasksToSync.map(id => syncTask(id)),
+              ...tasksToSync.map(id => syncCodAmounts({ jobId: id }))
+            ]).then(results => {
+              results.forEach(r => {
+                if (r.status === 'fulfilled') console.log(`✅ Reorder sync success:`, r.value);
+                else console.error(`❌ Reorder sync failed:`, r.reason);
+              });
             });
-          });
+          }
         } catch (moduleError) {
-          console.warn('⚠️ Could not load sync services (sync-cod-amounts or orderSyncService):', moduleError.message);
+          console.warn('⚠️ Could not load sync services:', moduleError.message);
         }
 
         res.json({
