@@ -5243,7 +5243,7 @@ function getApp() {
 
         res.json({
           status: 'success',
-          message: 'Tasks deleted successfully and status updated to 10',
+          message: 'Tasks deleted successfully',
           data: { deletedIds: connectedJobIds, results }
         });
 
