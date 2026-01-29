@@ -278,9 +278,12 @@ export function FinancialPanel() {
       return;
     }
     // Strict exact match on driver name (case-insensitive)
+    // BUT allow partial match for ID or Phone as the UI suggests searching by them
     const searchTerm = unifiedDriverSearch.trim().toLowerCase();
     const foundDriver = drivers.find(
-      d => d.name.toLowerCase() === searchTerm
+      d => d.name.toLowerCase() === searchTerm ||
+        d.id.toLowerCase().includes(searchTerm) ||
+        (d.phone && d.phone.includes(searchTerm))
     );
     if (foundDriver) {
       setSearchValidation('valid');
