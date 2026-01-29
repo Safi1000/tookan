@@ -3016,30 +3016,35 @@ function getApp() {
           }
         }
 
-        // Run sync BEFORE response to ensure it completes (mandatory)
+        // Trigger GitHub Action for sync (async, no timeout issues)
+        const today = new Date().toISOString().split('T')[0];
         try {
-          const syncServicePath = path.join(__dirname, '..', 'server', 'services', 'orderSyncService');
-          const codSyncPath = path.join(__dirname, '..', 'sync-cod-amounts');
-          const { syncOrders } = require(syncServicePath);
-          const { syncCodAmounts } = require(codSyncPath);
-          const today = new Date().toISOString().split('T')[0];
-          console.log(`🔄 Running MANDATORY Order & COD Sync for ${today}...`);
+          const githubToken = process.env.GITHUB_PAT;
+          const githubRepo = process.env.GITHUB_REPO || 'Safi1000/tookan';
 
-          const results = await Promise.allSettled([
-            syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
-            syncCodAmounts({ dateFrom: today, dateTo: today, forceSync: true })
-          ]);
-
-          results.forEach((res, idx) => {
-            const type = idx === 0 ? 'Orders' : 'COD';
-            if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
-            else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
-          });
-        } catch (moduleError) {
-          console.warn('⚠️ Could not load sync services:', moduleError.message);
+          if (githubToken) {
+            console.log(`🚀 Triggering GitHub Action sync for ${today}...`);
+            await fetch(`https://api.github.com/repos/${githubRepo}/dispatches`, {
+              method: 'POST',
+              headers: {
+                'Accept': 'application/vnd.github.v3+json',
+                'Authorization': `token ${githubToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                event_type: 'sync-orders',
+                client_payload: { date_from: today, date_to: today }
+              })
+            });
+            console.log('✅ GitHub Action triggered successfully');
+          } else {
+            console.warn('⚠️ GITHUB_PAT not set, skipping sync trigger');
+          }
+        } catch (syncError) {
+          console.error('Failed to trigger GitHub Action:', syncError.message);
         }
 
-        // Send response AFTER sync completes
+        // Send response immediately (sync runs async in GitHub)
         res.json({
           status: 'success',
           message: 'Re-order created successfully (2 tasks: Pickup + Delivery)',
@@ -3240,30 +3245,35 @@ function getApp() {
           }
         }
 
-        // Run sync BEFORE response to ensure it completes (mandatory)
+        // Trigger GitHub Action for sync (async, no timeout issues)
+        const today = new Date().toISOString().split('T')[0];
         try {
-          const syncServicePath = path.join(__dirname, '..', 'server', 'services', 'orderSyncService');
-          const codSyncPath = path.join(__dirname, '..', 'sync-cod-amounts');
-          const { syncOrders } = require(syncServicePath);
-          const { syncCodAmounts } = require(codSyncPath);
-          const today = new Date().toISOString().split('T')[0];
-          console.log(`🔄 Running MANDATORY Order & COD Sync for ${today}...`);
+          const githubToken = process.env.GITHUB_PAT;
+          const githubRepo = process.env.GITHUB_REPO || 'Safi1000/tookan';
 
-          const results = await Promise.allSettled([
-            syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
-            syncCodAmounts({ dateFrom: today, dateTo: today, forceSync: true })
-          ]);
-
-          results.forEach((res, idx) => {
-            const type = idx === 0 ? 'Orders' : 'COD';
-            if (res.status === 'fulfilled') console.log(`✅ Post-return ${type} sync complete`);
-            else console.error(`❌ Post-return ${type} sync failed:`, res.reason);
-          });
-        } catch (moduleError) {
-          console.warn('⚠️ Could not load sync services:', moduleError.message);
+          if (githubToken) {
+            console.log(`🚀 Triggering GitHub Action sync for ${today}...`);
+            await fetch(`https://api.github.com/repos/${githubRepo}/dispatches`, {
+              method: 'POST',
+              headers: {
+                'Accept': 'application/vnd.github.v3+json',
+                'Authorization': `token ${githubToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                event_type: 'sync-orders',
+                client_payload: { date_from: today, date_to: today }
+              })
+            });
+            console.log('✅ GitHub Action triggered successfully');
+          } else {
+            console.warn('⚠️ GITHUB_PAT not set, skipping sync trigger');
+          }
+        } catch (syncError) {
+          console.error('Failed to trigger GitHub Action:', syncError.message);
         }
 
-        // Send response AFTER sync completes
+        // Send response immediately (sync runs async in GitHub)
         res.json({
           status: 'success',
           message: 'Return order created successfully (Pickup + Delivery tasks)',

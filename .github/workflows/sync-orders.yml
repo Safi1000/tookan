@@ -1,0 +1,82 @@
+name: Sync Tookan Orders
+
+on:
+  # Trigger via API call (repository_dispatch)
+  repository_dispatch:
+    types: [sync-orders]
+  
+  # Also allow manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      date_from:
+        description: 'Start date (YYYY-MM-DD)'
+        required: false
+        default: ''
+      date_to:
+        description: 'End date (YYYY-MM-DD)'
+        required: false
+        default: ''
+  
+  # Optional: Run on schedule (every 6 hours)
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Determine date range
+        id: dates
+        run: |
+          # Use input dates if provided, otherwise use today
+          if [ -n "${{ github.event.inputs.date_from }}" ]; then
+            echo "DATE_FROM=${{ github.event.inputs.date_from }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ github.event.client_payload.date_from }}" ]; then
+            echo "DATE_FROM=${{ github.event.client_payload.date_from }}" >> $GITHUB_OUTPUT
+          else
+            echo "DATE_FROM=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+          fi
+          
+          if [ -n "${{ github.event.inputs.date_to }}" ]; then
+            echo "DATE_TO=${{ github.event.inputs.date_to }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ github.event.client_payload.date_to }}" ]; then
+            echo "DATE_TO=${{ github.event.client_payload.date_to }}" >> $GITHUB_OUTPUT
+          else
+            echo "DATE_TO=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Run Order Sync
+        env:
+          TOOKAN_API_KEY: ${{ secrets.TOOKAN_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "🔄 Syncing orders from ${{ steps.dates.outputs.DATE_FROM }} to ${{ steps.dates.outputs.DATE_TO }}"
+          node sync-tookan-orders.js --dateFrom=${{ steps.dates.outputs.DATE_FROM }} --dateTo=${{ steps.dates.outputs.DATE_TO }} --force
+      
+      - name: Run COD Sync
+        env:
+          TOOKAN_API_KEY: ${{ secrets.TOOKAN_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "💰 Syncing COD amounts from ${{ steps.dates.outputs.DATE_FROM }} to ${{ steps.dates.outputs.DATE_TO }}"
+          node sync-cod-amounts.js --from=${{ steps.dates.outputs.DATE_FROM }} --to=${{ steps.dates.outputs.DATE_TO }} --force
+      
+      - name: Summary
+        run: |
+          echo "✅ Sync completed successfully!"
+          echo "Date range: ${{ steps.dates.outputs.DATE_FROM }} to ${{ steps.dates.outputs.DATE_TO }}"
