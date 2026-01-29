@@ -3016,32 +3016,30 @@ function getApp() {
           }
         }
 
-        // Create sync promise that will run in background
-        const syncPromise = (async () => {
-          try {
-            const syncServicePath = path.join(__dirname, '..', 'server', 'services', 'orderSyncService');
-            const codSyncPath = path.join(__dirname, '..', 'sync-cod-amounts');
-            const { syncOrders } = require(syncServicePath);
-            const { syncCodAmounts } = require(codSyncPath);
-            const today = new Date().toISOString().split('T')[0];
-            console.log(`🔄 Triggering Order & COD Sync for ${today} (mandatory)...`);
+        // Run sync BEFORE response to ensure it completes (mandatory)
+        try {
+          const syncServicePath = path.join(__dirname, '..', 'server', 'services', 'orderSyncService');
+          const codSyncPath = path.join(__dirname, '..', 'sync-cod-amounts');
+          const { syncOrders } = require(syncServicePath);
+          const { syncCodAmounts } = require(codSyncPath);
+          const today = new Date().toISOString().split('T')[0];
+          console.log(`🔄 Running MANDATORY Order & COD Sync for ${today}...`);
 
-            const results = await Promise.allSettled([
-              syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
-              syncCodAmounts({ dateFrom: today, dateTo: today, forceSync: true })
-            ]);
+          const results = await Promise.allSettled([
+            syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
+            syncCodAmounts({ dateFrom: today, dateTo: today, forceSync: true })
+          ]);
 
-            results.forEach((res, idx) => {
-              const type = idx === 0 ? 'Orders' : 'COD';
-              if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
-              else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
-            });
-          } catch (moduleError) {
-            console.warn('⚠️ Could not load sync services:', moduleError.message);
-          }
-        })();
+          results.forEach((res, idx) => {
+            const type = idx === 0 ? 'Orders' : 'COD';
+            if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
+            else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
+          });
+        } catch (moduleError) {
+          console.warn('⚠️ Could not load sync services:', moduleError.message);
+        }
 
-        // Send response immediately
+        // Send response AFTER sync completes
         res.json({
           status: 'success',
           message: 'Re-order created successfully (2 tasks: Pickup + Delivery)',
@@ -3052,9 +3050,6 @@ function getApp() {
             tasksCreated: 2
           }
         });
-
-        // Wait for sync to complete (Vercel will extend function lifetime)
-        await syncPromise;
 
       } catch (error) {
         console.error('Reorder error:', error);
@@ -3245,32 +3240,30 @@ function getApp() {
           }
         }
 
-        // Create sync promise that will run in background
-        const syncPromise = (async () => {
-          try {
-            const syncServicePath = path.join(__dirname, '..', 'server', 'services', 'orderSyncService');
-            const codSyncPath = path.join(__dirname, '..', 'sync-cod-amounts');
-            const { syncOrders } = require(syncServicePath);
-            const { syncCodAmounts } = require(codSyncPath);
-            const today = new Date().toISOString().split('T')[0];
-            console.log(`🔄 Triggering Order & COD Sync for ${today} (mandatory)...`);
+        // Run sync BEFORE response to ensure it completes (mandatory)
+        try {
+          const syncServicePath = path.join(__dirname, '..', 'server', 'services', 'orderSyncService');
+          const codSyncPath = path.join(__dirname, '..', 'sync-cod-amounts');
+          const { syncOrders } = require(syncServicePath);
+          const { syncCodAmounts } = require(codSyncPath);
+          const today = new Date().toISOString().split('T')[0];
+          console.log(`🔄 Running MANDATORY Order & COD Sync for ${today}...`);
 
-            const results = await Promise.allSettled([
-              syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
-              syncCodAmounts({ dateFrom: today, dateTo: today, forceSync: true })
-            ]);
+          const results = await Promise.allSettled([
+            syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
+            syncCodAmounts({ dateFrom: today, dateTo: today, forceSync: true })
+          ]);
 
-            results.forEach((res, idx) => {
-              const type = idx === 0 ? 'Orders' : 'COD';
-              if (res.status === 'fulfilled') console.log(`✅ Post-return ${type} sync complete`);
-              else console.error(`❌ Post-return ${type} sync failed:`, res.reason);
-            });
-          } catch (moduleError) {
-            console.warn('⚠️ Could not load sync services:', moduleError.message);
-          }
-        })();
+          results.forEach((res, idx) => {
+            const type = idx === 0 ? 'Orders' : 'COD';
+            if (res.status === 'fulfilled') console.log(`✅ Post-return ${type} sync complete`);
+            else console.error(`❌ Post-return ${type} sync failed:`, res.reason);
+          });
+        } catch (moduleError) {
+          console.warn('⚠️ Could not load sync services:', moduleError.message);
+        }
 
-        // Send response immediately
+        // Send response AFTER sync completes
         res.json({
           status: 'success',
           message: 'Return order created successfully (Pickup + Delivery tasks)',
@@ -3281,9 +3274,6 @@ function getApp() {
             assignedDriver
           }
         });
-
-        // Wait for sync to complete (Vercel will extend function lifetime)
-        await syncPromise;
 
       } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
