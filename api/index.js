@@ -3018,8 +3018,10 @@ function getApp() {
 
         // Trigger Sync for current date (Orders & COD) with force
         try {
-          const { syncOrders } = require('../server/services/orderSyncService');
-          const { syncCodAmounts } = require('../sync-cod-amounts');
+          const syncServicePath = path.join(__dirname, '..', 'server', 'services', 'orderSyncService');
+          const codSyncPath = path.join(__dirname, '..', 'sync-cod-amounts');
+          const { syncOrders } = require(syncServicePath);
+          const { syncCodAmounts } = require(codSyncPath);
           const today = new Date().toISOString().split('T')[0];
           console.log(`🔄 Triggering Order & COD Sync for ${today} (forced)...`);
 
@@ -3032,7 +3034,7 @@ function getApp() {
               if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
               else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
             });
-          });
+          }).catch(err => console.error('Sync error:', err));
         } catch (moduleError) {
           console.warn('⚠️ Could not load sync services:', moduleError.message);
         }
@@ -3238,8 +3240,10 @@ function getApp() {
 
         // Trigger Sync for current date (Orders & COD) with force
         try {
-          const { syncOrders } = require('../server/services/orderSyncService');
-          const { syncCodAmounts } = require('../sync-cod-amounts');
+          const syncServicePath = path.join(__dirname, '..', 'server', 'services', 'orderSyncService');
+          const codSyncPath = path.join(__dirname, '..', 'sync-cod-amounts');
+          const { syncOrders } = require(syncServicePath);
+          const { syncCodAmounts } = require(codSyncPath);
           const today = new Date().toISOString().split('T')[0];
           console.log(`🔄 Triggering Order & COD Sync for ${today} (forced)...`);
 
@@ -3252,7 +3256,7 @@ function getApp() {
               if (res.status === 'fulfilled') console.log(`✅ Post-return ${type} sync complete`);
               else console.error(`❌ Post-return ${type} sync failed:`, res.reason);
             });
-          });
+          }).catch(err => console.error('Sync error:', err));
         } catch (moduleError) {
           console.warn('⚠️ Could not load sync services:', moduleError.message);
         }
