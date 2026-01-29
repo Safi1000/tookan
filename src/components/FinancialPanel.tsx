@@ -277,10 +277,10 @@ export function FinancialPanel() {
       localStorage.setItem('financialPanelActiveTab', 'reconciliation');
       return;
     }
+    // Strict exact match on driver name (case-insensitive)
+    const searchTerm = unifiedDriverSearch.trim().toLowerCase();
     const foundDriver = drivers.find(
-      d => d.name.toLowerCase().includes(unifiedDriverSearch.toLowerCase()) ||
-        d.id.toLowerCase().includes(unifiedDriverSearch.toLowerCase()) ||
-        (d.phone && d.phone.includes(unifiedDriverSearch))
+      d => d.name.toLowerCase() === searchTerm
     );
     if (foundDriver) {
       setSearchValidation('valid');
@@ -773,60 +773,34 @@ export function FinancialPanel() {
               </button>
             </div>
 
-            {!selectedDriver ? (
-              // Show all drivers table when no filter
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                    <tr>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Received</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Paid</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {drivers.map((driver, index) => {
-                      const driverTotals = getDriverTotals(driver.id, true);
-                      const currency = localStorage.getItem('currency') || 'BHD';
-                      const currencySymbol = currency === 'BHD' ? 'BHD' : '$';
-                      return (
-                        <tr key={driver.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
-                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{currencySymbol} {driverTotals.received.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">{currencySymbol} {driverTotals.paid.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">{currencySymbol} {driverTotals.balance.toFixed(2)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              // Show single-driver summary
-              (() => {
-                const driver = drivers.find(d => d.id === selectedDriver);
-                const driverTotals = getDriverTotals(selectedDriver, true);
-                const currency = localStorage.getItem('currency') || 'BHD';
-                const currencySymbol = currency === 'BHD' ? 'BHD' : '$';
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-muted/30 dark:bg-[#1A2C53] rounded-xl p-4 border border-border dark:border-[#2A3C63]">
-                      <p className="text-heading dark:text-[#C1EEFA] text-sm mb-1">Received</p>
-                      <p className="text-heading dark:text-white text-2xl font-semibold">{currencySymbol} {driverTotals.received.toFixed(2)}</p>
-                    </div>
-                    <div className="bg-muted/30 dark:bg-[#1A2C53] rounded-xl p-4 border border-border dark:border-[#2A3C63]">
-                      <p className="text-heading dark:text-[#C1EEFA] text-sm mb-1">Paid</p>
-                      <p className="text-green-600 dark:text-green-400 text-2xl font-semibold">{currencySymbol} {driverTotals.paid.toFixed(2)}</p>
-                    </div>
-                    <div className="bg-muted/30 dark:bg-[#1A2C53] rounded-xl p-4 border border-border dark:border-[#2A3C63]">
-                      <p className="text-heading dark:text-[#C1EEFA] text-sm mb-1">Balance</p>
-                      <p className="text-[#DE3544] dark:text-[#DE3544] text-2xl font-semibold">{currencySymbol} {driverTotals.balance.toFixed(2)}</p>
-                    </div>
-                  </div>
-                );
-              })()
-            )}
+            {/* Always show table - filter by selected driver if one is selected */}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                  <tr>
+                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver</th>
+                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Received</th>
+                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Paid</th>
+                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selectedDriver ? drivers.filter(d => d.id === selectedDriver) : drivers).map((driver, index) => {
+                    const driverTotals = getDriverTotals(driver.id, true);
+                    const currency = localStorage.getItem('currency') || 'BHD';
+                    const currencySymbol = currency === 'BHD' ? 'BHD' : '$';
+                    return (
+                      <tr key={driver.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
+                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{currencySymbol} {driverTotals.received.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">{currencySymbol} {driverTotals.paid.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">{currencySymbol} {driverTotals.balance.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Calendar Grid */}
