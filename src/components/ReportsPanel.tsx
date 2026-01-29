@@ -313,9 +313,9 @@ export function ReportsPanel() {
           'Driver ID': perf.fleet_id || '',
           'Name': perf.name || '',
           'Number of Orders': perf.total_orders || 0,
-          'COD Totals': '—',
-          'Order Fees': '—',
-          'Total Order Value': '—',
+          'COD Totals': typeof perf.cod_total === 'number' ? perf.cod_total.toFixed(2) : '0.00',
+          'Order Fees': typeof perf.order_fees === 'number' ? perf.order_fees.toFixed(2) : '0.00',
+          'Total Order Value': typeof perf.total_value === 'number' ? perf.total_value.toFixed(2) : '—',
           'Avg Delivery Time': perf.avg_delivery_time > 0 ? `${perf.avg_delivery_time.toFixed(1)} mins` : 'N/A'
         }));
         const driverSheet = XLSX.utils.json_to_sheet(driverData);
