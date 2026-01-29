@@ -2979,7 +2979,7 @@ function getApp() {
                 tracking_link: pickupResponseData.tracking_link || null,
                 vendor_id: pickupResponseData.customer_id || originalPickup.vendor_id || (originalPickup.raw_data && (originalPickup.raw_data.customer_id || originalPickup.raw_data.vendor_id || originalPickup.raw_data.user_id)) || null,
                 tags: originalPickup.tags || normalizeTags(originalPickup.raw_data?.tags),
-                raw_data: { ...pickupPayload, ...pickupResponseData, job_status: 0 }
+                raw_data: { ...combinedPayload, ...pickupResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });
               console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
             }
@@ -3007,7 +3007,7 @@ function getApp() {
                 tracking_link: deliveryResponseData.tracking_link || null,
                 vendor_id: deliveryResponseData.customer_id || originalDelivery.vendor_id || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_id || originalDelivery.raw_data.vendor_id || originalDelivery.raw_data.user_id)) || null,
                 tags: originalDelivery.tags || normalizeTags(originalDelivery.raw_data?.tags),
-                raw_data: { ...deliveryPayload, ...deliveryResponseData, job_status: 0 }
+                raw_data: { ...combinedPayload, ...deliveryResponseData, job_status: 0 }
               }, { onConflict: 'job_id' });
               console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);
             }
