@@ -2880,102 +2880,79 @@ function getApp() {
         const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours for delivery
         const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
 
-        // ========== TASK 1: PICKUP from merchant/warehouse ==========
-        const pickupPayload = {
+        // ========== SINGLE API CALL: Combined Pickup + Delivery ==========
+        // Using Tookan's create_task API with has_pickup=1 and has_delivery=1
+        // This creates both tasks atomically in a single request
+        const combinedPayload = {
           api_key: apiKey,
+          order_id: `REORDER-${orderIdToUse}-${Date.now()}`,
+          // Pickup fields (from merchant/warehouse)
           job_pickup_name: orderData.customerName,
           job_pickup_phone: orderData.customerPhone,
           job_pickup_email: orderData.customerEmail,
           job_pickup_address: orderData.pickupAddress,
           job_pickup_datetime: formatDateTime(pickupTime),
-          has_pickup: 1,
-          has_delivery: 0,
-          layout_type: 0,
-          timezone: '-180',
-          cod: orderData.codAmount,
-          order_payment: orderData.orderFees,
-          job_description: orderData.notes,
-          auto_assignment: 0,
           pickup_custom_field_template: 'Order_editor_test',
           pickup_meta_data: [
             {
               label: 'CASH_NEEDS_TO_BE_COLLECTED',
               data: String(orderData.codAmount)
             }
-          ]
-        };
-
-        if (orderData.assignedDriver) {
-          pickupPayload.fleet_id = orderData.assignedDriver;
-        }
-
-        console.log('Creating PICKUP task for reorder...');
-        const pickupResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(pickupPayload)
-        });
-
-        const pickupData = await pickupResponse.json();
-
-        if (pickupData.status !== 200) {
-          return res.status(500).json({
-            status: 'error',
-            message: pickupData.message || 'Failed to create pickup task for reorder'
-          });
-        }
-
-        const pickupOrderId = pickupData.data?.job_id || null;
-        console.log('✅ Pickup task created:', pickupOrderId);
-
-        // ========== TASK 2: DELIVERY to customer ==========
-        const deliveryPayload = {
-          api_key: apiKey,
+          ],
+          // Delivery fields (to customer)
           customer_username: orderData.customerName,
           customer_phone: orderData.customerPhone,
           customer_email: orderData.customerEmail,
           customer_address: orderData.deliveryAddress,
           job_delivery_datetime: formatDateTime(deliveryTime),
-          has_pickup: 0,
-          has_delivery: 1,
-          layout_type: 0,
-          timezone: '-180',
-          cod: orderData.codAmount,
-          order_payment: orderData.orderFees,
-          job_description: orderData.notes,
-          auto_assignment: 0,
           custom_field_template: 'Order_editor_test',
           meta_data: [
             {
               label: 'CASH_NEEDS_TO_BE_COLLECTED',
               data: String(orderData.codAmount)
             }
-          ]
+          ],
+          // Common fields
+          has_pickup: 1,
+          has_delivery: 1,
+          layout_type: 0,
+          timezone: '-180',
+          auto_assignment: 0,
+          job_description: orderData.notes,
+          tracking_link: 1,
+          notify: 1,
+          geofence: 0
         };
 
         if (orderData.assignedDriver) {
-          deliveryPayload.fleet_id = orderData.assignedDriver;
+          combinedPayload.fleet_id = orderData.assignedDriver;
         }
 
-        console.log('Creating DELIVERY task for reorder...');
-        const deliveryResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
+        console.log('Creating combined PICKUP + DELIVERY task for reorder (single API call)...');
+        const createResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(deliveryPayload)
+          body: JSON.stringify(combinedPayload)
         });
 
-        const deliveryData = await deliveryResponse.json();
+        const createData = await createResponse.json();
 
-        if (deliveryData.status !== 200) {
+        if (createData.status !== 200) {
           return res.status(500).json({
             status: 'error',
-            message: deliveryData.message || 'Failed to create delivery task for reorder'
+            message: createData.message || 'Failed to create reorder task'
           });
         }
 
-        const deliveryOrderId = deliveryData.data?.job_id || null;
-        console.log('✅ Delivery task created:', deliveryOrderId);
-        console.log('✅ Reorder complete - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
+        // Extract both job IDs from response
+        const responseData = createData.data || {};
+        const pickupOrderId = responseData.pickup_job_id || responseData.job_id || null;
+        const deliveryOrderId = responseData.delivery_job_id || responseData.job_id || null;
+        const pickupData = { data: responseData };
+        const deliveryData = { data: responseData };
+
+        console.log('✅ Combined task created - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
+        console.log('✅ Reorder complete (single API call) - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
 
         // Save BOTH tasks to Supabase
         if (isSupabaseConfigured && supabase) {
@@ -3040,22 +3017,32 @@ function getApp() {
           }
         }
 
-        // Trigger Sync for today (Orders & COD)
+        // Trigger Sync for BOTH created tasks (Orders & COD)
         try {
-          const { syncOrders } = require('../server/services/orderSyncService');
+          const { syncTask } = require('../server/services/orderSyncService');
           const { syncCodAmounts } = require('../sync-cod-amounts');
-          const today = new Date().toISOString().split('T')[0];
-          console.log(`🔄 Triggering Order & COD Sync for ${today}...`);
+          console.log(`🔄 Triggering Order & COD Sync for job IDs: ${pickupOrderId}, ${deliveryOrderId}...`);
 
-          Promise.allSettled([
-            syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
-            syncCodAmounts({ dateFrom: today, dateTo: today })
-          ]).then(results => {
-            results.forEach((res, idx) => {
-              const type = idx === 0 ? 'Orders' : 'COD';
-              if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
-              else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
-            });
+          // Sync both tasks in parallel
+          const syncPromises = [];
+
+          if (pickupOrderId) {
+            syncPromises.push(syncTask(pickupOrderId).then(() => console.log(`✅ Pickup task ${pickupOrderId} synced`)));
+            syncPromises.push(syncCodAmounts({ jobId: pickupOrderId }).then(() => console.log(`✅ COD for pickup ${pickupOrderId} synced`)));
+          }
+
+          if (deliveryOrderId) {
+            syncPromises.push(syncTask(deliveryOrderId).then(() => console.log(`✅ Delivery task ${deliveryOrderId} synced`)));
+            syncPromises.push(syncCodAmounts({ jobId: deliveryOrderId }).then(() => console.log(`✅ COD for delivery ${deliveryOrderId} synced`)));
+          }
+
+          Promise.allSettled(syncPromises).then(results => {
+            const failed = results.filter(r => r.status === 'rejected');
+            if (failed.length > 0) {
+              console.error(`❌ Some post-reorder syncs failed:`, failed.map(f => f.reason?.message || f.reason));
+            } else {
+              console.log('✅ All post-reorder syncs completed successfully');
+            }
           });
         } catch (moduleError) {
           console.warn('⚠️ Could not load sync services (sync-cod-amounts or orderSyncService):', moduleError.message);
@@ -3153,92 +3140,64 @@ function getApp() {
         // Get assigned driver
         const assignedDriver = orderData.assignedDriver || null;
 
-        // ========== TASK 1: PICKUP from customer ==========
-        // PICKUP tasks use job_pickup_* fields, not customer_* fields
-        const pickupPayload = {
+        // ========== SINGLE API CALL: Combined Pickup + Delivery ==========
+        // Using Tookan's create_task API with has_pickup=1 and has_delivery=1
+        // For return order: pickup from customer, deliver to merchant
+        const combinedPayload = {
           api_key: apiKey,
+          order_id: `RETURN-${orderIdToUse}-${Date.now()}`,
+          // Pickup fields (from customer location - original delivery address)
           job_pickup_name: orderData.customerName || 'Customer',
           job_pickup_phone: orderData.customerPhone || '',
           job_pickup_email: orderData.customerEmail || '',
           job_pickup_address: returnPickupAddr,
           job_pickup_datetime: formatDateTime(pickupTime),
-          has_pickup: 1,
-          has_delivery: 0,
-          layout_type: 0,
-          timezone: '-180',
-          cod: 0,
-          order_payment: parseFloat(orderData.orderFees) || 0,
-          job_description: orderData.notes || '',
-          auto_assignment: 0
-        };
-
-        if (assignedDriver) {
-          pickupPayload.fleet_id = assignedDriver;
-        }
-
-        console.log('Creating PICKUP task...');
-
-        const pickupResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(pickupPayload)
-        });
-
-        const pickupData = await pickupResponse.json();
-
-        if (pickupData.status !== 200) {
-          return res.status(500).json({
-            status: 'error',
-            message: pickupData.message || 'Failed to create pickup return task'
-          });
-        }
-
-        const pickupOrderId = pickupData.data?.job_id || null;
-        console.log('✅ Pickup task created:', pickupOrderId);
-
-        // ========== TASK 2: DELIVERY to merchant ==========
-        // DELIVERY tasks only need customer_address
-        const deliveryPayload = {
-          api_key: apiKey,
+          // Delivery fields (to merchant location - original pickup address)
           customer_username: orderData.customerName || 'Customer',
           customer_phone: orderData.customerPhone || '',
           customer_email: orderData.customerEmail || '',
           customer_address: returnDeliveryAddr,
           job_delivery_datetime: formatDateTime(deliveryTime),
-          has_pickup: 0,
+          // Common fields
+          has_pickup: 1,
           has_delivery: 1,
           layout_type: 0,
           timezone: '-180',
-          cod: 0,
-          order_payment: parseFloat(orderData.orderFees) || 0,
+          auto_assignment: 0,
           job_description: orderData.notes || '',
-          auto_assignment: 0
+          tracking_link: 1,
+          notify: 1,
+          geofence: 0
         };
 
         if (assignedDriver) {
-          deliveryPayload.fleet_id = assignedDriver;
+          combinedPayload.fleet_id = assignedDriver;
         }
 
-        console.log('Creating DELIVERY task...');
+        console.log('Creating combined PICKUP + DELIVERY task for return order (single API call)...');
 
-        const deliveryResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
+        const createResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(deliveryPayload)
+          body: JSON.stringify(combinedPayload)
         });
 
-        const deliveryData = await deliveryResponse.json();
+        const createData = await createResponse.json();
 
-        if (deliveryData.status !== 200) {
+        if (createData.status !== 200) {
           return res.status(500).json({
             status: 'error',
-            message: deliveryData.message || 'Failed to create delivery return task'
+            message: createData.message || 'Failed to create return order task'
           });
         }
 
-        const deliveryOrderId = deliveryData.data?.job_id || null;
-        console.log('✅ Delivery task created:', deliveryOrderId);
-        console.log('✅ Return order complete - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
+        // Extract both job IDs from response
+        const responseData = createData.data || {};
+        const pickupOrderId = responseData.pickup_job_id || responseData.job_id || null;
+        const deliveryOrderId = responseData.delivery_job_id || responseData.job_id || null;
+
+        console.log('✅ Combined task created - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
+        console.log('✅ Return order complete (single API call) - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
 
         // Save BOTH return tasks to Supabase
         if (isSupabaseConfigured && supabase) {
@@ -3287,6 +3246,37 @@ function getApp() {
           } catch (dbErr) {
             console.error('Failed to save return tasks to Supabase:', dbErr.message);
           }
+        }
+
+        // Trigger Sync for BOTH created tasks (Orders & COD)
+        try {
+          const { syncTask } = require('../server/services/orderSyncService');
+          const { syncCodAmounts } = require('../sync-cod-amounts');
+          console.log(`🔄 Triggering Order & COD Sync for return job IDs: ${pickupOrderId}, ${deliveryOrderId}...`);
+
+          // Sync both tasks in parallel
+          const syncPromises = [];
+
+          if (pickupOrderId) {
+            syncPromises.push(syncTask(pickupOrderId).then(() => console.log(`✅ Return pickup task ${pickupOrderId} synced`)));
+            syncPromises.push(syncCodAmounts({ jobId: pickupOrderId }).then(() => console.log(`✅ COD for return pickup ${pickupOrderId} synced`)));
+          }
+
+          if (deliveryOrderId) {
+            syncPromises.push(syncTask(deliveryOrderId).then(() => console.log(`✅ Return delivery task ${deliveryOrderId} synced`)));
+            syncPromises.push(syncCodAmounts({ jobId: deliveryOrderId }).then(() => console.log(`✅ COD for return delivery ${deliveryOrderId} synced`)));
+          }
+
+          Promise.allSettled(syncPromises).then(results => {
+            const failed = results.filter(r => r.status === 'rejected');
+            if (failed.length > 0) {
+              console.error(`❌ Some post-return syncs failed:`, failed.map(f => f.reason?.message || f.reason));
+            } else {
+              console.log('✅ All post-return syncs completed successfully');
+            }
+          });
+        } catch (moduleError) {
+          console.warn('⚠️ Could not load sync services for return order:', moduleError.message);
         }
 
         res.json({
