@@ -2885,7 +2885,6 @@ function getApp() {
         // This creates both tasks atomically in a single request
         const combinedPayload = {
           api_key: apiKey,
-          order_id: `REORDER-${orderIdToUse}-${Date.now()}`,
           // Pickup fields (from merchant/warehouse)
           job_pickup_name: orderData.customerName,
           job_pickup_phone: orderData.customerPhone,
@@ -3017,35 +3016,25 @@ function getApp() {
           }
         }
 
-        // Trigger Sync for BOTH created tasks (Orders & COD)
+        // Trigger Sync for current date (Orders & COD) with force
         try {
-          const { syncTask } = require('../server/services/orderSyncService');
+          const { syncOrders } = require('../server/services/orderSyncService');
           const { syncCodAmounts } = require('../sync-cod-amounts');
-          console.log(`🔄 Triggering Order & COD Sync for job IDs: ${pickupOrderId}, ${deliveryOrderId}...`);
+          const today = new Date().toISOString().split('T')[0];
+          console.log(`🔄 Triggering Order & COD Sync for ${today} (forced)...`);
 
-          // Sync both tasks in parallel
-          const syncPromises = [];
-
-          if (pickupOrderId) {
-            syncPromises.push(syncTask(pickupOrderId).then(() => console.log(`✅ Pickup task ${pickupOrderId} synced`)));
-            syncPromises.push(syncCodAmounts({ jobId: pickupOrderId }).then(() => console.log(`✅ COD for pickup ${pickupOrderId} synced`)));
-          }
-
-          if (deliveryOrderId) {
-            syncPromises.push(syncTask(deliveryOrderId).then(() => console.log(`✅ Delivery task ${deliveryOrderId} synced`)));
-            syncPromises.push(syncCodAmounts({ jobId: deliveryOrderId }).then(() => console.log(`✅ COD for delivery ${deliveryOrderId} synced`)));
-          }
-
-          Promise.allSettled(syncPromises).then(results => {
-            const failed = results.filter(r => r.status === 'rejected');
-            if (failed.length > 0) {
-              console.error(`❌ Some post-reorder syncs failed:`, failed.map(f => f.reason?.message || f.reason));
-            } else {
-              console.log('✅ All post-reorder syncs completed successfully');
-            }
+          Promise.allSettled([
+            syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
+            syncCodAmounts({ dateFrom: today, dateTo: today, forceSync: true })
+          ]).then(results => {
+            results.forEach((res, idx) => {
+              const type = idx === 0 ? 'Orders' : 'COD';
+              if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
+              else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
+            });
           });
         } catch (moduleError) {
-          console.warn('⚠️ Could not load sync services (sync-cod-amounts or orderSyncService):', moduleError.message);
+          console.warn('⚠️ Could not load sync services:', moduleError.message);
         }
 
         res.json({
@@ -3145,7 +3134,6 @@ function getApp() {
         // For return order: pickup from customer, deliver to merchant
         const combinedPayload = {
           api_key: apiKey,
-          order_id: `RETURN-${orderIdToUse}-${Date.now()}`,
           // Pickup fields (from customer location - original delivery address)
           job_pickup_name: orderData.customerName || 'Customer',
           job_pickup_phone: orderData.customerPhone || '',
@@ -3248,35 +3236,25 @@ function getApp() {
           }
         }
 
-        // Trigger Sync for BOTH created tasks (Orders & COD)
+        // Trigger Sync for current date (Orders & COD) with force
         try {
-          const { syncTask } = require('../server/services/orderSyncService');
+          const { syncOrders } = require('../server/services/orderSyncService');
           const { syncCodAmounts } = require('../sync-cod-amounts');
-          console.log(`🔄 Triggering Order & COD Sync for return job IDs: ${pickupOrderId}, ${deliveryOrderId}...`);
+          const today = new Date().toISOString().split('T')[0];
+          console.log(`🔄 Triggering Order & COD Sync for ${today} (forced)...`);
 
-          // Sync both tasks in parallel
-          const syncPromises = [];
-
-          if (pickupOrderId) {
-            syncPromises.push(syncTask(pickupOrderId).then(() => console.log(`✅ Return pickup task ${pickupOrderId} synced`)));
-            syncPromises.push(syncCodAmounts({ jobId: pickupOrderId }).then(() => console.log(`✅ COD for return pickup ${pickupOrderId} synced`)));
-          }
-
-          if (deliveryOrderId) {
-            syncPromises.push(syncTask(deliveryOrderId).then(() => console.log(`✅ Return delivery task ${deliveryOrderId} synced`)));
-            syncPromises.push(syncCodAmounts({ jobId: deliveryOrderId }).then(() => console.log(`✅ COD for return delivery ${deliveryOrderId} synced`)));
-          }
-
-          Promise.allSettled(syncPromises).then(results => {
-            const failed = results.filter(r => r.status === 'rejected');
-            if (failed.length > 0) {
-              console.error(`❌ Some post-return syncs failed:`, failed.map(f => f.reason?.message || f.reason));
-            } else {
-              console.log('✅ All post-return syncs completed successfully');
-            }
+          Promise.allSettled([
+            syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
+            syncCodAmounts({ dateFrom: today, dateTo: today, forceSync: true })
+          ]).then(results => {
+            results.forEach((res, idx) => {
+              const type = idx === 0 ? 'Orders' : 'COD';
+              if (res.status === 'fulfilled') console.log(`✅ Post-return ${type} sync complete`);
+              else console.error(`❌ Post-return ${type} sync failed:`, res.reason);
+            });
           });
         } catch (moduleError) {
-          console.warn('⚠️ Could not load sync services for return order:', moduleError.message);
+          console.warn('⚠️ Could not load sync services:', moduleError.message);
         }
 
         res.json({
@@ -5230,14 +5208,16 @@ function getApp() {
           results.push({ id, status: data.status, message: data.message });
         }
 
-        // 4. Delete from Supabase
-        const { error: deleteError } = await supabase
+        // 4. Update status to 0 in Supabase (instead of deleting)
+        const { error: updateError } = await supabase
           .from('tasks')
-          .delete()
+          .update({ status: 0, last_synced_at: new Date().toISOString() })
           .in('job_id', connectedJobIds);
 
-        if (deleteError) {
-          console.error('Failed to delete from Supabase:', deleteError);
+        if (updateError) {
+          console.error('Failed to update status in Supabase:', updateError);
+        } else {
+          console.log(`✅ Status set to 0 for tasks: ${connectedJobIds.join(', ')}`);
         }
 
         console.log('✅ Delete operation completed');
@@ -5245,7 +5225,7 @@ function getApp() {
 
         res.json({
           status: 'success',
-          message: 'Tasks deleted successfully',
+          message: 'Tasks deleted successfully and status updated to 0',
           data: { deletedIds: connectedJobIds, results }
         });
 
