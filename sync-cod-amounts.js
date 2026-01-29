@@ -4,7 +4,7 @@
  * Sync COD Amounts Script
  * 
  * Fetches COD amounts from Tookan's get_job_details API and updates the Supabase tasks table.
- * Uses the CASH_NEEDS_TO_BE_COLLECTED field from job_additional_info.
+ * Uses the COD_Amount field from job_additional_info.
  * 
  * Usage:
  *   node sync-cod-amounts.js              # Sync all tasks with null/0 cod_amount
@@ -43,7 +43,7 @@ Sync COD Amounts Script
 =======================
 
 Fetches COD amounts from Tookan's get_job_details API and updates the Supabase tasks table.
-Uses the CASH_NEEDS_TO_BE_COLLECTED field from job_additional_info.
+Uses the COD_Amount field from job_additional_info.
 
 Usage:
   node sync-cod-amounts.js [options]

@@ -2705,11 +2705,11 @@ function getApp() {
         const updatePayload = {
           api_key: apiKey,
           job_id: numericOrderId,
-          custom_field_template: 'Order_editor_test'
+          custom_field_template: 'Same_day'
         };
 
         const metaData = [];
-        if (codAmount !== undefined) metaData.push({ label: 'CASH_NEEDS_TO_BE_COLLECTED', data: String(codAmount) });
+        if (codAmount !== undefined) metaData.push({ label: 'COD_Amount', data: String(codAmount) });
         if (metaData.length > 0) updatePayload.meta_data = metaData;
         if (notes !== undefined) updatePayload.job_description = notes;
         if (assignedDriver) updatePayload.fleet_id = assignedDriver;
@@ -2891,10 +2891,10 @@ function getApp() {
           job_pickup_email: orderData.customerEmail,
           job_pickup_address: orderData.pickupAddress,
           job_pickup_datetime: formatDateTime(pickupTime),
-          pickup_custom_field_template: 'Order_editor_test',
+          pickup_custom_field_template: 'Same_day',
           pickup_meta_data: [
             {
-              label: 'CASH_NEEDS_TO_BE_COLLECTED',
+              label: 'COD_Amount',
               data: String(orderData.codAmount)
             }
           ],
@@ -2904,10 +2904,10 @@ function getApp() {
           customer_email: orderData.customerEmail,
           customer_address: orderData.deliveryAddress,
           job_delivery_datetime: formatDateTime(deliveryTime),
-          custom_field_template: 'Order_editor_test',
+          custom_field_template: 'Same_day',
           meta_data: [
             {
-              label: 'CASH_NEEDS_TO_BE_COLLECTED',
+              label: 'COD_Amount',
               data: String(orderData.codAmount)
             }
           ],
@@ -4029,7 +4029,7 @@ function getApp() {
     });
 
     // GET/Sync COD Amount for a single order
-    // Fetches COD from Tookan's get_job_details API (CASH_NEEDS_TO_BE_COLLECTED in job_additional_info)
+    // Fetches COD from Tookan's get_job_details API (COD_Amount in job_additional_info)
     app.get('/api/orders/:jobId/sync-cod', authenticate, async (req, res) => {
       try {
         const { jobId } = req.params;
@@ -4066,7 +4066,7 @@ function getApp() {
 
         if (Array.isArray(customFields)) {
           const codField = customFields.find(field =>
-            field.label === 'CASH_NEEDS_TO_BE_COLLECTED' ||
+            field.label === 'COD_Amount' ||
             field.display_name === 'CASH NEEDS TO BE COLLECTED'
           );
 
@@ -4439,7 +4439,7 @@ function getApp() {
 
               if (Array.isArray(customFields)) {
                 const codField = customFields.find(field =>
-                  field.label === 'CASH_NEEDS_TO_BE_COLLECTED' ||
+                  field.label === 'COD_Amount' ||
                   field.display_name === 'CASH NEEDS TO BE COLLECTED'
                 );
 
@@ -4579,7 +4579,7 @@ function getApp() {
         const metaData = [];
         if (codAmount !== undefined) {
           metaData.push({
-            label: 'CASH_NEEDS_TO_BE_COLLECTED',
+            label: 'COD_Amount',
             data: String(codAmount)
           });
         }
@@ -4588,7 +4588,7 @@ function getApp() {
         const tookanPayload = {
           api_key: apiKey,
           job_id: numericJobId,
-          custom_field_template: 'Order_editor_test'
+          custom_field_template: 'Same_day'
         };
 
         // Add meta_data if we have COD to update
@@ -5092,13 +5092,13 @@ function getApp() {
         // Build meta_data for Tookan
         const metaData = [];
         if (cod_amount !== undefined) {
-          metaData.push({ label: 'CASH_NEEDS_TO_BE_COLLECTED', data: String(cod_amount) });
+          metaData.push({ label: 'COD_Amount', data: String(cod_amount) });
         }
 
         const tookanPayload = {
           api_key: apiKey,
           job_id: numericJobId,
-          custom_field_template: 'Order_editor_test'
+          custom_field_template: 'Same_day'
         };
         if (metaData.length > 0) tookanPayload.meta_data = metaData;
 

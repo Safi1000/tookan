@@ -178,7 +178,7 @@ async function fetchTasksBatch(startDate, endDate, jobType, offset = 0) {
 /**
  * Fetch job details (tags and COD) for a batch of job IDs
  * Uses get_job_details with job_additional_info: 1
- * Extracts COD from CASH_NEEDS_TO_BE_COLLECTED field in job_additional_info
+ * Extracts COD from COD_Amount field in job_additional_info
  */
 async function fetchJobDetailsForJobIds(jobIds) {
   if (!jobIds || jobIds.length === 0) return {};
@@ -209,13 +209,13 @@ async function fetchJobDetailsForJobIds(jobIds) {
     }
 
     const extractCodFromCustomField = (job) => {
-      // COD is in custom_field array with label "CASH_NEEDS_TO_BE_COLLECTED"
+      // COD is in custom_field array with label "COD_Amount"
       // (Not in job_additional_info as previously thought)
       const customFields = job.custom_field || [];
       if (!Array.isArray(customFields)) return null;
 
       const codField = customFields.find(field =>
-        field.label === 'CASH_NEEDS_TO_BE_COLLECTED' ||
+        field.label === 'COD_Amount' ||
         field.display_name === 'CASH NEEDS TO BE COLLECTED'
       );
 

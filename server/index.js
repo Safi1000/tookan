@@ -1452,7 +1452,7 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
     const metaData = [];
     if (codAmount !== undefined) {
       metaData.push({
-        label: 'CASH_NEEDS_TO_BE_COLLECTED',
+        label: 'COD_Amount',
         data: String(codAmount)
       });
     }
@@ -1461,7 +1461,7 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
     const updatePayload = {
       api_key: apiKey,
       job_id: numericOrderId,
-      custom_field_template: 'Order_editor_test'
+      custom_field_template: 'Same_day'
     };
 
     // Add meta_data if we have COD to update
@@ -1832,10 +1832,10 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       order_payment: orderData.orderFees,
       job_description: orderData.notes || '',
       auto_assignment: 0,
-      pickup_custom_field_template: 'Order_editor_test',
+      pickup_custom_field_template: 'Same_day',
       pickup_meta_data: [
         {
-          label: 'CASH_NEEDS_TO_BE_COLLECTED',
+          label: 'COD_Amount',
           data: String(orderData.codAmount)
         }
       ]
@@ -1878,10 +1878,10 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       order_payment: orderData.orderFees,
       job_description: orderData.notes || '',
       auto_assignment: 0,
-      custom_field_template: 'Order_editor_test',
+      custom_field_template: 'Same_day',
       meta_data: [
         {
-          label: 'CASH_NEEDS_TO_BE_COLLECTED',
+          label: 'COD_Amount',
           data: String(orderData.codAmount)
         }
       ]
@@ -2574,7 +2574,7 @@ app.post('/api/tookan/webhook', async (req, res) => {
 
               if (Array.isArray(customFields)) {
                 const codField = customFields.find(field =>
-                  field.label === 'CASH_NEEDS_TO_BE_COLLECTED' ||
+                  field.label === 'COD_Amount' ||
                   field.display_name === 'CASH NEEDS TO BE COLLECTED'
                 );
 
@@ -3002,7 +3002,7 @@ app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_ord
       const metaData = [];
       if (cod_amount !== undefined) {
         metaData.push({
-          label: 'CASH_NEEDS_TO_BE_COLLECTED',
+          label: 'COD_Amount',
           data: String(cod_amount)
         });
       }
@@ -3011,7 +3011,7 @@ app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_ord
       const tookanPayload = {
         api_key: apiKey,
         job_id: numericJobId,
-        custom_field_template: 'Order_editor_test',
+        custom_field_template: 'Same_day',
         meta_data: metaData
       };
 
@@ -4591,7 +4591,7 @@ app.get('/api/tookan/job/:jobId/related-address', authenticate, async (req, res)
 });
 
 // GET/Sync COD Amount for a single order
-// Fetches COD from Tookan's get_job_details API (CASH_NEEDS_TO_BE_COLLECTED in job_additional_info)
+// Fetches COD from Tookan's get_job_details API (COD_Amount in job_additional_info)
 app.get('/api/orders/:jobId/sync-cod', authenticate, async (req, res) => {
   try {
     const { jobId } = req.params;
@@ -4628,7 +4628,7 @@ app.get('/api/orders/:jobId/sync-cod', authenticate, async (req, res) => {
 
     if (Array.isArray(customFields)) {
       const codField = customFields.find(field =>
-        field.label === 'CASH_NEEDS_TO_BE_COLLECTED' ||
+        field.label === 'COD_Amount' ||
         field.display_name === 'CASH NEEDS TO BE COLLECTED'
       );
 
