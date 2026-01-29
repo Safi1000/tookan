@@ -5226,16 +5226,16 @@ function getApp() {
           results.push({ id, status: data.status, message: data.message });
         }
 
-        // 4. Update status to 0 in Supabase (instead of deleting)
+        // 4. Update status to 10 (Deleted) in Supabase (instead of deleting)
         const { error: updateError } = await supabase
           .from('tasks')
-          .update({ status: 0, last_synced_at: new Date().toISOString() })
+          .update({ status: 10, last_synced_at: new Date().toISOString() })
           .in('job_id', connectedJobIds);
 
         if (updateError) {
           console.error('Failed to update status in Supabase:', updateError);
         } else {
-          console.log(`✅ Status set to 0 for tasks: ${connectedJobIds.join(', ')}`);
+          console.log(`✅ Status set to 10 (Deleted) for tasks: ${connectedJobIds.join(', ')}`);
         }
 
         console.log('✅ Delete operation completed');
@@ -5243,7 +5243,7 @@ function getApp() {
 
         res.json({
           status: 'success',
-          message: 'Tasks deleted successfully and status updated to 0',
+          message: 'Tasks deleted successfully and status updated to 10',
           data: { deletedIds: connectedJobIds, results }
         });
 
