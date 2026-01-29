@@ -3016,7 +3016,7 @@ function getApp() {
           }
         }
 
-        // Trigger Sync for current date (Orders & COD) with force
+        // Trigger Sync for current date (Orders & COD) with force - AWAIT to ensure completion
         try {
           const syncServicePath = path.join(__dirname, '..', 'server', 'services', 'orderSyncService');
           const codSyncPath = path.join(__dirname, '..', 'sync-cod-amounts');
@@ -3025,16 +3025,16 @@ function getApp() {
           const today = new Date().toISOString().split('T')[0];
           console.log(`🔄 Triggering Order & COD Sync for ${today} (forced)...`);
 
-          Promise.allSettled([
+          const results = await Promise.allSettled([
             syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
             syncCodAmounts({ dateFrom: today, dateTo: today, forceSync: true })
-          ]).then(results => {
-            results.forEach((res, idx) => {
-              const type = idx === 0 ? 'Orders' : 'COD';
-              if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
-              else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
-            });
-          }).catch(err => console.error('Sync error:', err));
+          ]);
+
+          results.forEach((res, idx) => {
+            const type = idx === 0 ? 'Orders' : 'COD';
+            if (res.status === 'fulfilled') console.log(`✅ Post-reorder ${type} sync complete`);
+            else console.error(`❌ Post-reorder ${type} sync failed:`, res.reason);
+          });
         } catch (moduleError) {
           console.warn('⚠️ Could not load sync services:', moduleError.message);
         }
@@ -3238,7 +3238,7 @@ function getApp() {
           }
         }
 
-        // Trigger Sync for current date (Orders & COD) with force
+        // Trigger Sync for current date (Orders & COD) with force - AWAIT to ensure completion
         try {
           const syncServicePath = path.join(__dirname, '..', 'server', 'services', 'orderSyncService');
           const codSyncPath = path.join(__dirname, '..', 'sync-cod-amounts');
@@ -3247,16 +3247,16 @@ function getApp() {
           const today = new Date().toISOString().split('T')[0];
           console.log(`🔄 Triggering Order & COD Sync for ${today} (forced)...`);
 
-          Promise.allSettled([
+          const results = await Promise.allSettled([
             syncOrders({ forceSync: true, dateFrom: today, dateTo: today }),
             syncCodAmounts({ dateFrom: today, dateTo: today, forceSync: true })
-          ]).then(results => {
-            results.forEach((res, idx) => {
-              const type = idx === 0 ? 'Orders' : 'COD';
-              if (res.status === 'fulfilled') console.log(`✅ Post-return ${type} sync complete`);
-              else console.error(`❌ Post-return ${type} sync failed:`, res.reason);
-            });
-          }).catch(err => console.error('Sync error:', err));
+          ]);
+
+          results.forEach((res, idx) => {
+            const type = idx === 0 ? 'Orders' : 'COD';
+            if (res.status === 'fulfilled') console.log(`✅ Post-return ${type} sync complete`);
+            else console.error(`❌ Post-return ${type} sync failed:`, res.reason);
+          });
         } catch (moduleError) {
           console.warn('⚠️ Could not load sync services:', moduleError.message);
         }
