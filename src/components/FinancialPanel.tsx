@@ -59,8 +59,8 @@ export function FinancialPanel() {
   // Read settings from localStorage with state to trigger re-renders
   // COD Confirmation is hidden from UI but code remains intact
   const getShowCODSection = () => false; // Always return false - COD section hidden
-  const getShowDriverWalletSection = () => false; // Always return false - Driver Wallet section hidden
-  const getShowMerchantWalletSection = () => false; // Always return false - Merchant Wallet section hidden
+  const getShowDriverWalletSection = () => true; // Show Driver Wallet section
+  const getShowMerchantWalletSection = () => true; // Show Merchant Wallet section
 
   const [showCODSection, setShowCODSection] = useState(false); // Always false - COD section hidden
   const [showDriverWalletSection, setShowDriverWalletSection] = useState(getShowDriverWalletSection());
@@ -89,8 +89,8 @@ export function FinancialPanel() {
   const availableTabs: Array<'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets'> = [
     'reconciliation',
     // ...(showCODSection ? (['cod'] as const) : []), // COD tab hidden
-    // ...(showDriverWalletSection ? (['driver-wallets'] as const) : []), // Driver wallet tab hidden
-    // ...(showMerchantWalletSection ? (['merchant-wallets'] as const) : []) // Merchant wallet tab hidden
+    'driver-wallets',
+    'merchant-wallets'
   ];
 
   // Ensure activeTab is valid, default to reconciliation if current tab is hidden
@@ -667,7 +667,25 @@ export function FinancialPanel() {
             COD Confirmation
           </button>
         )} */}
-        {/* Driver and Merchant Wallets Tabs - Permanently Hidden */}
+        {/* Driver and Merchant Wallets Tabs */}
+        <button
+          onClick={() => handleTabChange('driver-wallets')}
+          className={`px-6 py-3 rounded-t-xl transition-all ${activeTab === 'driver-wallets'
+            ? 'bg-hover-bg-light dark:bg-[#223560] text-[#DE3544] dark:text-[#C1EEFA] border-b-2 border-[#DE3544]'
+            : 'text-muted-light dark:text-[#99BFD1] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
+            }`}
+        >
+          Driver Wallet
+        </button>
+        <button
+          onClick={() => handleTabChange('merchant-wallets')}
+          className={`px-6 py-3 rounded-t-xl transition-all ${activeTab === 'merchant-wallets'
+            ? 'bg-hover-bg-light dark:bg-[#223560] text-[#DE3544] dark:text-[#C1EEFA] border-b-2 border-[#DE3544]'
+            : 'text-muted-light dark:text-[#99BFD1] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
+            }`}
+        >
+          Customer Wallet
+        </button>
       </div>
 
       {/* Reconciliation Tab */}
