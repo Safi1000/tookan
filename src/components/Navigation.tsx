@@ -45,7 +45,7 @@ function isSuperadmin(user?: UserData | null) {
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'reports', label: 'Reports Panel', icon: FileText },
-  // { id: 'financial', label: 'Balance Panel', icon: Wallet },
+  { id: 'financial', label: 'Balance Panel', icon: Wallet },
   { id: 'order-editor', label: 'Order Editor Panel', icon: Edit3 },
   // { id: 'withdrawals', label: 'Withdrawal Requests', icon: CreditCard },
   // { id: 'merchant-plans', label: 'Merchant Plans', icon: Package },
