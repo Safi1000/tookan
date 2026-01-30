@@ -15,13 +15,12 @@ import {
   settleCOD,
   fetchAllDrivers,
   fetchAllCustomers,
-  fetchReportsSummary,
+  fetchDriverPerformance,
   type TookanApiResponse,
   type CODEntry,
   type CODConfirmation,
   type CODCalendarEntry,
-  type CustomerWallet,
-  type DriverSummary
+  type CustomerWallet
 } from '../services/tookanApi';
 import { toast } from 'sonner';
 
@@ -165,8 +164,8 @@ export function FinancialPanel() {
   const [isLoadingMerchants, setIsLoadingMerchants] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
-  const [driverSummaries, setDriverSummaries] = useState<DriverSummary[]>([]);
-  const [isLoadingSummaries, setIsLoadingSummaries] = useState(false);
+  const [driverPerformance, setDriverPerformance] = useState<Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number }>>([]);
+  const [isLoadingPerformance, setIsLoadingPerformance] = useState(false);
 
   // Fetch drivers on mount
   useEffect(() => {
@@ -276,26 +275,39 @@ export function FinancialPanel() {
     loadCalendarData();
   }, [dateFrom, dateTo]);
 
-  // Load driver summaries with COD totals when date range changes
+  // Load driver performance data (COD totals) when drivers or date range changes
   useEffect(() => {
-    const loadDriverSummaries = async () => {
-      setIsLoadingSummaries(true);
+    const loadDriverPerformance = async () => {
+      if (drivers.length === 0) return;
+
+      setIsLoadingPerformance(true);
       try {
-        const response = await fetchReportsSummary({
-          dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined
-        });
-        if (response.status === 'success' && response.data?.driverSummaries) {
-          setDriverSummaries(response.data.driverSummaries);
+        // Fetch performance for each driver by their fleet_id
+        const performanceData: Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number }> = [];
+
+        // Batch requests - fetch all drivers at once by passing their IDs
+        for (const driver of drivers) {
+          const fleetId = driver.fleet_id || driver.id;
+          const response = await fetchDriverPerformance(
+            String(fleetId), // Search by fleet_id
+            dateFrom || undefined,
+            dateTo || undefined
+          );
+
+          if (response.status === 'success' && response.data && response.data.length > 0) {
+            performanceData.push(...response.data);
+          }
         }
+
+        setDriverPerformance(performanceData);
       } catch (error) {
-        console.error('Error loading driver summaries:', error);
+        console.error('Error loading driver performance:', error);
       } finally {
-        setIsLoadingSummaries(false);
+        setIsLoadingPerformance(false);
       }
     };
-    loadDriverSummaries();
-  }, [dateFrom, dateTo]);
+    loadDriverPerformance();
+  }, [drivers, dateFrom, dateTo]);
 
   const handleSearch = () => {
     if (!unifiedDriverSearch.trim()) {
@@ -577,7 +589,7 @@ export function FinancialPanel() {
 
   const totals = calculateTotals();
 
-  // Calculate driver-specific totals with date filtering from driverSummaries
+  // Calculate driver-specific totals with date filtering from driverPerformance
   const getDriverTotals = (driverId: string, applyDateFilter: boolean = true) => {
     const driver = drivers.find(d => d.id === driverId);
     if (!driver) {
@@ -590,16 +602,16 @@ export function FinancialPanel() {
       };
     }
 
-    // Find the driver's COD total from driverSummaries (fetched from backend with date filtering)
-    const driverFleetId = String(driver.fleet_id || driver.id);
-    const summary = driverSummaries.find(s =>
-      String(s.driverId) === driverFleetId ||
-      String(s.driverId) === driver.id ||
-      s.driverName?.toLowerCase() === driver.name?.toLowerCase()
+    // Find the driver's COD total from driverPerformance (fetched from backend RPC with date filtering)
+    const driverFleetId = Number(driver.fleet_id || driver.id);
+    const performance = driverPerformance.find(p =>
+      p.fleet_id === driverFleetId ||
+      String(p.fleet_id) === driver.id ||
+      p.name?.toLowerCase() === driver.name?.toLowerCase()
     );
 
-    // Get COD total from summary (already filtered by date on backend)
-    const codTotal = summary?.codTotal || 0;
+    // Get COD total from performance data (already filtered by date on backend via RPC)
+    const codTotal = performance?.cod_total || 0;
 
     // Get paid from driver balance (wallet balance or 0)
     const paid = driver.balance || 0;
