@@ -15,6 +15,7 @@ import {
   settleCOD,
   fetchAllDrivers,
   fetchAllCustomers,
+  fetchAllOrders,
   type TookanApiResponse,
   type CODEntry,
   type CODConfirmation,
@@ -161,6 +162,8 @@ export function FinancialPanel() {
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [isLoadingDrivers, setIsLoadingDrivers] = useState(false);
   const [isLoadingMerchants, setIsLoadingMerchants] = useState(false);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
 
   // Fetch drivers on mount
   useEffect(() => {
@@ -268,6 +271,28 @@ export function FinancialPanel() {
       }
     };
     loadCalendarData();
+  }, [dateFrom, dateTo]);
+
+  // Load orders for COD totals when date range changes
+  useEffect(() => {
+    const loadOrders = async () => {
+      setIsLoadingOrders(true);
+      try {
+        const response = await fetchAllOrders({
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          limit: 10000
+        });
+        if (response.status === 'success' && response.data?.orders) {
+          setOrders(response.data.orders);
+        }
+      } catch (error) {
+        console.error('Error loading orders:', error);
+      } finally {
+        setIsLoadingOrders(false);
+      }
+    };
+    loadOrders();
   }, [dateFrom, dateTo]);
 
   const handleSearch = () => {
@@ -550,7 +575,7 @@ export function FinancialPanel() {
 
   const totals = calculateTotals();
 
-  // Calculate driver-specific totals with date filtering
+  // Calculate driver-specific totals with date filtering from actual orders
   const getDriverTotals = (driverId: string, applyDateFilter: boolean = true) => {
     const driver = drivers.find(d => d.id === driverId);
     if (!driver) {
@@ -563,29 +588,32 @@ export function FinancialPanel() {
       };
     }
 
-    // Get filtered calendar data for this driver (in real app, this would filter by driver)
-    const dataToUse = applyDateFilter ? filteredCalendarData : calendarData;
+    // Calculate COD totals from actual orders for this driver
+    // Filter orders by driver (using fleet_id or driverId)
+    const driverOrders = orders.filter(order => {
+      const orderDriverId = String(order.fleet_id || order.driverId || order.driver_id || '');
+      const driverIdStr = String(driver.fleet_id || driver.id);
+      return orderDriverId === driverIdStr;
+    });
 
-    // Calculate totals from filtered calendar data
-    const calculatedTotals = dataToUse.reduce((acc, item) => ({
-      codReceived: acc.codReceived + item.codReceived,
-      codPending: acc.codPending + item.codPending,
-      balancePaid: acc.balancePaid + item.balancePaid,
-    }), { codReceived: 0, codPending: 0, balancePaid: 0 });
+    // Sum up COD amounts from orders
+    const codTotal = driverOrders.reduce((sum, order) => {
+      const codAmount = parseFloat(order.cod_amount || order.codAmount || order.cod || 0);
+      return sum + (isNaN(codAmount) ? 0 : codAmount);
+    }, 0);
 
-    // For single driver, use a portion of totals (in real app, this would be driver-specific)
-    const driverPortion = selectedDriver === driverId ? 0.25 : 0.25; // 25% per driver (4 drivers)
-    const received = calculatedTotals.codReceived * driverPortion + (driver.balance || 0);
+    // Get paid from driver balance (wallet balance or 0)
     const paid = driver.balance || 0;
-    const manual = calculatedTotals.balancePaid * driverPortion * 0.2; // 20% manual
-    const normal = calculatedTotals.balancePaid * driverPortion * 0.8; // 80% normal
+
+    // Balance = COD Received - Paid
+    const balance = codTotal - paid;
 
     return {
-      manual: manual,
-      normal: normal,
-      received: received,
+      manual: 0,
+      normal: 0,
+      received: codTotal,
       paid: paid,
-      balance: driver.pending || 0
+      balance: balance
     };
   };
 
