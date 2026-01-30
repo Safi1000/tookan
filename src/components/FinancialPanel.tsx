@@ -833,42 +833,51 @@ export function FinancialPanel() {
             </div>
 
             {/* Always show table - filter by selected driver if one is selected */}
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                  <tr>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Received</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Paid</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(selectedDriver ? drivers.filter(d => d.id === selectedDriver) : drivers).map((driver, index) => {
-                    const driverTotals = getDriverTotals(driver.id, true);
-                    const currency = localStorage.getItem('currency') || 'BHD';
-                    const currencySymbol = currency === 'BHD' ? 'BHD' : '$';
-                    const isSelected = selectedDriver === driver.id;
-                    return (
-                      <tr
-                        key={driver.id}
-                        onClick={() => {
-                          setSelectedDriver(driver.id);
-                          setUnifiedDriverSearch(driver.name);
-                          setSearchValidation('valid');
-                        }}
-                        className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors cursor-pointer ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${isSelected ? 'bg-[#C1EEFA]/20 dark:bg-[#C1EEFA]/10' : ''}`}
-                      >
-                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
-                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{currencySymbol} {driverTotals.received.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">{currencySymbol} {driverTotals.paid.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">{currencySymbol} {driverTotals.balance.toFixed(2)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {(isLoadingDrivers || isLoadingPerformance) ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-4" />
+                <p className="text-muted-light dark:text-[#99BFD1]">
+                  {isLoadingDrivers ? 'Loading drivers...' : 'Calculating COD totals...'}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                    <tr>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Received</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Paid</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(selectedDriver ? drivers.filter(d => d.id === selectedDriver) : drivers).map((driver, index) => {
+                      const driverTotals = getDriverTotals(driver.id, true);
+                      const currency = localStorage.getItem('currency') || 'BHD';
+                      const currencySymbol = currency === 'BHD' ? 'BHD' : '$';
+                      const isSelected = selectedDriver === driver.id;
+                      return (
+                        <tr
+                          key={driver.id}
+                          onClick={() => {
+                            setSelectedDriver(driver.id);
+                            setUnifiedDriverSearch(driver.name);
+                            setSearchValidation('valid');
+                          }}
+                          className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors cursor-pointer ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${isSelected ? 'bg-[#C1EEFA]/20 dark:bg-[#C1EEFA]/10' : ''}`}
+                        >
+                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
+                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{currencySymbol} {driverTotals.received.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">{currencySymbol} {driverTotals.paid.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">{currencySymbol} {driverTotals.balance.toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Calendar Grid */}
