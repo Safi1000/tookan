@@ -1919,3 +1919,203 @@ export async function fetchRelatedDeliveryAddress(jobId: string | number): Promi
     return { status: 'error', hasRelatedTask: false };
   }
 }
+
+// ===== AGENT PAYMENT FUNCTIONS =====
+
+/**
+ * Record a payment to a driver/agent
+ * Updates total_paid and balance in Supabase
+ */
+export async function recordAgentPayment(
+  fleetId: number,
+  paymentAmount: number,
+  codTotal?: number
+): Promise<TookanApiResponse<{
+  fleet_id: number;
+  name: string;
+  total_paid: number;
+  balance: number;
+}>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/agents/payment`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        fleet_id: fleetId,
+        payment_amount: paymentAmount,
+        cod_total: codTotal,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        message: data.message || 'Failed to record payment',
+        data: { fleet_id: fleetId, name: '', total_paid: 0, balance: 0 },
+      };
+    }
+
+    return {
+      status: 'success',
+      message: data.message || 'Payment recorded successfully',
+      data: data.data,
+    };
+  } catch (error) {
+    console.error('Record agent payment error:', error);
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { fleet_id: fleetId, name: '', total_paid: 0, balance: 0 },
+    };
+  }
+}
+
+/**
+ * Update agent balance based on COD total
+ */
+export async function updateAgentBalance(
+  fleetId: number,
+  codTotal: number
+): Promise<TookanApiResponse<{
+  fleet_id: number;
+  name: string;
+  total_paid: number;
+  balance: number;
+}>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/agents/${fleetId}/balance`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        cod_total: codTotal,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        message: data.message || 'Failed to update balance',
+        data: { fleet_id: fleetId, name: '', total_paid: 0, balance: 0 },
+      };
+    }
+
+    return {
+      status: 'success',
+      message: data.message || 'Balance updated successfully',
+      data: data.data,
+    };
+  } catch (error) {
+    console.error('Update agent balance error:', error);
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { fleet_id: fleetId, name: '', total_paid: 0, balance: 0 },
+    };
+  }
+}
+
+/**
+ * Get agent payment summary (total_paid and balance)
+ */
+export async function getAgentPaymentSummary(
+  fleetId: number
+): Promise<TookanApiResponse<{
+  fleetId: number;
+  name: string;
+  totalPaid: number;
+  balance: number;
+} | null>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/agents/${fleetId}/payment-summary`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        message: data.message || 'Failed to get payment summary',
+        data: null,
+      };
+    }
+
+    return {
+      status: 'success',
+      message: 'Payment summary fetched successfully',
+      data: data.data,
+    };
+  } catch (error) {
+    console.error('Get agent payment summary error:', error);
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: null,
+    };
+  }
+}
+
+/**
+ * Daily COD entry for a driver
+ */
+export interface DailyCODEntry {
+  date: string;
+  codReceived: number;
+  orderCount: number;
+  paid?: number;
+  balance?: number;
+}
+
+/**
+ * Fetch daily COD totals for a specific driver
+ */
+export async function fetchDriverDailyCOD(
+  fleetId: number,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<TookanApiResponse<DailyCODEntry[]>> {
+  try {
+    let url = `${API_BASE_URL}/api/agents/${fleetId}/daily-cod`;
+    const params = new URLSearchParams();
+
+    if (dateFrom) params.append('dateFrom', dateFrom);
+    if (dateTo) params.append('dateTo', dateTo);
+
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        message: data.message || 'Failed to fetch daily COD',
+        data: [],
+      };
+    }
+
+    return {
+      status: 'success',
+      message: 'Daily COD fetched successfully',
+      data: data.data || [],
+    };
+  } catch (error) {
+    console.error('Fetch driver daily COD error:', error);
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: [],
+    };
+  }
+}

@@ -16,11 +16,14 @@ import {
   fetchAllDrivers,
   fetchAllCustomers,
   fetchDriverPerformance,
+  recordAgentPayment,
+  fetchDriverDailyCOD,
   type TookanApiResponse,
   type CODEntry,
   type CODConfirmation,
   type CODCalendarEntry,
-  type CustomerWallet
+  type CustomerWallet,
+  type DailyCODEntry
 } from '../services/tookanApi';
 import { toast } from 'sonner';
 
@@ -167,6 +170,11 @@ export function FinancialPanel() {
   const [driverPerformance, setDriverPerformance] = useState<Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number }>>([]);
   const [isLoadingPerformance, setIsLoadingPerformance] = useState(false);
 
+  // Driver daily COD for calendar view
+  const [driverDailyCOD, setDriverDailyCOD] = useState<DailyCODEntry[]>([]);
+  const [isLoadingDailyCOD, setIsLoadingDailyCOD] = useState(false);
+  const [dailyPayments, setDailyPayments] = useState<Record<string, number>>({}); // Track paid amounts per date
+
   // Fetch drivers on mount
   useEffect(() => {
     const loadDrivers = async () => {
@@ -308,6 +316,41 @@ export function FinancialPanel() {
     };
     loadDriverPerformance();
   }, [drivers, dateFrom, dateTo]);
+
+  // Load driver-specific daily COD when a driver is selected
+  useEffect(() => {
+    const loadDriverDailyCOD = async () => {
+      if (!selectedDriver) {
+        setDriverDailyCOD([]);
+        setDailyPayments({});
+        return;
+      }
+
+      const driver = drivers.find(d => d.id === selectedDriver);
+      if (!driver) return;
+
+      setIsLoadingDailyCOD(true);
+      try {
+        const fleetId = Number(driver.fleet_id || driver.id);
+        const response = await fetchDriverDailyCOD(
+          fleetId,
+          dateFrom || undefined,
+          dateTo || undefined
+        );
+
+        if (response.status === 'success' && response.data) {
+          setDriverDailyCOD(response.data);
+          // Reset daily payments when loading new data
+          setDailyPayments({});
+        }
+      } catch (error) {
+        console.error('Error loading driver daily COD:', error);
+      } finally {
+        setIsLoadingDailyCOD(false);
+      }
+    };
+    loadDriverDailyCOD();
+  }, [selectedDriver, dateFrom, dateTo, drivers]);
 
   const handleSearch = () => {
     if (!unifiedDriverSearch.trim()) {
@@ -518,6 +561,19 @@ export function FinancialPanel() {
               }
               : item
           ));
+
+          // Record payment in Supabase agents table
+          try {
+            const driverFleetId = Number(driver.fleet_id || driver.id);
+            const performance = driverPerformance.find(p => p.fleet_id === driverFleetId);
+            const codTotal = performance?.cod_total || 0;
+
+            await recordAgentPayment(driverFleetId, value, codTotal);
+            console.log('✅ Agent payment recorded in Supabase');
+          } catch (paymentError) {
+            console.error('Failed to record agent payment in Supabase:', paymentError);
+            // Don't fail the overall operation, just log the error
+          }
 
           // Refresh merchant wallets to show updated balance
           if (activeTab === 'merchant-wallets') {
@@ -933,680 +989,553 @@ export function FinancialPanel() {
             {/* Calendar grid - only show when a driver is selected */}
             {selectedDriver && (
               <>
-                {isLoadingCalendar ? (
+                {isLoadingDailyCOD ? (
                   <div className="flex flex-col items-center justify-center py-12">
                     <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-4" />
-                    <p className="text-muted-light dark:text-[#99BFD1]">Loading calendar data...</p>
+                    <p className="text-muted-light dark:text-[#99BFD1]">Loading daily COD data...</p>
                   </div>
-                ) : filteredCalendarData.length === 0 ? (
+                ) : driverDailyCOD.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Calendar className="w-12 h-12 text-muted-light dark:text-[#99BFD1] mb-4" />
-                    <p className="text-heading dark:text-[#C1EEFA] font-medium mb-2">No Calendar Data</p>
+                    <p className="text-heading dark:text-[#C1EEFA] font-medium mb-2">No COD Data</p>
                     <p className="text-muted-light dark:text-[#99BFD1] text-sm">
-                      No COD calendar entries found for this driver in the selected date range.
+                      No COD entries found for this driver in the selected date range.
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                    {filteredCalendarData.map((item) => {
-                      const isEditing = editingDate === item.date;
-                      const date = new Date(item.date);
-                      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-                      const dayNum = date.getDate();
+                  <>
+                    {/* Summary totals for this driver */}
+                    <div className="mb-4 p-3 bg-muted/20 dark:bg-[#1A2C53]/50 rounded-lg flex flex-wrap gap-6 justify-center">
+                      <div className="text-center">
+                        <p className="text-muted-light dark:text-[#99BFD1] text-xs">Total Received</p>
+                        <p className="text-heading dark:text-[#C1EEFA] font-semibold">
+                          {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'}{' '}
+                          {driverDailyCOD.reduce((sum, d) => sum + d.codReceived, 0).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-muted-light dark:text-[#99BFD1] text-xs">Total Paid</p>
+                        <p className="text-green-600 dark:text-green-400 font-semibold">
+                          {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'}{' '}
+                          {Object.values(dailyPayments).reduce((sum, p) => sum + (p || 0), 0).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-muted-light dark:text-[#99BFD1] text-xs">Total Balance</p>
+                        <p className="text-[#DE3544] font-semibold">
+                          {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'}{' '}
+                          {(driverDailyCOD.reduce((sum, d) => sum + d.codReceived, 0) -
+                            Object.values(dailyPayments).reduce((sum, p) => sum + (p || 0), 0)).toFixed(2)}
+                        </p>
+                      </div>
+                      {Object.keys(dailyPayments).length > 0 && (
+                        <button
+                          onClick={async () => {
+                            const driver = drivers.find(d => d.id === selectedDriver);
+                            if (!driver) return;
 
-                      return (
-                        <div
-                          key={item.date}
-                          className={`bg-muted/30 dark:bg-[#1A2C53] rounded-xl p-4 border border-border dark:border-border transition-all ${isEditing
-                            ? 'border-primary dark:border-[#C1EEFA] shadow-[0_0_16px_rgba(26,44,83,0.2)] dark:shadow-[0_0_16px_rgba(193,238,250,0.3)]'
-                            : 'border-border dark:border-[#2A3C63]'
-                            }`}
-                        >
-                          <div className="text-center mb-3 pb-3 border-b border-border dark:border-[#2A3C63]">
-                            <p className="text-muted-light dark:text-[#99BFD1] text-xs">{dayName}</p>
-                            <p className="text-heading dark:text-[#C1EEFA] text-2xl font-semibold">{dayNum}</p>
-                          </div>
+                            const fleetId = Number(driver.fleet_id || driver.id);
+                            const totalPaid = Object.values(dailyPayments).reduce((sum, p) => sum + (p || 0), 0);
+                            const codTotal = driverDailyCOD.reduce((sum, d) => sum + d.codReceived, 0);
 
-                          <div className="space-y-2">
-                            {/* COD Received */}
-                            <div>
-                              <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">COD Received</p>
-                              <p className="text-heading dark:text-[#C1EEFA] font-medium">${(item.codReceived || 0).toFixed(2)}</p>
-                            </div>
-
-                            {/* Balance Paid (Editable) */}
-                            <div>
-                              <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Balance Paid</p>
-                              {isEditing ? (
-                                <div className="space-y-2">
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    defaultValue={item.balancePaid}
-                                    id={`balance-${item.date}`}
-                                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA]"
-                                    autoFocus
-                                  />
-                                  {/* COD Status Dropdown */}
-                                  <select
-                                    key={`status-${item.date}`}
-                                    defaultValue={editingCODStatus || item.codStatus || 'PENDING'}
-                                    onChange={(e) => setEditingCODStatus(e.target.value as 'PENDING' | 'COMPLETED')}
-                                    id={`status-${item.date}`}
-                                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1 text-heading dark:text-[#C1EEFA] text-xs focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA]"
-                                  >
-                                    <option value="PENDING">Pending</option>
-                                    <option value="COMPLETED">Completed</option>
-                                  </select>
-                                  <textarea
-                                    placeholder="Add note for this entry..."
-                                    defaultValue={item.note || ''}
-                                    id={`note-${item.date}`}
-                                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1 text-heading dark:text-[#C1EEFA] text-xs focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] resize-none"
-                                    rows={2}
-                                  />
-                                  {codError && (
-                                    <p className="text-[#DE3544] text-xs">{codError}</p>
-                                  )}
-                                  {isProcessingCOD && (
-                                    <div className="flex items-center gap-2 text-xs text-muted-light dark:text-[#99BFD1]">
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                      Processing COD settlement...
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <div>
-                                  <p className="text-green-600 dark:text-green-400 font-semibold">${(item.balancePaid || 0).toFixed(2)}</p>
-                                  {item.codStatus && (
-                                    <span className={`text-xs px-1.5 py-0.5 rounded ${item.codStatus === 'COMPLETED'
-                                      ? 'bg-green-500/20 text-green-600 dark:text-green-400'
-                                      : 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
-                                      }`}>
-                                      {item.codStatus}
-                                    </span>
-                                  )}
-                                  {item.note && (
-                                    <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-1 italic">{item.note}</p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* COD Pending */}
-                            <div>
-                              <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">COD Pending</p>
-                              <p className="text-[#DE3544] dark:text-[#DE3544] font-medium">${(item.codPending || 0).toFixed(2)}</p>
-                            </div>
-
-                            {/* Edit/Save Button */}
-                            <button
-                              onClick={async () => {
-                                if (isEditing) {
-                                  // Save logic
-                                  const balanceInput = document.getElementById(`balance-${item.date}`) as HTMLInputElement;
-                                  const noteInput = document.getElementById(`note-${item.date}`) as HTMLTextAreaElement;
-                                  const statusSelect = document.getElementById(`status-${item.date}`) as HTMLSelectElement;
-
-                                  const newBalance = parseFloat(balanceInput?.value || String(item.balancePaid));
-                                  const newNote = noteInput?.value || item.note || '';
-                                  const newStatus = (statusSelect?.value || editingCODStatus || item.codStatus || 'PENDING') as 'PENDING' | 'COMPLETED';
-
-                                  await updateBalancePaid(item.date, newBalance, newNote, newStatus);
-                                } else {
-                                  // Enter edit mode
-                                  setEditingDate(item.date);
-                                  // Auto-detect status: if balancePaid matches codPending, suggest COMPLETED
-                                  const suggestedStatus = (item.balancePaid > 0 && Math.abs(item.balancePaid - item.codPending) < 0.01)
-                                    ? 'COMPLETED'
-                                    : (item.codStatus || 'PENDING');
-                                  setEditingCODStatus(suggestedStatus);
-                                  setCodError(null);
+                            try {
+                              const result = await recordAgentPayment(fleetId, totalPaid, codTotal);
+                              if (result.status === 'success') {
+                                toast.success('Payment recorded successfully!');
+                                setDailyPayments({});
+                                // Reload driver performance to update the table
+                                const perfResponse = await fetchDriverPerformance(String(fleetId), dateFrom || undefined, dateTo || undefined);
+                                if (perfResponse.status === 'success' && perfResponse.data) {
+                                  setDriverPerformance(prev => {
+                                    const filtered = prev.filter(p => p.fleet_id !== fleetId);
+                                    return [...filtered, ...perfResponse.data];
+                                  });
                                 }
-                              }}
-                              disabled={isProcessingCOD}
-                              className={`w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed ${isEditing
-                                ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] hover:shadow-md dark:hover:shadow-[0_0_12px_rgba(193,238,250,0.4)]'
-                                : 'bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30 hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20'
-                                }`}
-                            >
-                              {isProcessingCOD ? (
-                                <>
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                  Processing...
-                                </>
-                              ) : (
-                                <>
-                                  <Save className="w-3 h-3" />
-                                  {isEditing ? 'Save' : 'Edit'}
-                                </>
-                              )}
-                            </button>
+                              } else {
+                                toast.error(result.message);
+                              }
+                            } catch (error) {
+                              toast.error('Failed to record payment');
+                            }
+                          }}
+                          className="px-4 py-2 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-lg hover:shadow-md transition-all font-medium text-sm"
+                        >
+                          <Save className="w-4 h-4 inline mr-2" />
+                          Save All Payments
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                      {driverDailyCOD.map((item) => {
+                        const date = new Date(item.date);
+                        const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+                        const dayNum = date.getDate();
+                        const monthName = date.toLocaleDateString('en-US', { month: 'short' });
+                        const paidAmount = dailyPayments[item.date] || 0;
+                        const balance = item.codReceived - paidAmount;
+                        const currency = (localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$';
+
+                        return (
+                          <div
+                            key={item.date}
+                            className="bg-muted/30 dark:bg-[#1A2C53] rounded-xl p-4 border border-border dark:border-[#2A3C63] transition-all hover:border-[#C1EEFA]/50"
+                          >
+                            <div className="text-center mb-3 pb-3 border-b border-border dark:border-[#2A3C63]">
+                              <p className="text-muted-light dark:text-[#99BFD1] text-xs">{dayName}, {monthName}</p>
+                              <p className="text-heading dark:text-[#C1EEFA] text-2xl font-semibold">{dayNum}</p>
+                            </div>
+
+                            <div className="space-y-3">
+                              {/* COD Received */}
+                              <div>
+                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Received</p>
+                                <p className="text-heading dark:text-[#C1EEFA] font-medium">{currency} {item.codReceived.toFixed(2)}</p>
+                              </div>
+
+                              {/* Paid (Editable) */}
+                              <div>
+                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Paid</p>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  max={item.codReceived}
+                                  value={paidAmount || ''}
+                                  placeholder="0.00"
+                                  onChange={(e) => {
+                                    const value = parseFloat(e.target.value) || 0;
+                                    setDailyPayments(prev => ({
+                                      ...prev,
+                                      [item.date]: Math.min(value, item.codReceived)
+                                    }));
+                                  }}
+                                  className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-lg px-2 py-1.5 text-green-600 dark:text-green-400 text-sm focus:outline-none focus:border-[#C1EEFA] font-medium"
+                                />
+                              </div>
+
+                              {/* Balance (Auto-calculated) */}
+                              <div>
+                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Balance</p>
+                                <p className={`font-medium ${balance > 0 ? 'text-[#DE3544]' : 'text-green-600 dark:text-green-400'}`}>
+                                  {currency} {balance.toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </>
             )}
           </div>
         </div>
-      )}
+      )
+      }
 
       {/* COD Confirmation Tab */}
-      {activeTab === 'cod' && (
-        <div className="space-y-6">
-          {/* Search and Filters */}
-          <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
-            <h3 className="text-heading text-xl mb-4">COD Confirmation</h3>
+      {
+        activeTab === 'cod' && (
+          <div className="space-y-6">
+            {/* Search and Filters */}
+            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
+              <h3 className="text-heading text-xl mb-4">COD Confirmation</h3>
 
-            {/* Search Bar */}
-            <div className="mb-4">
-              <label className="block text-heading text-sm mb-2">Search COD Records</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-                <input
-                  type="text"
-                  placeholder="Search by COD ID, Order ID, Driver, Merchant, or Customer..."
-                  value={codSearch}
-                  onChange={(e) => setCodSearch(e.target.value)}
-                  className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Date Range and Status Filter */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-heading text-sm mb-2">From Date</label>
+              {/* Search Bar */}
+              <div className="mb-4">
+                <label className="block text-heading text-sm mb-2">Search COD Records</label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
                   <input
-                    type="date"
-                    value={codDateFrom}
-                    onChange={(e) => setCodDateFrom(e.target.value)}
-                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                    type="text"
+                    placeholder="Search by COD ID, Order ID, Driver, Merchant, or Customer..."
+                    value={codSearch}
+                    onChange={(e) => setCodSearch(e.target.value)}
+                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-heading text-sm mb-2">To Date</label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-                  <input
-                    type="date"
-                    value={codDateTo}
-                    onChange={(e) => setCodDateTo(e.target.value)}
-                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
-                  />
+
+              {/* Date Range and Status Filter */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-heading text-sm mb-2">From Date</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
+                    <input
+                      type="date"
+                      value={codDateFrom}
+                      onChange={(e) => setCodDateFrom(e.target.value)}
+                      className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-heading text-sm mb-2">To Date</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
+                    <input
+                      type="date"
+                      value={codDateTo}
+                      onChange={(e) => setCodDateTo(e.target.value)}
+                      className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-heading text-sm mb-2">Status Filter</label>
+                  <select
+                    value={codStatusFilter}
+                    onChange={(e) => setCodStatusFilter(e.target.value as any)}
+                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Confirmed">Confirmed</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
                 </div>
               </div>
-              <div>
-                <label className="block text-heading text-sm mb-2">Status Filter</label>
-                <select
-                  value={codStatusFilter}
-                  onChange={(e) => setCodStatusFilter(e.target.value as any)}
-                  className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
-                >
-                  <option value="all">All Status</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Confirmed">Confirmed</option>
-                  <option value="Rejected">Rejected</option>
-                </select>
-              </div>
             </div>
-          </div>
 
-          {/* COD Confirmation Table */}
-          <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                  <tr>
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD ID</th>
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order ID</th>
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver</th>
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant</th>
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer</th>
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Amount</th>
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date</th>
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>
-                    <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCODConfirmations.map((cod, index) => (
-                    <tr
-                      key={cod.id}
-                      className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}
-                    >
-                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{cod.id}</td>
-                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{cod.orderId}</td>
-                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">
-                        <div>
-                          <div className="font-medium">{cod.driverName}</div>
-                          <div className="text-xs text-muted-light dark:text-[#99BFD1]">{cod.driverId}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{cod.merchant}</td>
-                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{cod.customer}</td>
-                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${(cod.amount || 0).toFixed(2)}</td>
-                      <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{cod.date}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-lg text-xs font-medium ${cod.status === 'Confirmed'
-                          ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                          : cod.status === 'Pending'
-                            ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                            : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                          }`}>
-                          {cod.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex gap-2">
-                          {cod.status === 'Pending' && (
-                            <>
-                              <button
-                                onClick={() => setSelectedCod(cod.id)}
-                                className="p-2 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-lg hover:bg-[#C1EEFA]/20 transition-all group"
-                                title="View Details"
-                              >
-                                <Eye className="w-4 h-4 text-[#C1EEFA] group-hover:scale-110 transition-transform" />
-                              </button>
-                              <button
-                                onClick={() => handleConfirmCOD(cod.id)}
-                                className="p-2 bg-green-500/10 border border-green-500/30 rounded-lg hover:bg-green-500/20 transition-all group"
-                                title="Confirm COD"
-                              >
-                                <Check className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
-                              </button>
+            {/* COD Confirmation Table */}
+            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                    <tr>
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">COD ID</th>
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order ID</th>
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver</th>
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant</th>
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer</th>
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Amount</th>
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date</th>
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>
+                      <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCODConfirmations.map((cod, index) => (
+                      <tr
+                        key={cod.id}
+                        className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}
+                      >
+                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-medium">{cod.id}</td>
+                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{cod.orderId}</td>
+                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">
+                          <div>
+                            <div className="font-medium">{cod.driverName}</div>
+                            <div className="text-xs text-muted-light dark:text-[#99BFD1]">{cod.driverId}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{cod.merchant}</td>
+                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{cod.customer}</td>
+                        <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-semibold">${(cod.amount || 0).toFixed(2)}</td>
+                        <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{cod.date}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-3 py-1 rounded-lg text-xs font-medium ${cod.status === 'Confirmed'
+                            ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                            : cod.status === 'Pending'
+                              ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                              : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            }`}>
+                            {cod.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex gap-2">
+                            {cod.status === 'Pending' && (
+                              <>
+                                <button
+                                  onClick={() => setSelectedCod(cod.id)}
+                                  className="p-2 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-lg hover:bg-[#C1EEFA]/20 transition-all group"
+                                  title="View Details"
+                                >
+                                  <Eye className="w-4 h-4 text-[#C1EEFA] group-hover:scale-110 transition-transform" />
+                                </button>
+                                <button
+                                  onClick={() => handleConfirmCOD(cod.id)}
+                                  className="p-2 bg-green-500/10 border border-green-500/30 rounded-lg hover:bg-green-500/20 transition-all group"
+                                  title="Confirm COD"
+                                >
+                                  <Check className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedCod(cod.id);
+                                    setCodNote('');
+                                  }}
+                                  className="p-2 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-lg hover:bg-[#DE3544]/20 transition-all group"
+                                  title="Reject COD"
+                                >
+                                  <X className="w-4 h-4 text-[#DE3544] group-hover:scale-110 transition-transform" />
+                                </button>
+                              </>
+                            )}
+                            {cod.status !== 'Pending' && cod.notes && (
                               <button
                                 onClick={() => {
                                   setSelectedCod(cod.id);
-                                  setCodNote('');
+                                  setCodNote(cod.notes || '');
                                 }}
-                                className="p-2 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-lg hover:bg-[#DE3544]/20 transition-all group"
-                                title="Reject COD"
+                                className="p-2 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-lg hover:bg-[#C1EEFA]/20 transition-all group"
+                                title="View Notes"
                               >
-                                <X className="w-4 h-4 text-[#DE3544] group-hover:scale-110 transition-transform" />
+                                <Eye className="w-4 h-4 text-[#C1EEFA] group-hover:scale-110 transition-transform" />
                               </button>
-                            </>
-                          )}
-                          {cod.status !== 'Pending' && cod.notes && (
-                            <button
-                              onClick={() => {
-                                setSelectedCod(cod.id);
-                                setCodNote(cod.notes || '');
-                              }}
-                              className="p-2 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-lg hover:bg-[#C1EEFA]/20 transition-all group"
-                              title="View Notes"
-                            >
-                              <Eye className="w-4 h-4 text-[#C1EEFA] group-hover:scale-110 transition-transform" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {filteredCODConfirmations.length === 0 && (
-              <div className="p-8 text-center">
-                <p className="text-muted-light dark:text-[#99BFD1]">No COD confirmations found matching your filters.</p>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </div>
 
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
-              <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total COD Records</p>
-              <p className="text-heading dark:text-[#C1EEFA] text-2xl font-semibold">{filteredCODConfirmations.length}</p>
+              {filteredCODConfirmations.length === 0 && (
+                <div className="p-8 text-center">
+                  <p className="text-muted-light dark:text-[#99BFD1]">No COD confirmations found matching your filters.</p>
+                </div>
+              )}
             </div>
-            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
-              <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Pending</p>
-              <p className="text-yellow-400 text-2xl font-semibold">
-                {filteredCODConfirmations.filter(c => c.status === 'Pending').length}
-              </p>
-            </div>
-            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
-              <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Confirmed</p>
-              <p className="text-green-400 text-2xl font-semibold">
-                {filteredCODConfirmations.filter(c => c.status === 'Confirmed').length}
-              </p>
-            </div>
-            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
-              <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Amount</p>
-              <p className="text-heading dark:text-[#C1EEFA] text-2xl font-semibold">
-                ${filteredCODConfirmations.reduce((sum, c) => sum + (c.amount || 0), 0).toFixed(2)}
-              </p>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
+                <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total COD Records</p>
+                <p className="text-heading dark:text-[#C1EEFA] text-2xl font-semibold">{filteredCODConfirmations.length}</p>
+              </div>
+              <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
+                <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Pending</p>
+                <p className="text-yellow-400 text-2xl font-semibold">
+                  {filteredCODConfirmations.filter(c => c.status === 'Pending').length}
+                </p>
+              </div>
+              <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
+                <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Confirmed</p>
+                <p className="text-green-400 text-2xl font-semibold">
+                  {filteredCODConfirmations.filter(c => c.status === 'Confirmed').length}
+                </p>
+              </div>
+              <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
+                <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Amount</p>
+                <p className="text-heading dark:text-[#C1EEFA] text-2xl font-semibold">
+                  ${filteredCODConfirmations.reduce((sum, c) => sum + (c.amount || 0), 0).toFixed(2)}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* COD Action Modal */}
-      {selectedCod && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6 max-w-md w-full shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-heading text-xl">
-                {codConfirmations.find(c => c.id === selectedCod)?.status === 'Pending'
-                  ? 'Confirm/Reject COD'
-                  : 'COD Details'}
-              </h3>
-              <button
-                onClick={() => {
-                  setSelectedCod(null);
-                  setCodNote('');
-                }}
-                className="p-2 hover:bg-hover-bg-light dark:hover:bg-[#223560] rounded-lg transition-all"
-              >
-                <X className="w-5 h-5 text-heading dark:text-[#C1EEFA]" />
-              </button>
-            </div>
-
-            {selectedCod && (() => {
-              const cod = codConfirmations.find(c => c.id === selectedCod);
-              if (!cod) return null;
-
-              return (
-                <>
-                  <div className="space-y-3 mb-4">
-                    <div className="flex justify-between">
-                      <span className="text-muted-light dark:text-[#99BFD1]">COD ID:</span>
-                      <span className="text-heading dark:text-[#C1EEFA] font-medium">{cod.id}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-light dark:text-[#99BFD1]">Order ID:</span>
-                      <span className="text-heading dark:text-[#C1EEFA]">{cod.orderId}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-light dark:text-[#99BFD1]">Driver:</span>
-                      <span className="text-heading dark:text-[#C1EEFA]">{cod.driverName}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-light dark:text-[#99BFD1]">Amount:</span>
-                      <span className="text-heading dark:text-[#C1EEFA] font-semibold">${(cod.amount || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-light dark:text-[#99BFD1]">Status:</span>
-                      <span className={`px-2 py-1 rounded text-xs ${cod.status === 'Confirmed'
-                        ? 'bg-green-500/20 text-green-400'
-                        : cod.status === 'Pending'
-                          ? 'bg-yellow-500/20 text-yellow-400'
-                          : 'bg-red-500/20 text-red-400'
-                        }`}>
-                        {cod.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  {cod.status === 'Pending' ? (
-                    <>
-                      <div className="mb-4">
-                        <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
-                          Notes (Optional for confirmation, Required for rejection)
-                        </label>
-                        <textarea
-                          value={codNote}
-                          onChange={(e) => setCodNote(e.target.value)}
-                          placeholder="Add notes about this COD confirmation..."
-                          rows={4}
-                          className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all resize-none"
-                        />
-                      </div>
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => handleConfirmCOD(selectedCod)}
-                          className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-all font-medium"
-                        >
-                          <Check className="w-5 h-5" />
-                          Confirm
-                        </button>
-                        <button
-                          onClick={() => handleRejectCOD(selectedCod)}
-                          disabled={!codNote.trim()}
-                          className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-[#DE3544] text-white rounded-xl hover:bg-[#C92A38] transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <X className="w-5 h-5" />
-                          Reject
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {cod.notes && (
-                        <div className="mb-4 p-3 bg-muted/30 dark:bg-[#1A2C53] rounded-xl">
-                          <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Notes:</p>
-                          <p className="text-heading dark:text-[#C1EEFA] text-sm">{cod.notes}</p>
-                        </div>
-                      )}
-                      <button
-                        onClick={() => {
-                          setSelectedCod(null);
-                          setCodNote('');
-                        }}
-                        className="w-full px-6 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all font-medium"
-                      >
-                        Close
-                      </button>
-                    </>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {/* Driver Wallets Tab */}
-      {activeTab === 'driver-wallets' && (
-        <div className="space-y-6">
-          <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl bg-[#DE3544]/20 dark:bg-[#DE3544]/20 flex items-center justify-center border border-[#DE3544]/30 dark:border-[#DE3544]/30">
-                <Wallet className="w-6 h-6 text-[#DE3544]" />
-              </div>
-              <div>
-                <h3 className="text-heading">Driver Wallets</h3>
-                <p className="text-muted-light dark:text-[#99BFD1] text-sm">Search and manage driver balances</p>
-              </div>
-            </div>
-
-            {/* Driver Search */}
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-heading text-sm mb-2">Search by ID, Name, or Phone Number</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-                  <input
-                    type="text"
-                    placeholder="Enter driver ID, name, or phone number..."
-                    value={driverWalletSearch}
-                    onChange={(e) => {
-                      setDriverWalletSearch(e.target.value);
-                      setDriverWalletValidation(null);
-                    }}
-                    className={`w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 pr-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${driverWalletValidation === 'valid' ? 'border-2 border-green-500' :
-                      driverWalletValidation === 'invalid' ? 'border-2 border-[#DE3544]' :
-                        'border border-input-border dark:border-[#2A3C63] focus:border-[#DE3544] dark:focus:border-[#C1EEFA]'
-                      }`}
-                  />
-                  {driverWalletValidation === 'valid' && (
-                    <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
-                  )}
-                  {driverWalletValidation === 'invalid' && (
-                    <X className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#DE3544]" />
-                  )}
-                </div>
-              </div>
-              <div className="flex items-end">
+      {
+        selectedCod && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6 max-w-md w-full shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-heading text-xl">
+                  {codConfirmations.find(c => c.id === selectedCod)?.status === 'Pending'
+                    ? 'Confirm/Reject COD'
+                    : 'COD Details'}
+                </h3>
                 <button
-                  onClick={handleDriverWalletSearch}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
+                  onClick={() => {
+                    setSelectedCod(null);
+                    setCodNote('');
+                  }}
+                  className="p-2 hover:bg-hover-bg-light dark:hover:bg-[#223560] rounded-lg transition-all"
                 >
-                  <Search className="w-5 h-5" />
-                  Search
+                  <X className="w-5 h-5 text-heading dark:text-[#C1EEFA]" />
                 </button>
               </div>
-            </div>
 
-            {/* Driver Wallet Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                  <tr>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Current Balance</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pending COD</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {drivers.map((driver, index) => (
-                    <tr
-                      key={driver.id}
-                      className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${driverWalletValidation === 'valid' &&
-                        (driver.name.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
-                          driver.id.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
-                          (driver.phone && driver.phone.includes(driverWalletSearch)))
-                        ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)]'
-                        : ''
-                        }`}
-                    >
-                      <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.id}</td>
-                      <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
-                      <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(driver.balance || 0).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${(driver.pending || 0).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{driver.phone || ''}</td>
-                      <td className="px-4 py-3">
+              {selectedCod && (() => {
+                const cod = codConfirmations.find(c => c.id === selectedCod);
+                if (!cod) return null;
+
+                return (
+                  <>
+                    <div className="space-y-3 mb-4">
+                      <div className="flex justify-between">
+                        <span className="text-muted-light dark:text-[#99BFD1]">COD ID:</span>
+                        <span className="text-heading dark:text-[#C1EEFA] font-medium">{cod.id}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-light dark:text-[#99BFD1]">Order ID:</span>
+                        <span className="text-heading dark:text-[#C1EEFA]">{cod.orderId}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-light dark:text-[#99BFD1]">Driver:</span>
+                        <span className="text-heading dark:text-[#C1EEFA]">{cod.driverName}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-light dark:text-[#99BFD1]">Amount:</span>
+                        <span className="text-heading dark:text-[#C1EEFA] font-semibold">${(cod.amount || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-light dark:text-[#99BFD1]">Status:</span>
+                        <span className={`px-2 py-1 rounded text-xs ${cod.status === 'Confirmed'
+                          ? 'bg-green-500/20 text-green-400'
+                          : cod.status === 'Pending'
+                            ? 'bg-yellow-500/20 text-yellow-400'
+                            : 'bg-red-500/20 text-red-400'
+                          }`}>
+                          {cod.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    {cod.status === 'Pending' ? (
+                      <>
+                        <div className="mb-4">
+                          <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
+                            Notes (Optional for confirmation, Required for rejection)
+                          </label>
+                          <textarea
+                            value={codNote}
+                            onChange={(e) => setCodNote(e.target.value)}
+                            placeholder="Add notes about this COD confirmation..."
+                            rows={4}
+                            className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all resize-none"
+                          />
+                        </div>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => handleConfirmCOD(selectedCod)}
+                            className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-all font-medium"
+                          >
+                            <Check className="w-5 h-5" />
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => handleRejectCOD(selectedCod)}
+                            disabled={!codNote.trim()}
+                            className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-[#DE3544] text-white rounded-xl hover:bg-[#C92A38] transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <X className="w-5 h-5" />
+                            Reject
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {cod.notes && (
+                          <div className="mb-4 p-3 bg-muted/30 dark:bg-[#1A2C53] rounded-xl">
+                            <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Notes:</p>
+                            <p className="text-heading dark:text-[#C1EEFA] text-sm">{cod.notes}</p>
+                          </div>
+                        )}
                         <button
                           onClick={() => {
-                            setEditingBalance({ type: 'driver', id: driver.id });
-                            setNewBalance((driver.balance || 0).toFixed(2));
-                            setBalanceNote('');
+                            setSelectedCod(null);
+                            setCodNote('');
                           }}
-                          className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
+                          className="w-full px-6 py-3 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all font-medium"
                         >
-                          Edit Balance
+                          Close
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {/* Merchant Wallets Tab */}
-      {activeTab === 'merchant-wallets' && (
-        <div className="space-y-6">
-          <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl bg-primary/20 dark:bg-[#C1EEFA]/20 flex items-center justify-center border border-primary/30 dark:border-[#C1EEFA]/30">
-                <Wallet className="w-6 h-6 text-primary dark:text-[#C1EEFA]" />
-              </div>
-              <div>
-                <h3 className="text-heading">Merchant Wallets</h3>
-                <p className="text-muted-light dark:text-[#99BFD1] text-sm">Search and manage merchant balances</p>
-              </div>
-            </div>
-
-            {/* Merchant Search */}
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-heading text-sm mb-2">Search by Merchant ID, Vendor ID, Name, or Phone Number</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-                  <input
-                    type="text"
-                    placeholder="Enter merchant ID (e.g., 89932635), name, or phone..."
-                    value={merchantWalletSearch}
-                    onChange={(e) => {
-                      setMerchantWalletSearch(e.target.value);
-                      setMerchantWalletValidation(null);
-                    }}
-                    className={`w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 pr-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${merchantWalletValidation === 'valid' ? 'border-2 border-green-500' :
-                      merchantWalletValidation === 'invalid' ? 'border-2 border-[#DE3544]' :
-                        'border border-input-border dark:border-[#2A3C63] focus:border-[#DE3544] dark:focus:border-[#C1EEFA]'
-                      }`}
-                  />
-                  {merchantWalletValidation === 'valid' && (
-                    <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
-                  )}
-                  {merchantWalletValidation === 'invalid' && (
-                    <X className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#DE3544]" />
-                  )}
+      {/* Driver Wallets Tab */}
+      {
+        activeTab === 'driver-wallets' && (
+          <div className="space-y-6">
+            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 rounded-xl bg-[#DE3544]/20 dark:bg-[#DE3544]/20 flex items-center justify-center border border-[#DE3544]/30 dark:border-[#DE3544]/30">
+                  <Wallet className="w-6 h-6 text-[#DE3544]" />
+                </div>
+                <div>
+                  <h3 className="text-heading">Driver Wallets</h3>
+                  <p className="text-muted-light dark:text-[#99BFD1] text-sm">Search and manage driver balances</p>
                 </div>
               </div>
-              <div className="flex items-end">
-                <button
-                  onClick={handleMerchantWalletSearch}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
-                >
-                  <Search className="w-5 h-5" />
-                  Search
-                </button>
+
+              {/* Driver Search */}
+              <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-heading text-sm mb-2">Search by ID, Name, or Phone Number</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
+                    <input
+                      type="text"
+                      placeholder="Enter driver ID, name, or phone number..."
+                      value={driverWalletSearch}
+                      onChange={(e) => {
+                        setDriverWalletSearch(e.target.value);
+                        setDriverWalletValidation(null);
+                      }}
+                      className={`w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 pr-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${driverWalletValidation === 'valid' ? 'border-2 border-green-500' :
+                        driverWalletValidation === 'invalid' ? 'border-2 border-[#DE3544]' :
+                          'border border-input-border dark:border-[#2A3C63] focus:border-[#DE3544] dark:focus:border-[#C1EEFA]'
+                        }`}
+                    />
+                    {driverWalletValidation === 'valid' && (
+                      <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
+                    )}
+                    {driverWalletValidation === 'invalid' && (
+                      <X className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#DE3544]" />
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={handleDriverWalletSearch}
+                    className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
+                  >
+                    <Search className="w-5 h-5" />
+                    Search
+                  </button>
+                </div>
               </div>
-            </div>
 
-            {/* Merchant Wallet Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                  <tr>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant ID</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Vendor ID</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant Name</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Wallet Balance</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pending COD</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
-                    <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Show merchantWallets if available, otherwise show merchants */}
-                  {(merchantWallets.length > 0 ? merchantWallets : merchants.map(m => ({
-                    id: m.id,
-                    name: m.name,
-                    phone: m.phone || '',
-                    balance: m.balance || 0,
-                    pending: m.pending || 0,
-                    vendor_id: m.vendor_id
-                  }))).map((merchant, index) => {
-                    const searchTerm = merchantWalletSearch.toLowerCase().trim();
-                    const isHighlighted = merchantWalletValidation === 'valid' && (
-                      merchant.name.toLowerCase().includes(searchTerm) ||
-                      merchant.id.toLowerCase().includes(searchTerm) ||
-                      ((merchant as any).vendor_id && (merchant as any).vendor_id.toString().includes(searchTerm)) ||
-                      ((merchant as any).phone && (merchant as any).phone.includes(merchantWalletSearch))
-                    );
-
-                    return (
+              {/* Driver Wallet Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                    <tr>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Current Balance</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pending COD</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drivers.map((driver, index) => (
                       <tr
-                        key={merchant.id}
-                        className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${isHighlighted ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)] bg-[#C1EEFA]/10' : ''
+                        key={driver.id}
+                        className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${driverWalletValidation === 'valid' &&
+                          (driver.name.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
+                            driver.id.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
+                            (driver.phone && driver.phone.includes(driverWalletSearch)))
+                          ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)]'
+                          : ''
                           }`}
                       >
-                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.id}</td>
-                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] font-mono text-sm">{(merchant as any).vendor_id || '-'}</td>
-                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.name}</td>
-                        <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${((merchant as any).balance || 0).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${((merchant as any).pending || 0).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{(merchant as any).phone || ''}</td>
+                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.id}</td>
+                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
+                        <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(driver.balance || 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${(driver.pending || 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{driver.phone || ''}</td>
                         <td className="px-4 py-3">
                           <button
                             onClick={() => {
-                              setEditingBalance({ type: 'merchant', id: merchant.id });
-                              setNewBalance(((merchant as any).balance || 0).toFixed(2));
+                              setEditingBalance({ type: 'driver', id: driver.id });
+                              setNewBalance((driver.balance || 0).toFixed(2));
                               setBalanceNote('');
                             }}
                             className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
@@ -1615,263 +1544,385 @@ export function FinancialPanel() {
                           </button>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-
-              {/* Note about API limitation */}
-              <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
-                <p className="text-yellow-600 dark:text-yellow-400 text-sm">
-                  <strong>Note:</strong> Due to Tookan API limitations, only the first 100 merchants are displayed.
-                  Use the search box above to find specific merchants by their Merchant ID.
-                </p>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {/* Edit Balance Modal */}
-      {editingBalance && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6 max-w-md w-full shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-heading text-xl">Edit Balance</h3>
-              <button
-                onClick={() => {
-                  setEditingBalance(null);
-                  setNewBalance('');
-                  setBalanceNote('');
-                }}
-                className="p-2 hover:bg-hover-bg-light dark:hover:bg-[#223560] rounded-lg transition-all"
-              >
-                <X className="w-5 h-5 text-heading dark:text-[#C1EEFA]" />
-              </button>
-            </div>
+      {/* Merchant Wallets Tab */}
+      {
+        activeTab === 'merchant-wallets' && (
+          <div className="space-y-6">
+            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 rounded-xl bg-primary/20 dark:bg-[#C1EEFA]/20 flex items-center justify-center border border-primary/30 dark:border-[#C1EEFA]/30">
+                  <Wallet className="w-6 h-6 text-primary dark:text-[#C1EEFA]" />
+                </div>
+                <div>
+                  <h3 className="text-heading">Merchant Wallets</h3>
+                  <p className="text-muted-light dark:text-[#99BFD1] text-sm">Search and manage merchant balances</p>
+                </div>
+              </div>
 
-            {editingBalance && (() => {
-              const entity = editingBalance.type === 'driver'
-                ? drivers.find(d => d.id === editingBalance.id)
-                : merchantWallets.find(m => m.id === editingBalance.id);
-
-              if (!entity) return null;
-
-              const currentBalance = editingBalance.type === 'driver'
-                ? (entity as Driver).balance || 0
-                : (entity as CustomerWallet).balance;
-
-              return (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
-                      Current Balance
-                    </label>
+              {/* Merchant Search */}
+              <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-heading text-sm mb-2">Search by Merchant ID, Vendor ID, Name, or Phone Number</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
                     <input
                       type="text"
-                      value={`$${(currentBalance || 0).toFixed(2)}`}
-                      disabled
-                      className="w-full bg-muted dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] opacity-60 cursor-not-allowed"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
-                      New Balance
-                    </label>
-                    <input
-                      type="number"
-                      value={newBalance}
-                      onChange={(e) => setNewBalance(e.target.value)}
-                      placeholder="Enter new balance"
-                      className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
-                      Description {editingBalance.type === 'driver' && <span className="text-[#DE3544]">*</span>}
-                    </label>
-                    <textarea
-                      value={balanceNote}
+                      placeholder="Enter merchant ID (e.g., 89932635), name, or phone..."
+                      value={merchantWalletSearch}
                       onChange={(e) => {
-                        setBalanceNote(e.target.value);
-                        setWalletError(null);
+                        setMerchantWalletSearch(e.target.value);
+                        setMerchantWalletValidation(null);
                       }}
-                      placeholder={editingBalance.type === 'driver'
-                        ? "Add description for this transaction (e.g., 'Earnings credit', 'Penalty adjustment')..."
-                        : "Add description for this transaction (optional, e.g., 'COD credit', 'Wallet top-up')..."
-                      }
-                      rows={4}
-                      className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all resize-none"
+                      className={`w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 pr-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none transition-all ${merchantWalletValidation === 'valid' ? 'border-2 border-green-500' :
+                        merchantWalletValidation === 'invalid' ? 'border-2 border-[#DE3544]' :
+                          'border border-input-border dark:border-[#2A3C63] focus:border-[#DE3544] dark:focus:border-[#C1EEFA]'
+                        }`}
                     />
-                    {editingBalance.type === 'driver' && (
-                      <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1">
-                        Required: Explain the reason for this transaction
-                      </p>
+                    {merchantWalletValidation === 'valid' && (
+                      <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
                     )}
-                    {editingBalance.type === 'merchant' && (
-                      <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1">
-                        Optional: Explain the reason for adding money to the wallet
-                      </p>
+                    {merchantWalletValidation === 'invalid' && (
+                      <X className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#DE3544]" />
                     )}
-                  </div>
-
-                  {walletError && (
-                    <div className="flex items-start gap-2 p-3 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-xl">
-                      <AlertCircle className="w-5 h-5 text-[#DE3544] flex-shrink-0 mt-0.5" />
-                      <p className="text-[#DE3544] text-sm">{walletError}</p>
-                    </div>
-                  )}
-
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      onClick={() => {
-                        setEditingBalance(null);
-                        setNewBalance('');
-                        setBalanceNote('');
-                        setWalletError(null);
-                      }}
-                      disabled={isProcessingWallet}
-                      className="flex-1 bg-muted dark:bg-[#2A3C63] text-heading dark:text-[#C1EEFA] py-3 rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#3A4C73] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={async () => {
-                        if (!editingBalance) return;
-
-                        const amount = parseFloat(newBalance);
-                        if (isNaN(amount) || amount <= 0) {
-                          setWalletError('Please enter a valid amount greater than 0');
-                          return;
-                        }
-
-                        // Description is required for driver operations, optional for customer operations
-                        if (editingBalance.type === 'driver' && !balanceNote.trim()) {
-                          setWalletError('Please provide a description for this transaction');
-                          return;
-                        }
-
-                        setIsProcessingWallet(true);
-                        setWalletError(null);
-
-                        try {
-                          let response: TookanApiResponse;
-
-                          if (editingBalance.type === 'driver') {
-                            const driver = drivers.find(d => d.id === editingBalance.id);
-                            if (!driver) {
-                              throw new Error('Driver not found');
-                            }
-
-                            // Determine transaction type based on whether new balance is higher or lower
-                            const currentBalance = driver.balance || 0;
-                            const difference = amount - currentBalance;
-
-                            if (difference > 0) {
-                              // Credit driver wallet
-                              response = await createFleetWalletTransaction(
-                                driver.fleet_id || driver.id,
-                                difference,
-                                balanceNote.trim(),
-                                'credit'
-                              );
-                            } else if (difference < 0) {
-                              // Debit driver wallet (penalty/adjustment)
-                              response = await createFleetWalletTransaction(
-                                driver.fleet_id || driver.id,
-                                Math.abs(difference),
-                                balanceNote.trim(),
-                                'debit'
-                              );
-                            } else {
-                              // No change needed
-                              setIsProcessingWallet(false);
-                              setEditingBalance(null);
-                              setNewBalance('');
-                              setBalanceNote('');
-                              toast.success('No balance change needed');
-                              return;
-                            }
-                          } else {
-                            // Merchant wallet
-                            const merchant = merchantWallets.find(m => m.id === editingBalance.id);
-                            if (!merchant) {
-                              throw new Error('Merchant not found');
-                            }
-
-                            const currentBalance = (merchant as any).balance || 0;
-                            const difference = amount - currentBalance;
-
-                            if (difference > 0) {
-                              // Add money to merchant wallet (only addition is supported by Tookan Custom Wallet API)
-                              const vendorId = merchant.vendor_id;
-                              if (!vendorId) {
-                                throw new Error('Merchant vendor ID not found. Cannot process wallet transaction.');
-                              }
-
-                              // Description is optional for merchant wallet operations (per API documentation)
-                              response = await addCustomerWalletPayment(
-                                vendorId,
-                                difference,
-                                balanceNote.trim() || undefined
-                              );
-                            } else if (difference < 0) {
-                              // Note: Tookan Custom Wallet API typically only supports adding money
-                              // For debiting, you may need a different endpoint or workflow
-                              setWalletError('Debiting merchant wallet is not supported via this API. To reduce balance, please use the Tookan dashboard directly.');
-                              setIsProcessingWallet(false);
-                              return;
-                            } else {
-                              // No change needed
-                              setIsProcessingWallet(false);
-                              setEditingBalance(null);
-                              setNewBalance('');
-                              setBalanceNote('');
-                              toast.success('No balance change needed');
-                              return;
-                            }
-                          }
-
-                          if (response.status === 'success') {
-                            toast.success(response.message);
-                            setEditingBalance(null);
-                            setNewBalance('');
-                            setBalanceNote('');
-                            // In a real app, you'd refresh the wallet data here
-                            // await refreshWalletData(editingBalance.type, editingBalance.id);
-                          } else {
-                            setWalletError(response.message);
-                            toast.error(response.message);
-                          }
-                        } catch (error) {
-                          const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-                          setWalletError(errorMessage);
-                          toast.error(errorMessage);
-                        } finally {
-                          setIsProcessingWallet(false);
-                        }
-                      }}
-                      disabled={isProcessingWallet}
-                      className="flex-1 bg-[#C1EEFA] text-[#1A2C53] py-3 rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                      {isProcessingWallet ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Processing...
-                        </>
-                      ) : (
-                        'Update Balance'
-                      )}
-                    </button>
                   </div>
                 </div>
-              );
-            })()}
+                <div className="flex items-end">
+                  <button
+                    onClick={handleMerchantWalletSearch}
+                    className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all"
+                  >
+                    <Search className="w-5 h-5" />
+                    Search
+                  </button>
+                </div>
+              </div>
+
+              {/* Merchant Wallet Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                    <tr>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant ID</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Vendor ID</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant Name</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Wallet Balance</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pending COD</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
+                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Show merchantWallets if available, otherwise show merchants */}
+                    {(merchantWallets.length > 0 ? merchantWallets : merchants.map(m => ({
+                      id: m.id,
+                      name: m.name,
+                      phone: m.phone || '',
+                      balance: m.balance || 0,
+                      pending: m.pending || 0,
+                      vendor_id: m.vendor_id
+                    }))).map((merchant, index) => {
+                      const searchTerm = merchantWalletSearch.toLowerCase().trim();
+                      const isHighlighted = merchantWalletValidation === 'valid' && (
+                        merchant.name.toLowerCase().includes(searchTerm) ||
+                        merchant.id.toLowerCase().includes(searchTerm) ||
+                        ((merchant as any).vendor_id && (merchant as any).vendor_id.toString().includes(searchTerm)) ||
+                        ((merchant as any).phone && (merchant as any).phone.includes(merchantWalletSearch))
+                      );
+
+                      return (
+                        <tr
+                          key={merchant.id}
+                          className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${isHighlighted ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)] bg-[#C1EEFA]/10' : ''
+                            }`}
+                        >
+                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.id}</td>
+                          <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] font-mono text-sm">{(merchant as any).vendor_id || '-'}</td>
+                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.name}</td>
+                          <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${((merchant as any).balance || 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${((merchant as any).pending || 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{(merchant as any).phone || ''}</td>
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={() => {
+                                setEditingBalance({ type: 'merchant', id: merchant.id });
+                                setNewBalance(((merchant as any).balance || 0).toFixed(2));
+                                setBalanceNote('');
+                              }}
+                              className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
+                            >
+                              Edit Balance
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {/* Note about API limitation */}
+                <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                  <p className="text-yellow-600 dark:text-yellow-400 text-sm">
+                    <strong>Note:</strong> Due to Tookan API limitations, only the first 100 merchants are displayed.
+                    Use the search box above to find specific merchants by their Merchant ID.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+
+      {/* Edit Balance Modal */}
+      {
+        editingBalance && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6 max-w-md w-full shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-heading text-xl">Edit Balance</h3>
+                <button
+                  onClick={() => {
+                    setEditingBalance(null);
+                    setNewBalance('');
+                    setBalanceNote('');
+                  }}
+                  className="p-2 hover:bg-hover-bg-light dark:hover:bg-[#223560] rounded-lg transition-all"
+                >
+                  <X className="w-5 h-5 text-heading dark:text-[#C1EEFA]" />
+                </button>
+              </div>
+
+              {editingBalance && (() => {
+                const entity = editingBalance.type === 'driver'
+                  ? drivers.find(d => d.id === editingBalance.id)
+                  : merchantWallets.find(m => m.id === editingBalance.id);
+
+                if (!entity) return null;
+
+                const currentBalance = editingBalance.type === 'driver'
+                  ? (entity as Driver).balance || 0
+                  : (entity as CustomerWallet).balance;
+
+                return (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
+                        Current Balance
+                      </label>
+                      <input
+                        type="text"
+                        value={`$${(currentBalance || 0).toFixed(2)}`}
+                        disabled
+                        className="w-full bg-muted dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] opacity-60 cursor-not-allowed"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
+                        New Balance
+                      </label>
+                      <input
+                        type="number"
+                        value={newBalance}
+                        onChange={(e) => setNewBalance(e.target.value)}
+                        placeholder="Enter new balance"
+                        className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
+                        Description {editingBalance.type === 'driver' && <span className="text-[#DE3544]">*</span>}
+                      </label>
+                      <textarea
+                        value={balanceNote}
+                        onChange={(e) => {
+                          setBalanceNote(e.target.value);
+                          setWalletError(null);
+                        }}
+                        placeholder={editingBalance.type === 'driver'
+                          ? "Add description for this transaction (e.g., 'Earnings credit', 'Penalty adjustment')..."
+                          : "Add description for this transaction (optional, e.g., 'COD credit', 'Wallet top-up')..."
+                        }
+                        rows={4}
+                        className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all resize-none"
+                      />
+                      {editingBalance.type === 'driver' && (
+                        <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1">
+                          Required: Explain the reason for this transaction
+                        </p>
+                      )}
+                      {editingBalance.type === 'merchant' && (
+                        <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1">
+                          Optional: Explain the reason for adding money to the wallet
+                        </p>
+                      )}
+                    </div>
+
+                    {walletError && (
+                      <div className="flex items-start gap-2 p-3 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-xl">
+                        <AlertCircle className="w-5 h-5 text-[#DE3544] flex-shrink-0 mt-0.5" />
+                        <p className="text-[#DE3544] text-sm">{walletError}</p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={() => {
+                          setEditingBalance(null);
+                          setNewBalance('');
+                          setBalanceNote('');
+                          setWalletError(null);
+                        }}
+                        disabled={isProcessingWallet}
+                        className="flex-1 bg-muted dark:bg-[#2A3C63] text-heading dark:text-[#C1EEFA] py-3 rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#3A4C73] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!editingBalance) return;
+
+                          const amount = parseFloat(newBalance);
+                          if (isNaN(amount) || amount <= 0) {
+                            setWalletError('Please enter a valid amount greater than 0');
+                            return;
+                          }
+
+                          // Description is required for driver operations, optional for customer operations
+                          if (editingBalance.type === 'driver' && !balanceNote.trim()) {
+                            setWalletError('Please provide a description for this transaction');
+                            return;
+                          }
+
+                          setIsProcessingWallet(true);
+                          setWalletError(null);
+
+                          try {
+                            let response: TookanApiResponse;
+
+                            if (editingBalance.type === 'driver') {
+                              const driver = drivers.find(d => d.id === editingBalance.id);
+                              if (!driver) {
+                                throw new Error('Driver not found');
+                              }
+
+                              // Determine transaction type based on whether new balance is higher or lower
+                              const currentBalance = driver.balance || 0;
+                              const difference = amount - currentBalance;
+
+                              if (difference > 0) {
+                                // Credit driver wallet
+                                response = await createFleetWalletTransaction(
+                                  driver.fleet_id || driver.id,
+                                  difference,
+                                  balanceNote.trim(),
+                                  'credit'
+                                );
+                              } else if (difference < 0) {
+                                // Debit driver wallet (penalty/adjustment)
+                                response = await createFleetWalletTransaction(
+                                  driver.fleet_id || driver.id,
+                                  Math.abs(difference),
+                                  balanceNote.trim(),
+                                  'debit'
+                                );
+                              } else {
+                                // No change needed
+                                setIsProcessingWallet(false);
+                                setEditingBalance(null);
+                                setNewBalance('');
+                                setBalanceNote('');
+                                toast.success('No balance change needed');
+                                return;
+                              }
+                            } else {
+                              // Merchant wallet
+                              const merchant = merchantWallets.find(m => m.id === editingBalance.id);
+                              if (!merchant) {
+                                throw new Error('Merchant not found');
+                              }
+
+                              const currentBalance = (merchant as any).balance || 0;
+                              const difference = amount - currentBalance;
+
+                              if (difference > 0) {
+                                // Add money to merchant wallet (only addition is supported by Tookan Custom Wallet API)
+                                const vendorId = merchant.vendor_id;
+                                if (!vendorId) {
+                                  throw new Error('Merchant vendor ID not found. Cannot process wallet transaction.');
+                                }
+
+                                // Description is optional for merchant wallet operations (per API documentation)
+                                response = await addCustomerWalletPayment(
+                                  vendorId,
+                                  difference,
+                                  balanceNote.trim() || undefined
+                                );
+                              } else if (difference < 0) {
+                                // Note: Tookan Custom Wallet API typically only supports adding money
+                                // For debiting, you may need a different endpoint or workflow
+                                setWalletError('Debiting merchant wallet is not supported via this API. To reduce balance, please use the Tookan dashboard directly.');
+                                setIsProcessingWallet(false);
+                                return;
+                              } else {
+                                // No change needed
+                                setIsProcessingWallet(false);
+                                setEditingBalance(null);
+                                setNewBalance('');
+                                setBalanceNote('');
+                                toast.success('No balance change needed');
+                                return;
+                              }
+                            }
+
+                            if (response.status === 'success') {
+                              toast.success(response.message);
+                              setEditingBalance(null);
+                              setNewBalance('');
+                              setBalanceNote('');
+                              // In a real app, you'd refresh the wallet data here
+                              // await refreshWalletData(editingBalance.type, editingBalance.id);
+                            } else {
+                              setWalletError(response.message);
+                              toast.error(response.message);
+                            }
+                          } catch (error) {
+                            const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+                            setWalletError(errorMessage);
+                            toast.error(errorMessage);
+                          } finally {
+                            setIsProcessingWallet(false);
+                          }
+                        }}
+                        disabled={isProcessingWallet}
+                        className="flex-1 bg-[#C1EEFA] text-[#1A2C53] py-3 rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {isProcessingWallet ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          'Update Balance'
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 }

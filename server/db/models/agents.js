@@ -334,6 +334,120 @@ function transformFleetToAgent(fleet) {
   };
 }
 
+/**
+ * Record a payment to an agent (updates total_paid and balance)
+ * @param {number} fleetId - The fleet ID of the agent
+ * @param {number} paymentAmount - The amount being paid
+ * @param {number} codTotal - The current COD total for the agent (optional, for balance calculation)
+ * @returns {object} Updated agent record
+ */
+async function recordAgentPayment(fleetId, paymentAmount, codTotal = null) {
+  if (!isConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  // First, get the current agent data
+  const agent = await getAgent(fleetId);
+  if (!agent) {
+    throw new Error(`Agent with fleet_id ${fleetId} not found`);
+  }
+
+  const currentPaid = parseFloat(agent.total_paid || 0);
+  const newTotalPaid = currentPaid + parseFloat(paymentAmount);
+
+  // Calculate new balance if codTotal is provided
+  // Balance = COD Total - Total Paid
+  let newBalance = parseFloat(agent.balance || 0);
+  if (codTotal !== null) {
+    newBalance = parseFloat(codTotal) - newTotalPaid;
+  } else {
+    // If no codTotal provided, just subtract the payment from current balance
+    newBalance = newBalance - parseFloat(paymentAmount);
+  }
+
+  const { data, error } = await supabase
+    .from('agents')
+    .update({
+      total_paid: newTotalPaid,
+      balance: newBalance,
+      updated_at: new Date().toISOString()
+    })
+    .eq('fleet_id', fleetId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * Update agent balance (recalculate from COD total)
+ * @param {number} fleetId - The fleet ID of the agent
+ * @param {number} codTotal - The total COD amount for the agent
+ * @returns {object} Updated agent record
+ */
+async function updateAgentBalance(fleetId, codTotal) {
+  if (!isConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  // Get the current agent data
+  const agent = await getAgent(fleetId);
+  if (!agent) {
+    throw new Error(`Agent with fleet_id ${fleetId} not found`);
+  }
+
+  const totalPaid = parseFloat(agent.total_paid || 0);
+  const newBalance = parseFloat(codTotal) - totalPaid;
+
+  const { data, error } = await supabase
+    .from('agents')
+    .update({
+      balance: newBalance,
+      updated_at: new Date().toISOString()
+    })
+    .eq('fleet_id', fleetId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * Get agent payment summary
+ * @param {number} fleetId - The fleet ID of the agent
+ * @returns {object} Payment summary with total_paid and balance
+ */
+async function getAgentPaymentSummary(fleetId) {
+  if (!isConfigured()) {
+    throw new Error('Supabase not configured');
+  }
+
+  const { data, error } = await supabase
+    .from('agents')
+    .select('fleet_id, name, total_paid, balance')
+    .eq('fleet_id', fleetId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    throw error;
+  }
+
+  return data ? {
+    fleetId: data.fleet_id,
+    name: data.name,
+    totalPaid: parseFloat(data.total_paid || 0),
+    balance: parseFloat(data.balance || 0)
+  } : null;
+}
+
 module.exports = {
   getAgent,
   getAllAgents,
@@ -345,6 +459,9 @@ module.exports = {
   deactivateAgent,
   getAgentCount,
   getLastSyncTimestamp,
-  transformFleetToAgent
+  transformFleetToAgent,
+  recordAgentPayment,
+  updateAgentBalance,
+  getAgentPaymentSummary
 };
 

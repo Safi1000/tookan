@@ -168,6 +168,211 @@ app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermissio
   }
 });
 
+// Agent Payment - Record payment and update balance in Supabase
+app.post('/api/agents/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+  try {
+    console.log('\n=== RECORD AGENT PAYMENT ===');
+    const { fleet_id, payment_amount, cod_total } = req.body;
+
+    console.log('Request body:', { fleet_id, payment_amount, cod_total });
+
+    if (!fleet_id || payment_amount === undefined) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Missing required fields: fleet_id, payment_amount'
+      });
+    }
+
+    const updatedAgent = await agentModel.recordAgentPayment(
+      parseInt(fleet_id),
+      parseFloat(payment_amount),
+      cod_total !== undefined ? parseFloat(cod_total) : null
+    );
+
+    console.log('✅ Agent payment recorded:', {
+      fleet_id,
+      payment_amount,
+      new_total_paid: updatedAgent.total_paid,
+      new_balance: updatedAgent.balance
+    });
+
+    res.json({
+      status: 'success',
+      action: 'record_payment',
+      entity: 'agent',
+      message: 'Payment recorded successfully',
+      data: {
+        fleet_id: updatedAgent.fleet_id,
+        name: updatedAgent.name,
+        total_paid: updatedAgent.total_paid,
+        balance: updatedAgent.balance
+      }
+    });
+  } catch (error) {
+    console.error('❌ Record agent payment error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to record payment'
+    });
+  }
+});
+
+// Agent Balance - Update balance based on COD total
+app.put('/api/agents/:fleetId/balance', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+  try {
+    console.log('\n=== UPDATE AGENT BALANCE ===');
+    const { fleetId } = req.params;
+    const { cod_total } = req.body;
+
+    console.log('Request:', { fleetId, cod_total });
+
+    if (cod_total === undefined) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Missing required field: cod_total'
+      });
+    }
+
+    const updatedAgent = await agentModel.updateAgentBalance(
+      parseInt(fleetId),
+      parseFloat(cod_total)
+    );
+
+    console.log('✅ Agent balance updated:', {
+      fleet_id: fleetId,
+      balance: updatedAgent.balance
+    });
+
+    res.json({
+      status: 'success',
+      action: 'update_balance',
+      entity: 'agent',
+      message: 'Balance updated successfully',
+      data: {
+        fleet_id: updatedAgent.fleet_id,
+        name: updatedAgent.name,
+        total_paid: updatedAgent.total_paid,
+        balance: updatedAgent.balance
+      }
+    });
+  } catch (error) {
+    console.error('❌ Update agent balance error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to update balance'
+    });
+  }
+});
+
+// Agent Payment Summary - Get payment info for an agent
+app.get('/api/agents/:fleetId/payment-summary', authenticate, async (req, res) => {
+  try {
+    const { fleetId } = req.params;
+
+    const summary = await agentModel.getAgentPaymentSummary(parseInt(fleetId));
+
+    if (!summary) {
+      return res.status(404).json({
+        status: 'error',
+        message: `Agent with fleet_id ${fleetId} not found`
+      });
+    }
+
+    res.json({
+      status: 'success',
+      data: summary
+    });
+  } catch (error) {
+    console.error('Get agent payment summary error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to get payment summary'
+    });
+  }
+});
+
+// Get daily COD totals for a specific driver
+app.get('/api/agents/:fleetId/daily-cod', authenticate, async (req, res) => {
+  try {
+    console.log('\n=== GET DRIVER DAILY COD ===');
+    const { fleetId } = req.params;
+    const { dateFrom, dateTo } = req.query;
+
+    console.log('Request:', { fleetId, dateFrom, dateTo });
+
+    if (!isConfigured || !supabase) {
+      return res.status(503).json({
+        status: 'error',
+        message: 'Database not configured'
+      });
+    }
+
+    // Build query to get daily COD totals from tasks table
+    let query = supabase
+      .from('tasks')
+      .select('creation_datetime, cod_amount, job_status, job_type, pickup_address, delivery_address')
+      .eq('fleet_id', parseInt(fleetId))
+      .eq('job_type', 1)  // Only deliveries
+      .neq('pickup_address', supabase.raw('delivery_address'))  // Real orders only
+      .gt('cod_amount', 0);
+
+    if (dateFrom) {
+      query = query.gte('creation_datetime', dateFrom);
+    }
+    if (dateTo) {
+      query = query.lte('creation_datetime', dateTo + 'T23:59:59');
+    }
+
+    const { data: tasks, error } = await query;
+
+    if (error) {
+      console.error('Query error:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: error.message
+      });
+    }
+
+    // Group by date and calculate daily totals
+    const dailyTotals = {};
+    (tasks || []).forEach(task => {
+      if (!task.creation_datetime) return;
+
+      const date = task.creation_datetime.split('T')[0]; // Get YYYY-MM-DD
+      if (!dailyTotals[date]) {
+        dailyTotals[date] = {
+          date,
+          codReceived: 0,
+          orderCount: 0
+        };
+      }
+
+      // Only count completed orders (status = 2) for COD
+      if (task.job_status === 2) {
+        dailyTotals[date].codReceived += parseFloat(task.cod_amount || 0);
+      }
+      dailyTotals[date].orderCount++;
+    });
+
+    // Convert to array and sort by date
+    const result = Object.values(dailyTotals)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    console.log(`✅ Found ${result.length} days with COD for fleet ${fleetId}`);
+
+    res.json({
+      status: 'success',
+      data: result
+    });
+  } catch (error) {
+    console.error('Get driver daily COD error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to get daily COD'
+    });
+  }
+});
+
 // Driver Wallet - Get Balance/Transactions
 app.post('/api/tookan/driver-wallet/balance', authenticate, async (req, res) => {
   try {
