@@ -15,12 +15,13 @@ import {
   settleCOD,
   fetchAllDrivers,
   fetchAllCustomers,
-  fetchAllOrders,
+  fetchReportsSummary,
   type TookanApiResponse,
   type CODEntry,
   type CODConfirmation,
   type CODCalendarEntry,
-  type CustomerWallet
+  type CustomerWallet,
+  type DriverSummary
 } from '../services/tookanApi';
 import { toast } from 'sonner';
 
@@ -164,6 +165,8 @@ export function FinancialPanel() {
   const [isLoadingMerchants, setIsLoadingMerchants] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [driverSummaries, setDriverSummaries] = useState<DriverSummary[]>([]);
+  const [isLoadingSummaries, setIsLoadingSummaries] = useState(false);
 
   // Fetch drivers on mount
   useEffect(() => {
@@ -273,26 +276,25 @@ export function FinancialPanel() {
     loadCalendarData();
   }, [dateFrom, dateTo]);
 
-  // Load orders for COD totals when date range changes
+  // Load driver summaries with COD totals when date range changes
   useEffect(() => {
-    const loadOrders = async () => {
-      setIsLoadingOrders(true);
+    const loadDriverSummaries = async () => {
+      setIsLoadingSummaries(true);
       try {
-        const response = await fetchAllOrders({
+        const response = await fetchReportsSummary({
           dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined,
-          limit: 10000
+          dateTo: dateTo || undefined
         });
-        if (response.status === 'success' && response.data?.orders) {
-          setOrders(response.data.orders);
+        if (response.status === 'success' && response.data?.driverSummaries) {
+          setDriverSummaries(response.data.driverSummaries);
         }
       } catch (error) {
-        console.error('Error loading orders:', error);
+        console.error('Error loading driver summaries:', error);
       } finally {
-        setIsLoadingOrders(false);
+        setIsLoadingSummaries(false);
       }
     };
-    loadOrders();
+    loadDriverSummaries();
   }, [dateFrom, dateTo]);
 
   const handleSearch = () => {
@@ -575,7 +577,7 @@ export function FinancialPanel() {
 
   const totals = calculateTotals();
 
-  // Calculate driver-specific totals with date filtering from actual orders
+  // Calculate driver-specific totals with date filtering from driverSummaries
   const getDriverTotals = (driverId: string, applyDateFilter: boolean = true) => {
     const driver = drivers.find(d => d.id === driverId);
     if (!driver) {
@@ -588,19 +590,16 @@ export function FinancialPanel() {
       };
     }
 
-    // Calculate COD totals from actual orders for this driver
-    // Filter orders by driver (using fleet_id or driverId)
-    const driverOrders = orders.filter(order => {
-      const orderDriverId = String(order.fleet_id || order.driverId || order.driver_id || '');
-      const driverIdStr = String(driver.fleet_id || driver.id);
-      return orderDriverId === driverIdStr;
-    });
+    // Find the driver's COD total from driverSummaries (fetched from backend with date filtering)
+    const driverFleetId = String(driver.fleet_id || driver.id);
+    const summary = driverSummaries.find(s =>
+      String(s.driverId) === driverFleetId ||
+      String(s.driverId) === driver.id ||
+      s.driverName?.toLowerCase() === driver.name?.toLowerCase()
+    );
 
-    // Sum up COD amounts from orders
-    const codTotal = driverOrders.reduce((sum, order) => {
-      const codAmount = parseFloat(order.cod_amount || order.codAmount || order.cod || 0);
-      return sum + (isNaN(codAmount) ? 0 : codAmount);
-    }, 0);
+    // Get COD total from summary (already filtered by date on backend)
+    const codTotal = summary?.codTotal || 0;
 
     // Get paid from driver balance (wallet balance or 0)
     const paid = driver.balance || 0;
