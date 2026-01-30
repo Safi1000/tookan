@@ -932,146 +932,163 @@ export function FinancialPanel() {
 
             {/* Calendar grid - only show when a driver is selected */}
             {selectedDriver && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                {filteredCalendarData.map((item) => {
-                  const isEditing = editingDate === item.date;
-                  const date = new Date(item.date);
-                  const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-                  const dayNum = date.getDate();
+              <>
+                {isLoadingCalendar ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-4" />
+                    <p className="text-muted-light dark:text-[#99BFD1]">Loading calendar data...</p>
+                  </div>
+                ) : filteredCalendarData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Calendar className="w-12 h-12 text-muted-light dark:text-[#99BFD1] mb-4" />
+                    <p className="text-heading dark:text-[#C1EEFA] font-medium mb-2">No Calendar Data</p>
+                    <p className="text-muted-light dark:text-[#99BFD1] text-sm">
+                      No COD calendar entries found for this driver in the selected date range.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                    {filteredCalendarData.map((item) => {
+                      const isEditing = editingDate === item.date;
+                      const date = new Date(item.date);
+                      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+                      const dayNum = date.getDate();
 
-                  return (
-                    <div
-                      key={item.date}
-                      className={`bg-muted/30 dark:bg-[#1A2C53] rounded-xl p-4 border border-border dark:border-border transition-all ${isEditing
-                        ? 'border-primary dark:border-[#C1EEFA] shadow-[0_0_16px_rgba(26,44,83,0.2)] dark:shadow-[0_0_16px_rgba(193,238,250,0.3)]'
-                        : 'border-border dark:border-[#2A3C63]'
-                        }`}
-                    >
-                      <div className="text-center mb-3 pb-3 border-b border-border dark:border-[#2A3C63]">
-                        <p className="text-muted-light dark:text-[#99BFD1] text-xs">{dayName}</p>
-                        <p className="text-heading dark:text-[#C1EEFA] text-2xl font-semibold">{dayNum}</p>
-                      </div>
+                      return (
+                        <div
+                          key={item.date}
+                          className={`bg-muted/30 dark:bg-[#1A2C53] rounded-xl p-4 border border-border dark:border-border transition-all ${isEditing
+                            ? 'border-primary dark:border-[#C1EEFA] shadow-[0_0_16px_rgba(26,44,83,0.2)] dark:shadow-[0_0_16px_rgba(193,238,250,0.3)]'
+                            : 'border-border dark:border-[#2A3C63]'
+                            }`}
+                        >
+                          <div className="text-center mb-3 pb-3 border-b border-border dark:border-[#2A3C63]">
+                            <p className="text-muted-light dark:text-[#99BFD1] text-xs">{dayName}</p>
+                            <p className="text-heading dark:text-[#C1EEFA] text-2xl font-semibold">{dayNum}</p>
+                          </div>
 
-                      <div className="space-y-2">
-                        {/* COD Received */}
-                        <div>
-                          <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">COD Received</p>
-                          <p className="text-heading dark:text-[#C1EEFA] font-medium">${(item.codReceived || 0).toFixed(2)}</p>
-                        </div>
+                          <div className="space-y-2">
+                            {/* COD Received */}
+                            <div>
+                              <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">COD Received</p>
+                              <p className="text-heading dark:text-[#C1EEFA] font-medium">${(item.codReceived || 0).toFixed(2)}</p>
+                            </div>
 
-                        {/* Balance Paid (Editable) */}
-                        <div>
-                          <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Balance Paid</p>
-                          {isEditing ? (
-                            <div className="space-y-2">
-                              <input
-                                type="number"
-                                step="0.01"
-                                defaultValue={item.balancePaid}
-                                id={`balance-${item.date}`}
-                                className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA]"
-                                autoFocus
-                              />
-                              {/* COD Status Dropdown */}
-                              <select
-                                key={`status-${item.date}`}
-                                defaultValue={editingCODStatus || item.codStatus || 'PENDING'}
-                                onChange={(e) => setEditingCODStatus(e.target.value as 'PENDING' | 'COMPLETED')}
-                                id={`status-${item.date}`}
-                                className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1 text-heading dark:text-[#C1EEFA] text-xs focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA]"
-                              >
-                                <option value="PENDING">Pending</option>
-                                <option value="COMPLETED">Completed</option>
-                              </select>
-                              <textarea
-                                placeholder="Add note for this entry..."
-                                defaultValue={item.note || ''}
-                                id={`note-${item.date}`}
-                                className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1 text-heading dark:text-[#C1EEFA] text-xs focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] resize-none"
-                                rows={2}
-                              />
-                              {codError && (
-                                <p className="text-[#DE3544] text-xs">{codError}</p>
-                              )}
-                              {isProcessingCOD && (
-                                <div className="flex items-center gap-2 text-xs text-muted-light dark:text-[#99BFD1]">
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                  Processing COD settlement...
+                            {/* Balance Paid (Editable) */}
+                            <div>
+                              <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Balance Paid</p>
+                              {isEditing ? (
+                                <div className="space-y-2">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    defaultValue={item.balancePaid}
+                                    id={`balance-${item.date}`}
+                                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA]"
+                                    autoFocus
+                                  />
+                                  {/* COD Status Dropdown */}
+                                  <select
+                                    key={`status-${item.date}`}
+                                    defaultValue={editingCODStatus || item.codStatus || 'PENDING'}
+                                    onChange={(e) => setEditingCODStatus(e.target.value as 'PENDING' | 'COMPLETED')}
+                                    id={`status-${item.date}`}
+                                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1 text-heading dark:text-[#C1EEFA] text-xs focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA]"
+                                  >
+                                    <option value="PENDING">Pending</option>
+                                    <option value="COMPLETED">Completed</option>
+                                  </select>
+                                  <textarea
+                                    placeholder="Add note for this entry..."
+                                    defaultValue={item.note || ''}
+                                    id={`note-${item.date}`}
+                                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1 text-heading dark:text-[#C1EEFA] text-xs focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] resize-none"
+                                    rows={2}
+                                  />
+                                  {codError && (
+                                    <p className="text-[#DE3544] text-xs">{codError}</p>
+                                  )}
+                                  {isProcessingCOD && (
+                                    <div className="flex items-center gap-2 text-xs text-muted-light dark:text-[#99BFD1]">
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                      Processing COD settlement...
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div>
+                                  <p className="text-green-600 dark:text-green-400 font-semibold">${(item.balancePaid || 0).toFixed(2)}</p>
+                                  {item.codStatus && (
+                                    <span className={`text-xs px-1.5 py-0.5 rounded ${item.codStatus === 'COMPLETED'
+                                      ? 'bg-green-500/20 text-green-600 dark:text-green-400'
+                                      : 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
+                                      }`}>
+                                      {item.codStatus}
+                                    </span>
+                                  )}
+                                  {item.note && (
+                                    <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-1 italic">{item.note}</p>
+                                  )}
                                 </div>
                               )}
                             </div>
-                          ) : (
+
+                            {/* COD Pending */}
                             <div>
-                              <p className="text-green-600 dark:text-green-400 font-semibold">${(item.balancePaid || 0).toFixed(2)}</p>
-                              {item.codStatus && (
-                                <span className={`text-xs px-1.5 py-0.5 rounded ${item.codStatus === 'COMPLETED'
-                                  ? 'bg-green-500/20 text-green-600 dark:text-green-400'
-                                  : 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
-                                  }`}>
-                                  {item.codStatus}
-                                </span>
-                              )}
-                              {item.note && (
-                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-1 italic">{item.note}</p>
-                              )}
+                              <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">COD Pending</p>
+                              <p className="text-[#DE3544] dark:text-[#DE3544] font-medium">${(item.codPending || 0).toFixed(2)}</p>
                             </div>
-                          )}
+
+                            {/* Edit/Save Button */}
+                            <button
+                              onClick={async () => {
+                                if (isEditing) {
+                                  // Save logic
+                                  const balanceInput = document.getElementById(`balance-${item.date}`) as HTMLInputElement;
+                                  const noteInput = document.getElementById(`note-${item.date}`) as HTMLTextAreaElement;
+                                  const statusSelect = document.getElementById(`status-${item.date}`) as HTMLSelectElement;
+
+                                  const newBalance = parseFloat(balanceInput?.value || String(item.balancePaid));
+                                  const newNote = noteInput?.value || item.note || '';
+                                  const newStatus = (statusSelect?.value || editingCODStatus || item.codStatus || 'PENDING') as 'PENDING' | 'COMPLETED';
+
+                                  await updateBalancePaid(item.date, newBalance, newNote, newStatus);
+                                } else {
+                                  // Enter edit mode
+                                  setEditingDate(item.date);
+                                  // Auto-detect status: if balancePaid matches codPending, suggest COMPLETED
+                                  const suggestedStatus = (item.balancePaid > 0 && Math.abs(item.balancePaid - item.codPending) < 0.01)
+                                    ? 'COMPLETED'
+                                    : (item.codStatus || 'PENDING');
+                                  setEditingCODStatus(suggestedStatus);
+                                  setCodError(null);
+                                }
+                              }}
+                              disabled={isProcessingCOD}
+                              className={`w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed ${isEditing
+                                ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] hover:shadow-md dark:hover:shadow-[0_0_12px_rgba(193,238,250,0.4)]'
+                                : 'bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30 hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20'
+                                }`}
+                            >
+                              {isProcessingCOD ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  Processing...
+                                </>
+                              ) : (
+                                <>
+                                  <Save className="w-3 h-3" />
+                                  {isEditing ? 'Save' : 'Edit'}
+                                </>
+                              )}
+                            </button>
+                          </div>
                         </div>
-
-                        {/* COD Pending */}
-                        <div>
-                          <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">COD Pending</p>
-                          <p className="text-[#DE3544] dark:text-[#DE3544] font-medium">${(item.codPending || 0).toFixed(2)}</p>
-                        </div>
-
-                        {/* Edit/Save Button */}
-                        <button
-                          onClick={async () => {
-                            if (isEditing) {
-                              // Save logic
-                              const balanceInput = document.getElementById(`balance-${item.date}`) as HTMLInputElement;
-                              const noteInput = document.getElementById(`note-${item.date}`) as HTMLTextAreaElement;
-                              const statusSelect = document.getElementById(`status-${item.date}`) as HTMLSelectElement;
-
-                              const newBalance = parseFloat(balanceInput?.value || String(item.balancePaid));
-                              const newNote = noteInput?.value || item.note || '';
-                              const newStatus = (statusSelect?.value || editingCODStatus || item.codStatus || 'PENDING') as 'PENDING' | 'COMPLETED';
-
-                              await updateBalancePaid(item.date, newBalance, newNote, newStatus);
-                            } else {
-                              // Enter edit mode
-                              setEditingDate(item.date);
-                              // Auto-detect status: if balancePaid matches codPending, suggest COMPLETED
-                              const suggestedStatus = (item.balancePaid > 0 && Math.abs(item.balancePaid - item.codPending) < 0.01)
-                                ? 'COMPLETED'
-                                : (item.codStatus || 'PENDING');
-                              setEditingCODStatus(suggestedStatus);
-                              setCodError(null);
-                            }
-                          }}
-                          disabled={isProcessingCOD}
-                          className={`w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed ${isEditing
-                            ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] hover:shadow-md dark:hover:shadow-[0_0_12px_rgba(193,238,250,0.4)]'
-                            : 'bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30 hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20'
-                            }`}
-                        >
-                          {isProcessingCOD ? (
-                            <>
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                              Processing...
-                            </>
-                          ) : (
-                            <>
-                              <Save className="w-3 h-3" />
-                              {isEditing ? 'Save' : 'Edit'}
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
