@@ -277,11 +277,10 @@ export function FinancialPanel() {
       localStorage.setItem('financialPanelActiveTab', 'reconciliation');
       return;
     }
-    // Strict exact match on driver name (case-insensitive)
-    // BUT allow partial match for ID or Phone as the UI suggests searching by them
+    // Partial match on driver name, ID, or Phone (case-insensitive)
     const searchTerm = unifiedDriverSearch.trim().toLowerCase();
     const foundDriver = drivers.find(
-      d => d.name.toLowerCase() === searchTerm ||
+      d => d.name.toLowerCase().includes(searchTerm) ||
         d.id.toLowerCase().includes(searchTerm) ||
         (d.phone && d.phone.includes(searchTerm))
     );
@@ -810,8 +809,17 @@ export function FinancialPanel() {
                     const driverTotals = getDriverTotals(driver.id, true);
                     const currency = localStorage.getItem('currency') || 'BHD';
                     const currencySymbol = currency === 'BHD' ? 'BHD' : '$';
+                    const isSelected = selectedDriver === driver.id;
                     return (
-                      <tr key={driver.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                      <tr
+                        key={driver.id}
+                        onClick={() => {
+                          setSelectedDriver(driver.id);
+                          setUnifiedDriverSearch(driver.name);
+                          setSearchValidation('valid');
+                        }}
+                        className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors cursor-pointer ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${isSelected ? 'bg-[#C1EEFA]/20 dark:bg-[#C1EEFA]/10' : ''}`}
+                      >
                         <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
                         <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{currencySymbol} {driverTotals.received.toFixed(2)}</td>
                         <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">{currencySymbol} {driverTotals.paid.toFixed(2)}</td>
