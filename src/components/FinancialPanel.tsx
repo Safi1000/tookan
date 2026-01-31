@@ -1068,59 +1068,86 @@ export function FinancialPanel() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                       {driverDailyCOD.map((item) => {
+                        const isEditing = editingDate === item.date;
                         const date = new Date(item.date);
-                        const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-                        const dayNum = date.getDate();
-                        const monthName = date.toLocaleDateString('en-US', { month: 'short' });
+                        const fullDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
                         const paidAmount = dailyPayments[item.date] || 0;
-                        const balance = item.codReceived - paidAmount;
+                        const codPending = item.codReceived - paidAmount;
                         const currency = (localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$';
+                        const status = paidAmount >= item.codReceived ? 'COMPLETED' : 'PENDING';
 
                         return (
                           <div
                             key={item.date}
-                            className="bg-muted/30 dark:bg-[#1A2C53] rounded-xl p-4 border border-border dark:border-[#2A3C63] transition-all hover:border-[#C1EEFA]/50"
+                            className={`bg-muted/30 dark:bg-[#1A2C53] rounded-xl p-4 border transition-all ${isEditing
+                              ? 'border-primary dark:border-[#C1EEFA] shadow-[0_0_16px_rgba(26,44,83,0.2)] dark:shadow-[0_0_16px_rgba(193,238,250,0.3)]'
+                              : 'border-border dark:border-[#2A3C63]'
+                              }`}
                           >
                             <div className="text-center mb-3 pb-3 border-b border-border dark:border-[#2A3C63]">
-                              <p className="text-muted-light dark:text-[#99BFD1] text-xs">{dayName}, {monthName}</p>
-                              <p className="text-heading dark:text-[#C1EEFA] text-2xl font-semibold">{dayNum}</p>
+                              <p className="text-heading dark:text-[#C1EEFA] text-sm font-medium">{fullDate}</p>
                             </div>
 
-                            <div className="space-y-3">
+                            <div className="space-y-2">
                               {/* COD Received */}
                               <div>
-                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Received</p>
+                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">COD Received</p>
                                 <p className="text-heading dark:text-[#C1EEFA] font-medium">{currency} {item.codReceived.toFixed(2)}</p>
                               </div>
 
-                              {/* Paid (Editable) */}
+                              {/* Balance Paid */}
                               <div>
-                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Paid</p>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  max={item.codReceived}
-                                  value={paidAmount || ''}
-                                  placeholder="0.00"
-                                  onChange={(e) => {
-                                    const value = parseFloat(e.target.value) || 0;
-                                    setDailyPayments(prev => ({
-                                      ...prev,
-                                      [item.date]: Math.min(value, item.codReceived)
-                                    }));
-                                  }}
-                                  className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-lg px-2 py-1.5 text-green-600 dark:text-green-400 text-sm focus:outline-none focus:border-[#C1EEFA] font-medium"
-                                />
+                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Balance Paid</p>
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    max={item.codReceived}
+                                    defaultValue={paidAmount || ''}
+                                    placeholder="0.00"
+                                    id={`paid-${item.date}`}
+                                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1 text-green-600 dark:text-green-400 text-sm focus:outline-none focus:border-[#C1EEFA] font-medium"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <div>
+                                    <p className="text-heading dark:text-[#C1EEFA] font-semibold">{currency} {paidAmount.toFixed(2)}</p>
+                                  </div>
+                                )}
                               </div>
 
-                              {/* Balance (Auto-calculated) */}
+                              {/* COD Pending */}
                               <div>
-                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Balance</p>
-                                <p className={`font-medium ${balance > 0 ? 'text-[#DE3544]' : 'text-green-600 dark:text-green-400'}`}>
-                                  {currency} {balance.toFixed(2)}
-                                </p>
+                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">COD Pending</p>
+                                <p className="text-[#DE3544] dark:text-[#DE3544] font-medium">{currency} {codPending.toFixed(2)}</p>
                               </div>
+
+                              {/* Edit/Save Button */}
+                              <button
+                                onClick={() => {
+                                  if (isEditing) {
+                                    // Save logic
+                                    const paidInput = document.getElementById(`paid-${item.date}`) as HTMLInputElement;
+                                    const newPaid = parseFloat(paidInput?.value || '0');
+                                    setDailyPayments(prev => ({
+                                      ...prev,
+                                      [item.date]: Math.min(newPaid, item.codReceived)
+                                    }));
+                                    setEditingDate(null);
+                                  } else {
+                                    // Enter edit mode
+                                    setEditingDate(item.date);
+                                  }
+                                }}
+                                className={`w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs transition-all font-medium ${isEditing
+                                  ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] hover:shadow-md dark:hover:shadow-[0_0_12px_rgba(193,238,250,0.4)]'
+                                  : 'bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30 hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20'
+                                  }`}
+                              >
+                                <Save className="w-3 h-3" />
+                                {isEditing ? 'Save' : 'Edit'}
+                              </button>
                             </div>
                           </div>
                         );
