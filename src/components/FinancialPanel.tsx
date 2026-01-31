@@ -25,6 +25,7 @@ import {
   type CustomerWallet,
   type DailyCODEntry
 } from '../services/tookanApi';
+import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
 
 // Calendar entry interface
@@ -317,10 +318,10 @@ export function FinancialPanel() {
     loadDriverPerformance();
   }, [drivers, dateFrom, dateTo]);
 
-  // Load driver-specific daily COD when a driver is selected
+  // Generate calendar days and fetch COD data from Supabase when a driver is selected
   useEffect(() => {
-    const loadDriverDailyCOD = async () => {
-      if (!selectedDriver) {
+    const loadCalendarData = async () => {
+      if (!selectedDriver || !dateFrom || !dateTo) {
         setDriverDailyCOD([]);
         setDailyPayments({});
         return;
@@ -329,27 +330,62 @@ export function FinancialPanel() {
       const driver = drivers.find(d => d.id === selectedDriver);
       if (!driver) return;
 
-      setIsLoadingDailyCOD(true);
-      try {
-        const fleetId = Number(driver.fleet_id || driver.id);
-        const response = await fetchDriverDailyCOD(
-          fleetId,
-          dateFrom || undefined,
-          dateTo || undefined
-        );
+      const fleetId = Number(driver.fleet_id || driver.id);
 
-        if (response.status === 'success' && response.data) {
-          setDriverDailyCOD(response.data);
-          // Reset daily payments when loading new data
-          setDailyPayments({});
-        }
-      } catch (error) {
-        console.error('Error loading driver daily COD:', error);
-      } finally {
-        setIsLoadingDailyCOD(false);
+      // Generate array of dates from dateFrom to dateTo
+      const startDate = new Date(dateFrom);
+      const endDate = new Date(dateTo);
+      const daysMap: Record<string, DailyCODEntry> = {};
+
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        daysMap[dateStr] = {
+          date: dateStr,
+          codReceived: 0,
+          orderCount: 0
+        };
+        currentDate.setDate(currentDate.getDate() + 1);
       }
+
+      // Fetch tasks from Supabase for this driver in the date range
+      if (supabase) {
+        try {
+          const { data: tasks, error } = await supabase
+            .from('tasks')
+            .select('creation_datetime, cod_amount, job_status, job_type')
+            .eq('fleet_id', fleetId)
+            .eq('job_type', 1) // Deliveries only
+            .eq('job_status', 2) // Completed only
+            .gte('creation_datetime', dateFrom)
+            .lte('creation_datetime', dateTo + 'T23:59:59')
+            .gt('cod_amount', 0);
+
+          if (!error && tasks) {
+            // Group tasks by date and sum COD amounts
+            tasks.forEach(task => {
+              if (task.creation_datetime) {
+                const taskDate = task.creation_datetime.split('T')[0];
+                if (daysMap[taskDate]) {
+                  daysMap[taskDate].codReceived += parseFloat(task.cod_amount || 0);
+                  daysMap[taskDate].orderCount++;
+                }
+              }
+            });
+          }
+        } catch (err) {
+          console.error('Error fetching tasks from Supabase:', err);
+        }
+      }
+
+      // Convert to array and set state
+      const days = Object.values(daysMap).sort((a, b) => a.date.localeCompare(b.date));
+      setDriverDailyCOD(days);
+      // Reset daily payments when date range changes
+      setDailyPayments({});
     };
-    loadDriverDailyCOD();
+
+    loadCalendarData();
   }, [selectedDriver, dateFrom, dateTo, drivers]);
 
   const handleSearch = () => {
@@ -989,17 +1025,12 @@ export function FinancialPanel() {
             {/* Calendar grid - only show when a driver is selected */}
             {selectedDriver && (
               <>
-                {isLoadingDailyCOD ? (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-4" />
-                    <p className="text-muted-light dark:text-[#99BFD1]">Loading daily COD data...</p>
-                  </div>
-                ) : driverDailyCOD.length === 0 ? (
+                {driverDailyCOD.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Calendar className="w-12 h-12 text-muted-light dark:text-[#99BFD1] mb-4" />
-                    <p className="text-heading dark:text-[#C1EEFA] font-medium mb-2">No COD Data</p>
+                    <p className="text-heading dark:text-[#C1EEFA] font-medium mb-2">Select Date Range</p>
                     <p className="text-muted-light dark:text-[#99BFD1] text-sm">
-                      No COD entries found for this driver in the selected date range.
+                      Please select a date range (From and To dates) to view daily calendar entries.
                     </p>
                   </div>
                 ) : (
