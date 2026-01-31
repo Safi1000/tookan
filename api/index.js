@@ -5273,6 +5273,249 @@ function getApp() {
       }
     });
 
+    // ========== AGENT PAYMENT ENDPOINTS ==========
+
+    // Record agent payment
+    app.post('/api/agents/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+      try {
+        const { fleet_id, payment_amount, cod_total } = req.body;
+
+        if (!fleet_id || payment_amount === undefined) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Missing required fields: fleet_id and payment_amount'
+          });
+        }
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(503).json({
+            status: 'error',
+            message: 'Database not configured'
+          });
+        }
+
+        // Get current agent data
+        const { data: agent, error: fetchError } = await supabase
+          .from('agents')
+          .select('fleet_id, name, total_paid, balance')
+          .eq('fleet_id', parseInt(fleet_id))
+          .single();
+
+        if (fetchError || !agent) {
+          return res.status(404).json({
+            status: 'error',
+            message: `Agent with fleet_id ${fleet_id} not found`
+          });
+        }
+
+        const currentPaid = parseFloat(agent.total_paid || 0);
+        const newTotalPaid = currentPaid + parseFloat(payment_amount);
+
+        let newBalance = parseFloat(agent.balance || 0);
+        if (cod_total !== null && cod_total !== undefined) {
+          newBalance = parseFloat(cod_total) - newTotalPaid;
+        } else {
+          newBalance = newBalance - parseFloat(payment_amount);
+        }
+
+        const { data: updatedAgent, error: updateError } = await supabase
+          .from('agents')
+          .update({
+            total_paid: newTotalPaid,
+            balance: newBalance,
+            updated_at: new Date().toISOString()
+          })
+          .eq('fleet_id', parseInt(fleet_id))
+          .select()
+          .single();
+
+        if (updateError) throw updateError;
+
+        res.json({
+          status: 'success',
+          message: 'Payment recorded successfully',
+          data: {
+            fleet_id: updatedAgent.fleet_id,
+            name: updatedAgent.name,
+            payment_amount: parseFloat(payment_amount),
+            total_paid: updatedAgent.total_paid,
+            balance: updatedAgent.balance
+          }
+        });
+      } catch (error) {
+        console.error('Record agent payment error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to record payment'
+        });
+      }
+    });
+
+    // Update agent balance
+    app.put('/api/agents/:fleetId/balance', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+      try {
+        const { fleetId } = req.params;
+        const { cod_total } = req.body;
+
+        if (cod_total === undefined) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Missing required field: cod_total'
+          });
+        }
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(503).json({
+            status: 'error',
+            message: 'Database not configured'
+          });
+        }
+
+        const { data: agent, error: fetchError } = await supabase
+          .from('agents')
+          .select('fleet_id, name, total_paid, balance')
+          .eq('fleet_id', parseInt(fleetId))
+          .single();
+
+        if (fetchError || !agent) {
+          return res.status(404).json({
+            status: 'error',
+            message: `Agent with fleet_id ${fleetId} not found`
+          });
+        }
+
+        const totalPaid = parseFloat(agent.total_paid || 0);
+        const newBalance = parseFloat(cod_total) - totalPaid;
+
+        const { data: updatedAgent, error: updateError } = await supabase
+          .from('agents')
+          .update({
+            balance: newBalance,
+            updated_at: new Date().toISOString()
+          })
+          .eq('fleet_id', parseInt(fleetId))
+          .select()
+          .single();
+
+        if (updateError) throw updateError;
+
+        res.json({
+          status: 'success',
+          message: 'Balance updated successfully',
+          data: {
+            fleet_id: updatedAgent.fleet_id,
+            name: updatedAgent.name,
+            total_paid: updatedAgent.total_paid,
+            balance: updatedAgent.balance
+          }
+        });
+      } catch (error) {
+        console.error('Update agent balance error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to update balance'
+        });
+      }
+    });
+
+    // Get agent payment summary
+    app.get('/api/agents/:fleetId/payment-summary', authenticate, async (req, res) => {
+      try {
+        const { fleetId } = req.params;
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(503).json({
+            status: 'error',
+            message: 'Database not configured'
+          });
+        }
+
+        const { data: agent, error } = await supabase
+          .from('agents')
+          .select('fleet_id, name, total_paid, balance')
+          .eq('fleet_id', parseInt(fleetId))
+          .single();
+
+        if (error || !agent) {
+          return res.status(404).json({
+            status: 'error',
+            message: `Agent with fleet_id ${fleetId} not found`
+          });
+        }
+
+        res.json({
+          status: 'success',
+          data: agent
+        });
+      } catch (error) {
+        console.error('Get agent payment summary error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to get payment summary'
+        });
+      }
+    });
+
+    // Get daily COD totals for a driver
+    app.get('/api/agents/:fleetId/daily-cod', authenticate, async (req, res) => {
+      try {
+        const { fleetId } = req.params;
+        const { dateFrom, dateTo } = req.query;
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(503).json({
+            status: 'error',
+            message: 'Database not configured'
+          });
+        }
+
+        let query = supabase
+          .from('tasks')
+          .select('creation_datetime, cod_amount, status, pickup_address, delivery_address')
+          .eq('fleet_id', parseInt(fleetId))
+          .eq('status', 2);  // Completed deliveries only
+
+        if (dateFrom) {
+          query = query.gte('creation_datetime', dateFrom);
+        }
+        if (dateTo) {
+          query = query.lte('creation_datetime', dateTo + 'T23:59:59');
+        }
+
+        const { data: tasks, error } = await query;
+
+        if (error) throw error;
+
+        // Group by date and sum COD, filtering pickup != delivery
+        const dailyTotals = {};
+        (tasks || []).forEach(task => {
+          if (task.creation_datetime &&
+            task.pickup_address !== task.delivery_address &&
+            task.cod_amount && parseFloat(task.cod_amount) > 0) {
+            const date = task.creation_datetime.split('T')[0];
+            if (!dailyTotals[date]) {
+              dailyTotals[date] = { date, codReceived: 0, orderCount: 0 };
+            }
+            dailyTotals[date].codReceived += parseFloat(task.cod_amount);
+            dailyTotals[date].orderCount++;
+          }
+        });
+
+        const sortedDays = Object.values(dailyTotals).sort((a, b) => a.date.localeCompare(b.date));
+
+        res.json({
+          status: 'success',
+          data: sortedDays
+        });
+      } catch (error) {
+        console.error('Get daily COD error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to get daily COD'
+        });
+      }
+    });
+
     // Catch-all for other API routes
     app.all('/api/*', (req, res) => {
       res.status(404).json({

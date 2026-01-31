@@ -353,18 +353,19 @@ export function FinancialPanel() {
         try {
           const { data: tasks, error } = await supabase
             .from('tasks')
-            .select('creation_datetime, cod_amount, job_status, job_type')
+            .select('creation_datetime, cod_amount, status, pickup_address, delivery_address')
             .eq('fleet_id', fleetId)
-            .eq('job_type', 1) // Deliveries only
-            .eq('job_status', 2) // Completed only
+            .eq('status', 2) // Completed deliveries only
             .gte('creation_datetime', dateFrom)
-            .lte('creation_datetime', dateTo + 'T23:59:59')
-            .gt('cod_amount', 0);
+            .lte('creation_datetime', dateTo + 'T23:59:59');
 
           if (!error && tasks) {
             // Group tasks by date and sum COD amounts
+            // Filter: pickup_address != delivery_address (real deliveries only)
             tasks.forEach(task => {
-              if (task.creation_datetime) {
+              if (task.creation_datetime &&
+                task.pickup_address !== task.delivery_address &&
+                task.cod_amount && task.cod_amount > 0) {
                 const taskDate = task.creation_datetime.split('T')[0];
                 if (daysMap[taskDate]) {
                   daysMap[taskDate].codReceived += parseFloat(task.cod_amount || 0);
