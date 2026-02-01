@@ -318,7 +318,7 @@ export function FinancialPanel() {
     loadDriverPerformance();
   }, [drivers, dateFrom, dateTo]);
 
-  // Generate calendar days and fetch COD data from Supabase when a driver is selected
+  // Generate calendar days and fetch COD data from Supabase RPC when a driver is selected
   useEffect(() => {
     const loadCalendarData = async () => {
       if (!selectedDriver || !dateFrom || !dateTo) {
@@ -348,34 +348,29 @@ export function FinancialPanel() {
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      // Fetch tasks from Supabase for this driver in the date range
+      // Fetch COD data from Supabase RPC function
       if (supabase) {
         try {
-          const { data: tasks, error } = await supabase
-            .from('tasks')
-            .select('creation_datetime, cod_amount, status, pickup_address, delivery_address')
-            .eq('fleet_id', fleetId)
-            .eq('status', 2) // Completed deliveries only
-            .gte('creation_datetime', dateFrom)
-            .lte('creation_datetime', dateTo + 'T23:59:59');
+          const { data: rpcData, error } = await supabase.rpc('get_driver_daily_cod', {
+            p_fleet_id: fleetId,
+            p_date_from: dateFrom,
+            p_date_to: dateTo
+          });
 
-          if (!error && tasks) {
-            // Group tasks by date and sum COD amounts
-            // Filter: pickup_address != delivery_address (real deliveries only)
-            tasks.forEach(task => {
-              if (task.creation_datetime &&
-                task.pickup_address !== task.delivery_address &&
-                task.cod_amount && task.cod_amount > 0) {
-                const taskDate = task.creation_datetime.split('T')[0];
-                if (daysMap[taskDate]) {
-                  daysMap[taskDate].codReceived += parseFloat(task.cod_amount || 0);
-                  daysMap[taskDate].orderCount++;
-                }
+          if (!error && rpcData) {
+            // Merge RPC results with our date range map
+            rpcData.forEach((row: { date: string; cod_received: number; order_count: number }) => {
+              const dateStr = row.date;
+              if (daysMap[dateStr]) {
+                daysMap[dateStr].codReceived = parseFloat(String(row.cod_received)) || 0;
+                daysMap[dateStr].orderCount = row.order_count || 0;
               }
             });
+          } else if (error) {
+            console.error('RPC get_driver_daily_cod error:', error);
           }
         } catch (err) {
-          console.error('Error fetching tasks from Supabase:', err);
+          console.error('Error calling get_driver_daily_cod RPC:', err);
         }
       }
 
