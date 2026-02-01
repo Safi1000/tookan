@@ -180,6 +180,21 @@ export function FinancialPanel() {
   const [dailyPayments, setDailyPayments] = useState<Record<string, number>>({}); // Track paid amounts per date
   const [dailyStatuses, setDailyStatuses] = useState<Record<string, 'PENDING' | 'COMPLETED'>>({}); // Track status per date
 
+  // View Tasks popup state
+  interface TaskPaymentEntry {
+    job_id: string;
+    fleet_id: number;
+    fleet_name: string;
+    customer_name: string;
+    cod_amount: number;
+    balance_paid: number;
+    status: 'PENDING' | 'COMPLETED';
+  }
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [taskModalDate, setTaskModalDate] = useState<string | null>(null);
+  const [tasksList, setTasksList] = useState<TaskPaymentEntry[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+
   // Fetch drivers on mount
   useEffect(() => {
     const loadDrivers = async () => {
@@ -640,6 +655,125 @@ export function FinancialPanel() {
     setCalendarData(prev => prev.map(item =>
       item.date === date ? { ...item, note } : item
     ));
+  };
+
+  // Open View Tasks modal and fetch tasks for the selected date
+  const openTaskModal = async (date: string) => {
+    if (!selectedDriver || !supabase) return;
+
+    const driver = drivers.find(d => d.id === selectedDriver);
+    if (!driver) return;
+
+    const fleetId = Number(driver.fleet_id || driver.id);
+    setTaskModalDate(date);
+    setTaskModalOpen(true);
+    setIsLoadingTasks(true);
+
+    try {
+      // Fetch tasks for this driver on this date
+      const startOfDay = `${date}T00:00:00`;
+      const endOfDay = `${date}T23:59:59`;
+
+      const { data: tasks, error } = await supabase
+        .from('tasks')
+        .select('job_id, fleet_id, fleet_name, customer_name, cod_amount, pickup_address, delivery_address')
+        .eq('fleet_id', fleetId)
+        .eq('status', 2) // Completed deliveries
+        .gte('creation_datetime', startOfDay)
+        .lte('creation_datetime', endOfDay);
+
+      if (error) throw error;
+
+      // Filter: pickup_address != delivery_address (real deliveries only)
+      const filteredTasks = (tasks || []).filter(
+        t => t.pickup_address !== t.delivery_address && t.cod_amount && parseFloat(t.cod_amount) > 0
+      );
+
+      // Map to TaskPaymentEntry format
+      const taskEntries: TaskPaymentEntry[] = filteredTasks.map(t => ({
+        job_id: String(t.job_id),
+        fleet_id: t.fleet_id,
+        fleet_name: t.fleet_name || driver.name || 'Unknown',
+        customer_name: t.customer_name || 'N/A',
+        cod_amount: parseFloat(t.cod_amount) || 0,
+        balance_paid: 0,
+        status: 'PENDING' as const
+      }));
+
+      setTasksList(taskEntries);
+    } catch (err) {
+      console.error('Error fetching tasks:', err);
+      toast.error('Failed to fetch tasks');
+      setTasksList([]);
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  };
+
+  // Update a single task's payment
+  const updateTaskPayment = (jobId: string, field: 'balance_paid' | 'status', value: number | 'PENDING' | 'COMPLETED') => {
+    setTasksList(prev => prev.map(task =>
+      task.job_id === jobId
+        ? { ...task, [field]: value }
+        : task
+    ));
+  };
+
+  // Mark all tasks as paid
+  const markAllAsPaid = () => {
+    setTasksList(prev => prev.map(task => ({
+      ...task,
+      balance_paid: task.cod_amount,
+      status: 'COMPLETED' as const
+    })));
+  };
+
+  // Save task payments
+  const saveTaskPayments = async () => {
+    if (!selectedDriver || !taskModalDate) return;
+
+    const driver = drivers.find(d => d.id === selectedDriver);
+    if (!driver) return;
+
+    const totalPaid = tasksList.reduce((sum, t) => sum + t.balance_paid, 0);
+    const allCompleted = tasksList.every(t => t.status === 'COMPLETED');
+
+    // Update daily payments state
+    setDailyPayments(prev => ({
+      ...prev,
+      [taskModalDate]: totalPaid
+    }));
+
+    // Update daily status
+    setDailyStatuses(prev => ({
+      ...prev,
+      [taskModalDate]: allCompleted ? 'COMPLETED' : 'PENDING'
+    }));
+
+    // Record payment if there's a total
+    if (totalPaid > 0) {
+      try {
+        const driverFleetId = Number(driver.fleet_id || driver.id);
+        const performance = driverPerformance.find(p => p.fleet_id === driverFleetId);
+        const codTotal = performance?.cod_total || 0;
+
+        await recordAgentPayment(driverFleetId, totalPaid, codTotal);
+        toast.success(`Payment of ${totalPaid.toFixed(2)} recorded successfully`);
+      } catch (err) {
+        console.error('Error recording payment:', err);
+        toast.error('Failed to record payment');
+      }
+    }
+
+    setTaskModalOpen(false);
+    setTaskModalDate(null);
+  };
+
+  // Cancel task modal
+  const closeTaskModal = () => {
+    setTaskModalOpen(false);
+    setTaskModalDate(null);
+    setTasksList([]);
   };
 
   // Filter calendar data by date range
@@ -1204,6 +1338,15 @@ export function FinancialPanel() {
                               >
                                 <Save className="w-3 h-3" />
                                 {isEditing ? 'Save' : 'Edit'}
+                              </button>
+
+                              {/* View Tasks Button */}
+                              <button
+                                onClick={() => openTaskModal(item.date)}
+                                className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs transition-all font-medium bg-blue-500/10 dark:bg-blue-400/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 dark:border-blue-400/30 hover:bg-blue-500/20 dark:hover:bg-blue-400/20"
+                              >
+                                <Eye className="w-3 h-3" />
+                                View Tasks
                               </button>
                             </div>
                           </div>
@@ -2003,6 +2146,156 @@ export function FinancialPanel() {
                   </div>
                 );
               })()}
+            </div>
+          </div>
+        )}
+
+
+      {/* View Tasks Modal */}
+      {
+        taskModalOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-card dark:bg-[#1A2C53] rounded-2xl border border-border dark:border-[#2A3C63] w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+              {/* Modal Header */}
+              <div className="p-6 border-b border-border dark:border-[#2A3C63] flex justify-between items-center">
+                <div>
+                  <h3 className="text-heading dark:text-[#C1EEFA] text-xl font-semibold">
+                    Tasks for {taskModalDate ? new Date(taskModalDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : ''}
+                  </h3>
+                  <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-1">
+                    {tasksList.length} completed deliveries with COD
+                  </p>
+                </div>
+                <button onClick={closeTaskModal} className="text-muted-light hover:text-heading dark:text-[#99BFD1] dark:hover:text-[#C1EEFA]">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="flex-1 overflow-auto p-6">
+                {isLoadingTasks ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-4" />
+                    <p className="text-muted-light dark:text-[#99BFD1]">Loading tasks...</p>
+                  </div>
+                ) : tasksList.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <AlertCircle className="w-12 h-12 text-muted-light dark:text-[#99BFD1] mb-4" />
+                    <p className="text-heading dark:text-[#C1EEFA] font-medium">No tasks found</p>
+                    <p className="text-muted-light dark:text-[#99BFD1] text-sm">No completed deliveries with COD for this date</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Mark All as Paid Button */}
+                    <div className="flex justify-end">
+                      <button
+                        onClick={markAllAsPaid}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700 transition-all font-medium text-sm"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        Mark All as Paid
+                      </button>
+                    </div>
+
+                    {/* Tasks Table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-border dark:border-[#2A3C63]">
+                            <th className="text-left px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Task ID</th>
+                            <th className="text-left px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Driver ID</th>
+                            <th className="text-left px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Driver Name</th>
+                            <th className="text-left px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Customer</th>
+                            <th className="text-right px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">COD Received</th>
+                            <th className="text-right px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Balance Paid</th>
+                            <th className="text-center px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Status</th>
+                            <th className="text-right px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">COD Pending</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tasksList.map((task: TaskPaymentEntry) => {
+                            const codPending = task.cod_amount - task.balance_paid;
+                            const currency = (localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$';
+                            return (
+                              <tr key={task.job_id} className="border-b border-border/50 dark:border-[#2A3C63]/50 hover:bg-muted/20 dark:hover:bg-[#223560]/30">
+                                <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm font-medium">{task.job_id}</td>
+                                <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm">{task.fleet_id}</td>
+                                <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm">{task.fleet_name}</td>
+                                <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm">{task.customer_name}</td>
+                                <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm text-right font-medium">
+                                  {currency} {task.cod_amount.toFixed(2)}
+                                </td>
+                                <td className="px-3 py-3 text-right">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    max={task.cod_amount}
+                                    value={task.balance_paid || ''}
+                                    onChange={(e) => updateTaskPayment(task.job_id, 'balance_paid', parseFloat(e.target.value) || 0)}
+                                    placeholder="0.00"
+                                    className="w-24 bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-lg px-2 py-1.5 text-green-600 dark:text-green-400 text-sm text-right focus:outline-none focus:border-[#C1EEFA] font-medium"
+                                  />
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  <select
+                                    value={task.status}
+                                    onChange={(e) => updateTaskPayment(task.job_id, 'status', e.target.value as 'PENDING' | 'COMPLETED')}
+                                    className="bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-lg px-2 py-1.5 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-[#C1EEFA] font-medium cursor-pointer"
+                                  >
+                                    <option value="PENDING">Pending</option>
+                                    <option value="COMPLETED">Completed</option>
+                                  </select>
+                                </td>
+                                <td className="px-3 py-3 text-right">
+                                  <span className={`font-medium text-sm ${codPending > 0 ? 'text-[#DE3544]' : 'text-green-600 dark:text-green-400'}`}>
+                                    {currency} {codPending.toFixed(2)}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        {/* Totals Row */}
+                        <tfoot>
+                          <tr className="bg-muted/30 dark:bg-[#223560]/50">
+                            <td colSpan={4} className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm font-semibold">
+                              Total ({tasksList.length} tasks)
+                            </td>
+                            <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm text-right font-semibold">
+                              {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(2)}
+                            </td>
+                            <td className="px-3 py-3 text-green-600 dark:text-green-400 text-sm text-right font-semibold">
+                              {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.balance_paid, 0).toFixed(2)}
+                            </td>
+                            <td></td>
+                            <td className="px-3 py-3 text-[#DE3544] text-sm text-right font-semibold">
+                              {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + (t.cod_amount - t.balance_paid), 0).toFixed(2)}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-6 border-t border-border dark:border-[#2A3C63] flex justify-end gap-3">
+                <button
+                  onClick={closeTaskModal}
+                  className="px-6 py-2.5 text-muted-light dark:text-[#99BFD1] hover:text-heading dark:hover:text-[#C1EEFA] border border-border dark:border-[#2A3C63] rounded-lg transition-all font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveTaskPayments}
+                  className="px-6 py-2.5 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-lg hover:shadow-md transition-all font-medium flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  Save
+                </button>
+              </div>
             </div>
           </div>
         )
