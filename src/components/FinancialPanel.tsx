@@ -293,6 +293,15 @@ export function FinancialPanel() {
       setIsLoadingDailyCOD(true);
       const fleetId = Number(driver.fleet_id || driver.id);
 
+      // DEBUG: Log driver info to trace fleet_id
+      console.log('🔍 Driver debug:', {
+        selectedDriver,
+        driverId: driver.id,
+        driverFleetId: driver.fleet_id,
+        resolvedFleetId: fleetId,
+        driverName: driver.name
+      });
+
       // Generate array of dates from dateFrom to dateTo
       const startDate = new Date(dateFrom);
       const endDate = new Date(dateTo);
