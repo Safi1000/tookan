@@ -175,6 +175,7 @@ export function FinancialPanel() {
   const [driverDailyCOD, setDriverDailyCOD] = useState<DailyCODEntry[]>([]);
   const [isLoadingDailyCOD, setIsLoadingDailyCOD] = useState(false);
   const [dailyPayments, setDailyPayments] = useState<Record<string, number>>({}); // Track paid amounts per date
+  const [dailyStatuses, setDailyStatuses] = useState<Record<string, 'PENDING' | 'COMPLETED'>>({}); // Track status per date
 
   // Fetch drivers on mount
   useEffect(() => {
@@ -324,12 +325,14 @@ export function FinancialPanel() {
       if (!selectedDriver || !dateFrom || !dateTo) {
         setDriverDailyCOD([]);
         setDailyPayments({});
+        setDailyStatuses({});
         return;
       }
 
       const driver = drivers.find(d => d.id === selectedDriver);
       if (!driver) return;
 
+      setIsLoadingDailyCOD(true);
       const fleetId = Number(driver.fleet_id || driver.id);
 
       // Generate array of dates from dateFrom to dateTo
@@ -351,23 +354,36 @@ export function FinancialPanel() {
       // Fetch COD data from Supabase RPC function
       if (supabase) {
         try {
+          console.log('Calling get_driver_daily_cod RPC with:', { fleetId, dateFrom, dateTo });
           const { data: rpcData, error } = await supabase.rpc('get_driver_daily_cod', {
             p_fleet_id: fleetId,
             p_date_from: dateFrom,
             p_date_to: dateTo
           });
 
-          if (!error && rpcData) {
+          console.log('RPC Response:', { rpcData, error });
+
+          if (!error && rpcData && Array.isArray(rpcData)) {
             // Merge RPC results with our date range map
-            rpcData.forEach((row: { date: string; cod_received: number; order_count: number }) => {
-              const dateStr = row.date;
-              if (daysMap[dateStr]) {
+            rpcData.forEach((row: { date: string | Date; cod_received: number; order_count: number }) => {
+              // Handle date format - RPC returns DATE type which might be string or Date object
+              let dateStr = '';
+              if (typeof row.date === 'string') {
+                dateStr = row.date.split('T')[0]; // Handle if it has time component
+              } else if (row.date instanceof Date) {
+                dateStr = (row.date as Date).toISOString().split('T')[0];
+              }
+
+              console.log('Processing row:', row, 'dateStr:', dateStr);
+
+              if (dateStr && daysMap[dateStr]) {
                 daysMap[dateStr].codReceived = parseFloat(String(row.cod_received)) || 0;
-                daysMap[dateStr].orderCount = row.order_count || 0;
+                daysMap[dateStr].orderCount = Number(row.order_count) || 0;
               }
             });
           } else if (error) {
             console.error('RPC get_driver_daily_cod error:', error);
+            toast.error('Failed to fetch daily COD data');
           }
         } catch (err) {
           console.error('Error calling get_driver_daily_cod RPC:', err);
@@ -376,9 +392,12 @@ export function FinancialPanel() {
 
       // Convert to array and set state
       const days = Object.values(daysMap).sort((a, b) => a.date.localeCompare(b.date));
+      console.log('Final calendar days:', days);
       setDriverDailyCOD(days);
-      // Reset daily payments when date range changes
+      // Reset daily payments and statuses when date range changes
       setDailyPayments({});
+      setDailyStatuses({});
+      setIsLoadingDailyCOD(false);
     };
 
     loadCalendarData();
@@ -1021,7 +1040,12 @@ export function FinancialPanel() {
             {/* Calendar grid - only show when a driver is selected */}
             {selectedDriver && (
               <>
-                {driverDailyCOD.length === 0 ? (
+                {isLoadingDailyCOD ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-4" />
+                    <p className="text-muted-light dark:text-[#99BFD1]">Loading daily COD data...</p>
+                  </div>
+                ) : driverDailyCOD.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Calendar className="w-12 h-12 text-muted-light dark:text-[#99BFD1] mb-4" />
                     <p className="text-heading dark:text-[#C1EEFA] font-medium mb-2">Select Date Range</p>
@@ -1144,6 +1168,34 @@ export function FinancialPanel() {
                                 )}
                               </div>
 
+                              {/* Status Dropdown - Only show in edit mode */}
+                              {isEditing && (
+                                <div>
+                                  <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Status</p>
+                                  <select
+                                    id={`status-${item.date}`}
+                                    defaultValue={dailyStatuses[item.date] || 'PENDING'}
+                                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1.5 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-[#C1EEFA] font-medium cursor-pointer"
+                                  >
+                                    <option value="PENDING">Pending</option>
+                                    <option value="COMPLETED">Completed</option>
+                                  </select>
+                                </div>
+                              )}
+
+                              {/* Status Badge - Only show when NOT editing */}
+                              {!isEditing && (
+                                <div>
+                                  <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Status</p>
+                                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${(dailyStatuses[item.date] || (paidAmount >= item.codReceived ? 'COMPLETED' : 'PENDING')) === 'COMPLETED'
+                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                    : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+                                    }`}>
+                                    {dailyStatuses[item.date] || (paidAmount >= item.codReceived ? 'Completed' : 'Pending')}
+                                  </span>
+                                </div>
+                              )}
+
                               {/* COD Pending */}
                               <div>
                                 <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">COD Pending</p>
@@ -1154,12 +1206,19 @@ export function FinancialPanel() {
                               <button
                                 onClick={() => {
                                   if (isEditing) {
-                                    // Save logic
+                                    // Save logic - capture both payment and status
                                     const paidInput = document.getElementById(`paid-${item.date}`) as HTMLInputElement;
+                                    const statusSelect = document.getElementById(`status-${item.date}`) as HTMLSelectElement;
                                     const newPaid = parseFloat(paidInput?.value || '0');
+                                    const newStatus = statusSelect?.value as 'PENDING' | 'COMPLETED';
+
                                     setDailyPayments(prev => ({
                                       ...prev,
                                       [item.date]: Math.min(newPaid, item.codReceived)
+                                    }));
+                                    setDailyStatuses(prev => ({
+                                      ...prev,
+                                      [item.date]: newStatus || 'PENDING'
                                     }));
                                     setEditingDate(null);
                                   } else {
