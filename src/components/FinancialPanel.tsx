@@ -2145,62 +2145,61 @@ export function FinancialPanel() {
       {/* View Tasks Modal */}
       {
         taskModalOpen && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-card dark:bg-[#1A2C53] rounded-2xl border border-border dark:border-[#2A3C63] w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
+            <div className="bg-card dark:bg-[#1A2C53] rounded-xl sm:rounded-2xl border border-border dark:border-[#2A3C63] w-full max-w-5xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
               {/* Modal Header */}
-              <div className="p-6 border-b border-border dark:border-[#2A3C63] flex justify-between items-center">
+              <div className="p-3 sm:p-4 border-b border-border dark:border-[#2A3C63] flex justify-between items-center shrink-0">
                 <div>
-                  <h3 className="text-heading dark:text-[#C1EEFA] text-xl font-semibold">
-                    Tasks for {taskModalDate ? new Date(taskModalDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : ''}
+                  <h3 className="text-heading dark:text-[#C1EEFA] text-base sm:text-lg font-semibold">
+                    Tasks for {taskModalDate ? new Date(taskModalDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : ''}
                   </h3>
-                  <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-1">
+                  <p className="text-muted-light dark:text-[#99BFD1] text-xs sm:text-sm mt-0.5">
                     {tasksList.length} completed deliveries with COD
                   </p>
                 </div>
-                <button onClick={closeTaskModal} className="text-muted-light hover:text-heading dark:text-[#99BFD1] dark:hover:text-[#C1EEFA]">
-                  <X className="w-6 h-6" />
+                <button onClick={closeTaskModal} className="text-muted-light hover:text-heading dark:text-[#99BFD1] dark:hover:text-[#C1EEFA] p-1">
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
                 </button>
               </div>
 
               {/* Modal Body */}
-              <div className="flex-1 overflow-auto p-6">
+              <div className="flex-1 overflow-auto p-2 sm:p-4 min-h-0">
                 {isLoadingTasks ? (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-4" />
-                    <p className="text-muted-light dark:text-[#99BFD1]">Loading tasks...</p>
+                  <div className="flex flex-col items-center justify-center py-8 sm:py-12">
+                    <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-[#C1EEFA] mb-3" />
+                    <p className="text-muted-light dark:text-[#99BFD1] text-sm">Loading tasks...</p>
                   </div>
                 ) : tasksList.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <AlertCircle className="w-12 h-12 text-muted-light dark:text-[#99BFD1] mb-4" />
-                    <p className="text-heading dark:text-[#C1EEFA] font-medium">No tasks found</p>
-                    <p className="text-muted-light dark:text-[#99BFD1] text-sm">No completed deliveries with COD for this date</p>
+                  <div className="flex flex-col items-center justify-center py-8 sm:py-12">
+                    <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 text-muted-light dark:text-[#99BFD1] mb-3" />
+                    <p className="text-heading dark:text-[#C1EEFA] font-medium text-sm sm:text-base">No tasks found</p>
+                    <p className="text-muted-light dark:text-[#99BFD1] text-xs sm:text-sm">No completed deliveries with COD for this date</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {/* Mark All as Paid Button */}
                     <div className="flex justify-end">
                       <button
                         onClick={markAllAsPaid}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700 transition-all font-medium text-sm"
+                        className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700 transition-all font-medium text-xs sm:text-sm"
                       >
-                        <CheckCircle className="w-4 h-4" />
+                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         Mark All as Paid
                       </button>
                     </div>
 
                     {/* Tasks Table */}
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-border dark:border-[#2A3C63]">
-                            <th className="text-left px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Task ID</th>
-                            <th className="text-left px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Driver ID</th>
-                            <th className="text-left px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Driver Name</th>
-                            <th className="text-left px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Customer</th>
-                            <th className="text-right px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">COD Received</th>
-                            <th className="text-right px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Balance Paid</th>
-                            <th className="text-center px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">Status</th>
-                            <th className="text-right px-3 py-3 text-muted-light dark:text-[#99BFD1] text-xs font-medium">COD Pending</th>
+                    <div className="overflow-x-auto rounded-lg border border-border dark:border-[#2A3C63]">
+                      <table className="w-full text-xs sm:text-sm">
+                        <thead className="bg-muted/30 dark:bg-[#223560]/50 sticky top-0">
+                          <tr>
+                            <th className="text-left px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">Task ID</th>
+                            <th className="text-left px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap hidden sm:table-cell">Driver</th>
+                            <th className="text-left px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">Customer</th>
+                            <th className="text-right px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">COD</th>
+                            <th className="text-right px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">Paid</th>
+                            <th className="text-center px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap hidden sm:table-cell">Status</th>
+                            <th className="text-right px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">Pending</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2208,15 +2207,14 @@ export function FinancialPanel() {
                             const codPending = task.cod_amount - task.balance_paid;
                             const currency = (localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$';
                             return (
-                              <tr key={task.job_id} className="border-b border-border/50 dark:border-[#2A3C63]/50 hover:bg-muted/20 dark:hover:bg-[#223560]/30">
-                                <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm font-medium">{task.job_id}</td>
-                                <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm">{task.fleet_id}</td>
-                                <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm">{task.fleet_name}</td>
-                                <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm">{task.customer_name}</td>
-                                <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm text-right font-medium">
+                              <tr key={task.job_id} className="border-t border-border/50 dark:border-[#2A3C63]/50 hover:bg-muted/20 dark:hover:bg-[#223560]/30">
+                                <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] font-medium">{task.job_id}</td>
+                                <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] hidden sm:table-cell truncate max-w-[120px]">{task.fleet_name}</td>
+                                <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] truncate max-w-[100px] sm:max-w-[150px]">{task.customer_name}</td>
+                                <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] text-right font-medium whitespace-nowrap">
                                   {currency} {task.cod_amount.toFixed(2)}
                                 </td>
-                                <td className="px-3 py-3 text-right">
+                                <td className="px-2 sm:px-3 py-2 text-right">
                                   <input
                                     type="number"
                                     step="0.01"
@@ -2225,21 +2223,21 @@ export function FinancialPanel() {
                                     value={task.balance_paid || ''}
                                     onChange={(e) => updateTaskPayment(task.job_id, 'balance_paid', parseFloat(e.target.value) || 0)}
                                     placeholder="0.00"
-                                    className="w-24 bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-lg px-2 py-1.5 text-green-600 dark:text-green-400 text-sm text-right focus:outline-none focus:border-[#C1EEFA] font-medium"
+                                    className="w-16 sm:w-20 bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded px-1.5 py-1 text-green-600 dark:text-green-400 text-right focus:outline-none focus:border-[#C1EEFA] font-medium"
                                   />
                                 </td>
-                                <td className="px-3 py-3 text-center">
+                                <td className="px-2 sm:px-3 py-2 text-center hidden sm:table-cell">
                                   <select
                                     value={task.status}
                                     onChange={(e) => updateTaskPayment(task.job_id, 'status', e.target.value as 'PENDING' | 'COMPLETED')}
-                                    className="bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-lg px-2 py-1.5 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-[#C1EEFA] font-medium cursor-pointer"
+                                    className="bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded px-1.5 py-1 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#C1EEFA] font-medium cursor-pointer"
                                   >
                                     <option value="PENDING">Pending</option>
-                                    <option value="COMPLETED">Completed</option>
+                                    <option value="COMPLETED">Done</option>
                                   </select>
                                 </td>
-                                <td className="px-3 py-3 text-right">
-                                  <span className={`font-medium text-sm ${codPending > 0 ? 'text-[#DE3544]' : 'text-green-600 dark:text-green-400'}`}>
+                                <td className="px-2 sm:px-3 py-2 text-right">
+                                  <span className={`font-medium whitespace-nowrap ${codPending > 0 ? 'text-[#DE3544]' : 'text-green-600 dark:text-green-400'}`}>
                                     {currency} {codPending.toFixed(2)}
                                   </span>
                                 </td>
@@ -2248,20 +2246,26 @@ export function FinancialPanel() {
                           })}
                         </tbody>
                         {/* Totals Row */}
-                        <tfoot>
-                          <tr className="bg-muted/30 dark:bg-[#223560]/50">
-                            <td colSpan={4} className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm font-semibold">
-                              Total ({tasksList.length} tasks)
+                        <tfoot className="bg-muted/30 dark:bg-[#223560]/50 sticky bottom-0">
+                          <tr>
+                            <td colSpan={2} className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] font-semibold hidden sm:table-cell">
+                              Total ({tasksList.length})
                             </td>
-                            <td className="px-3 py-3 text-heading dark:text-[#C1EEFA] text-sm text-right font-semibold">
+                            <td colSpan={1} className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] font-semibold sm:hidden">
+                              Total
+                            </td>
+                            <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] text-right font-semibold whitespace-nowrap hidden sm:table-cell">
                               {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(2)}
                             </td>
-                            <td className="px-3 py-3 text-green-600 dark:text-green-400 text-sm text-right font-semibold">
-                              {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.balance_paid, 0).toFixed(2)}
+                            <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] text-right font-semibold whitespace-nowrap sm:hidden">
+                              {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(0)}
                             </td>
-                            <td></td>
-                            <td className="px-3 py-3 text-[#DE3544] text-sm text-right font-semibold">
-                              {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + (t.cod_amount - t.balance_paid), 0).toFixed(2)}
+                            <td className="px-2 sm:px-3 py-2 text-green-600 dark:text-green-400 text-right font-semibold whitespace-nowrap">
+                              {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.balance_paid, 0).toFixed(2)}
+                            </td>
+                            <td className="hidden sm:table-cell"></td>
+                            <td className="px-2 sm:px-3 py-2 text-[#DE3544] text-right font-semibold whitespace-nowrap">
+                              {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + (t.cod_amount - t.balance_paid), 0).toFixed(2)}
                             </td>
                           </tr>
                         </tfoot>
