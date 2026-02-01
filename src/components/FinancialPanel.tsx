@@ -5,22 +5,12 @@ import {
   fetchFleetWalletBalance,
   addCustomerWalletPayment,
   fetchCustomerWallet,
-  fetchDriverCODQueue,
-  getOldestPendingCOD,
-  settleCODTransaction,
-  fetchCODConfirmations,
   fetchCustomerWallets,
-  fetchCODQueue,
-  settleCOD,
   fetchAllDrivers,
   fetchAllCustomers,
   fetchDriverPerformance,
   recordAgentPayment,
-  fetchDriverDailyCOD,
   type TookanApiResponse,
-  type CODEntry,
-  type CODConfirmation,
-  type CODCalendarEntry,
   type CustomerWallet,
   type DailyCODEntry
 } from '../services/tookanApi';
@@ -37,6 +27,20 @@ interface CalendarEntry {
   codStatus?: 'PENDING' | 'COMPLETED';
   codId?: string;
   merchantVendorId?: number;
+}
+
+// COD Confirmation interface (local type - API removed but code kept for reference)
+interface CODConfirmation {
+  id: string;
+  orderId: string;
+  date: string;
+  amount: number;
+  driverId?: string;
+  driverName?: string;
+  merchant?: string;
+  customer?: string;
+  status: 'Pending' | 'Confirmed' | 'Rejected';
+  notes?: string;
 }
 
 // Driver interface
@@ -237,23 +241,6 @@ export function FinancialPanel() {
   }, []);
 
   // Load COD confirmations on mount
-  useEffect(() => {
-    const loadCODConfirmations = async () => {
-      setIsLoadingCODConfirmations(true);
-      try {
-        const response = await fetchCODConfirmations();
-        if (response.status === 'success' && response.data) {
-          setCodConfirmations(Array.isArray(response.data) ? response.data : []);
-        }
-      } catch (error) {
-        console.error('Error loading COD confirmations:', error);
-      } finally {
-        setIsLoadingCODConfirmations(false);
-      }
-    };
-    loadCODConfirmations();
-  }, []);
-
   // Calendar data is now loaded via RPC/direct query in the driver-specific useEffect below
 
   // Load driver performance data (COD totals) when drivers or date range changes
@@ -580,8 +567,9 @@ export function FinancialPanel() {
       return;
     }
 
-    // If status is COMPLETED and balancePaid > 0, process COD settlement
     const status = codStatus || calendarEntry.codStatus || 'PENDING';
+
+    // If status is COMPLETED and has value, record the payment
     if (status === 'COMPLETED' && value > 0 && selectedDriver) {
       setIsProcessingCOD(true);
       setCodError(null);
@@ -592,75 +580,38 @@ export function FinancialPanel() {
           throw new Error('Driver not found or missing fleet_id');
         }
 
-        // Get merchant vendor ID from calendar entry
-        const merchantVendorId = calendarEntry.merchantVendorId || merchantWallets[0]?.vendor_id;
-        if (!merchantVendorId) {
-          throw new Error('Merchant vendor ID not found');
-        }
+        // Record payment in Supabase agents table
+        const driverFleetId = Number(driver.fleet_id || driver.id);
+        const performance = driverPerformance.find(p => p.fleet_id === driverFleetId);
+        const codTotal = performance?.cod_total || 0;
 
-        // Find COD confirmation for this date to get COD ID
-        const codForDate = codConfirmations.find(cod => cod.date === date);
-        const codId = codForDate?.id || calendarEntry.codId || `COD-${date}`;
+        await recordAgentPayment(driverFleetId, value, codTotal);
+        console.log('✅ Agent payment recorded in Supabase');
 
-        // Call COD settlement API (new endpoint with wallet update)
-        const settlementResult = await settleCOD(
-          codId,
-          value,
-          'cash', // Default payment method, can be made configurable
-          'system' // User ID, should come from auth context
-        );
-
-        if (settlementResult.status === 'success') {
-          // Update calendar entry with COMPLETED status
-          setCalendarData(prev => prev.map(item =>
-            item.date === date
-              ? {
-                ...item,
-                balancePaid: value,
-                note: note || item.note || '',
-                codStatus: 'COMPLETED',
-                codId: settlementResult.data?.cod?.codId || item.codId
-              }
-              : item
-          ));
-
-          // Record payment in Supabase agents table
-          try {
-            const driverFleetId = Number(driver.fleet_id || driver.id);
-            const performance = driverPerformance.find(p => p.fleet_id === driverFleetId);
-            const codTotal = performance?.cod_total || 0;
-
-            await recordAgentPayment(driverFleetId, value, codTotal);
-            console.log('✅ Agent payment recorded in Supabase');
-          } catch (paymentError) {
-            console.error('Failed to record agent payment in Supabase:', paymentError);
-            // Don't fail the overall operation, just log the error
-          }
-
-          // Refresh merchant wallets to show updated balance
-          if (activeTab === 'merchant-wallets') {
-            const walletsResult = await fetchCustomerWallets();
-            if (walletsResult.status === 'success' && walletsResult.data) {
-              setMerchantWallets(walletsResult.data);
+        // Update calendar entry with COMPLETED status
+        setCalendarData(prev => prev.map(item =>
+          item.date === date
+            ? {
+              ...item,
+              balancePaid: value,
+              note: note || item.note || '',
+              codStatus: 'COMPLETED'
             }
-          }
+            : item
+        ));
 
-          toast.success(`COD settled successfully. Wallet updated.`);
-          setEditingDate(null);
-          setEditingCODStatus(null);
-        } else {
-          setCodError(settlementResult.message);
-          toast.error(`COD settlement failed: ${settlementResult.message}`);
-        }
+        toast.success('Payment recorded successfully');
+        setEditingDate(null);
+        setEditingCODStatus(null);
       } catch (error: any) {
-        const errorMessage = error.message || 'Failed to process COD settlement';
+        const errorMessage = error.message || 'Failed to record payment';
         setCodError(errorMessage);
-        toast.error(`COD settlement error: ${errorMessage}`);
+        toast.error(`Payment error: ${errorMessage}`);
       } finally {
         setIsProcessingCOD(false);
       }
     } else {
-      // Just update the calendar data without settlement
+      // Just update the calendar data without recording payment
       setCalendarData(prev => prev.map(item =>
         item.date === date
           ? {
