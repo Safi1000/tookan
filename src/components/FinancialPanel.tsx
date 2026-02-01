@@ -351,8 +351,11 @@ export function FinancialPanel() {
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      // Fetch COD data from Supabase RPC function
+      // Fetch COD data from Supabase - try RPC first, fallback to direct query
       if (supabase) {
+        let rpcSuccess = false;
+
+        // Try RPC function first
         try {
           console.log('Calling get_driver_daily_cod RPC with:', { fleetId, dateFrom, dateTo });
           const { data: rpcData, error } = await supabase.rpc('get_driver_daily_cod', {
@@ -363,7 +366,8 @@ export function FinancialPanel() {
 
           console.log('RPC Response:', { rpcData, error });
 
-          if (!error && rpcData && Array.isArray(rpcData)) {
+          if (!error && rpcData && Array.isArray(rpcData) && rpcData.length > 0) {
+            rpcSuccess = true;
             // Merge RPC results with our date range map
             rpcData.forEach((row: { date: string | Date; cod_received: number; order_count: number }) => {
               // Handle date format - RPC returns DATE type which might be string or Date object
@@ -374,7 +378,7 @@ export function FinancialPanel() {
                 dateStr = (row.date as Date).toISOString().split('T')[0];
               }
 
-              console.log('Processing row:', row, 'dateStr:', dateStr);
+              console.log('Processing RPC row:', row, 'dateStr:', dateStr);
 
               if (dateStr && daysMap[dateStr]) {
                 daysMap[dateStr].codReceived = parseFloat(String(row.cod_received)) || 0;
@@ -382,11 +386,47 @@ export function FinancialPanel() {
               }
             });
           } else if (error) {
-            console.error('RPC get_driver_daily_cod error:', error);
-            toast.error('Failed to fetch daily COD data');
+            console.warn('RPC get_driver_daily_cod failed, falling back to direct query:', error);
           }
         } catch (err) {
-          console.error('Error calling get_driver_daily_cod RPC:', err);
+          console.warn('RPC call failed, falling back to direct query:', err);
+        }
+
+        // Fallback: Direct table query if RPC didn't work
+        if (!rpcSuccess) {
+          try {
+            console.log('Fetching tasks directly from Supabase for fleet:', fleetId);
+            const { data: tasks, error } = await supabase
+              .from('tasks')
+              .select('creation_datetime, cod_amount, status, pickup_address, delivery_address')
+              .eq('fleet_id', fleetId)
+              .eq('status', 2) // Completed deliveries only
+              .gte('creation_datetime', dateFrom)
+              .lte('creation_datetime', dateTo + 'T23:59:59');
+
+            console.log('Direct query response:', { taskCount: tasks?.length, error });
+
+            if (!error && tasks) {
+              // Group tasks by date and sum COD amounts
+              // Filter: pickup_address != delivery_address (real deliveries only)
+              tasks.forEach(task => {
+                if (task.creation_datetime &&
+                  task.pickup_address !== task.delivery_address &&
+                  task.cod_amount && parseFloat(task.cod_amount) > 0) {
+                  const taskDate = task.creation_datetime.split('T')[0];
+                  if (daysMap[taskDate]) {
+                    daysMap[taskDate].codReceived += parseFloat(task.cod_amount || 0);
+                    daysMap[taskDate].orderCount++;
+                  }
+                }
+              });
+            } else if (error) {
+              console.error('Direct query error:', error);
+              toast.error('Failed to fetch daily COD data');
+            }
+          } catch (err) {
+            console.error('Error fetching tasks directly:', err);
+          }
         }
       }
 
