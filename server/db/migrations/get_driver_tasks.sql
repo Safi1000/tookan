@@ -28,12 +28,8 @@ BEGIN
     t.fleet_id,
     t.fleet_name,
     t.customer_name,
-    -- Handle cod_amount casting safely if it's stored as text
-    CASE 
-      WHEN typeof(t.cod_amount) = 'character varying' OR typeof(t.cod_amount) = 'text' 
-      THEN CASe WHEN t.cod_amount ~ '^[0-9\.]+$' THEN CAST(t.cod_amount AS NUMERIC) ELSE 0 END
-      ELSE CAST(t.cod_amount AS NUMERIC)
-    END as cod_amount,
+    -- Safely cast cod_amount to numeric, defaulting to 0 if null or invalid
+    COALESCE(t.cod_amount::NUMERIC, 0) as cod_amount,
     t.pickup_address,
     t.delivery_address,
     t.creation_datetime
