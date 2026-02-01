@@ -9,7 +9,6 @@ import {
   getOldestPendingCOD,
   settleCODTransaction,
   fetchCODConfirmations,
-  fetchCODCalendar,
   fetchCustomerWallets,
   fetchCODQueue,
   settleCOD,
@@ -255,35 +254,7 @@ export function FinancialPanel() {
     loadCODConfirmations();
   }, []);
 
-  // Load calendar data on mount and when date range changes
-  useEffect(() => {
-    const loadCalendarData = async () => {
-      setIsLoadingCalendar(true);
-      try {
-        const response = await fetchCODCalendar(dateFrom || undefined, dateTo || undefined);
-        if (response.status === 'success' && response.data) {
-          const calendarEntries: CalendarEntry[] = Array.isArray(response.data)
-            ? response.data.map((entry: any) => ({
-              date: entry.date || entry.codDate || '',
-              codReceived: parseFloat(entry.codReceived || entry.cod_received || 0),
-              codPending: parseFloat(entry.codPending || entry.cod_pending || 0),
-              balancePaid: parseFloat(entry.balancePaid || entry.balance_paid || 0),
-              note: entry.note || entry.notes || '',
-              codStatus: entry.codStatus || entry.cod_status || 'PENDING',
-              codId: entry.codId || entry.cod_id,
-              merchantVendorId: entry.merchantVendorId || entry.merchant_vendor_id
-            }))
-            : [];
-          setCalendarData(calendarEntries);
-        }
-      } catch (error) {
-        console.error('Error loading calendar data:', error);
-      } finally {
-        setIsLoadingCalendar(false);
-      }
-    };
-    loadCalendarData();
-  }, [dateFrom, dateTo]);
+  // Calendar data is now loaded via RPC/direct query in the driver-specific useEffect below
 
   // Load driver performance data (COD totals) when drivers or date range changes
   useEffect(() => {
