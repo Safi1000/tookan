@@ -377,21 +377,19 @@ export function FinancialPanel() {
         // Fallback: Direct table query if RPC didn't work
         if (!rpcSuccess) {
           try {
-            console.log('Fetching tasks directly from Supabase for fleet:', fleetId);
-            const { data: tasks, error } = await supabase
-              .from('tasks')
-              .select('creation_datetime, cod_amount, status, pickup_address, delivery_address')
-              .eq('fleet_id', fleetId)
-              .eq('status', 2) // Completed deliveries only
-              .gte('creation_datetime', dateFrom)
-              .lte('creation_datetime', dateTo + 'T23:59:59');
+            console.log('Fetching tasks via RPC fallback for fleet:', fleetId);
+            const { data: tasks, error } = await supabase.rpc('get_driver_tasks', {
+              p_fleet_id: fleetId,
+              p_date_from: dateFrom,
+              p_date_to: dateTo + 'T23:59:59'
+            });
 
-            console.log('Direct query response:', { taskCount: tasks?.length, error });
+            console.log('RPC fallback response:', { taskCount: tasks?.length, error });
 
             if (!error && tasks) {
               // Group tasks by date and sum COD amounts
               // Filter: pickup_address != delivery_address (real deliveries only)
-              tasks.forEach(task => {
+              (tasks as any[]).forEach(task => {
                 if (task.creation_datetime &&
                   task.pickup_address !== task.delivery_address &&
                   task.cod_amount && parseFloat(task.cod_amount) > 0) {
@@ -403,7 +401,7 @@ export function FinancialPanel() {
                 }
               });
             } else if (error) {
-              console.error('Direct query error:', error);
+              console.error('RPC fallback error:', error);
               toast.error('Failed to fetch daily COD data');
             }
           } catch (err) {
@@ -670,27 +668,20 @@ export function FinancialPanel() {
     setIsLoadingTasks(true);
 
     try {
-      // Fetch tasks for this driver on this date
+      // Fetch tasks for this driver on this date using RPC to bypass RLS
       const startOfDay = `${date}T00:00:00`;
       const endOfDay = `${date}T23:59:59`;
 
-      const { data: tasks, error } = await supabase
-        .from('tasks')
-        .select('job_id, fleet_id, fleet_name, customer_name, cod_amount, pickup_address, delivery_address')
-        .eq('fleet_id', fleetId)
-        .eq('status', 2) // Completed deliveries
-        .gte('creation_datetime', startOfDay)
-        .lte('creation_datetime', endOfDay);
+      const { data: tasks, error } = await supabase.rpc('get_driver_tasks', {
+        p_fleet_id: fleetId,
+        p_date_from: startOfDay,
+        p_date_to: endOfDay
+      });
 
       if (error) throw error;
 
-      // Filter: pickup_address != delivery_address (real deliveries only)
-      const filteredTasks = (tasks || []).filter(
-        t => t.pickup_address !== t.delivery_address && t.cod_amount && parseFloat(t.cod_amount) > 0
-      );
-
       // Map to TaskPaymentEntry format
-      const taskEntries: TaskPaymentEntry[] = filteredTasks.map(t => ({
+      const taskEntries: TaskPaymentEntry[] = (tasks || []).map((t: any) => ({
         job_id: String(t.job_id),
         fleet_id: t.fleet_id,
         fleet_name: t.fleet_name || driver.name || 'Unknown',

@@ -12,6 +12,8 @@ RETURNS TABLE (
   order_count INTEGER
 )
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
   RETURN QUERY
