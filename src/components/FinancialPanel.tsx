@@ -710,12 +710,36 @@ export function FinancialPanel() {
     ));
   };
 
+  // Toggle task payment (Complete <-> Pending)
+  const toggleTaskPayment = (jobId: string) => {
+    setTasksList(prev => prev.map(task => {
+      if (task.job_id === jobId) {
+        const isComplete = task.status === 'COMPLETED';
+        return {
+          ...task,
+          balance_paid: isComplete ? 0 : task.cod_amount,
+          status: isComplete ? 'PENDING' : 'COMPLETED'
+        };
+      }
+      return task;
+    }));
+  };
+
   // Mark all tasks as paid
   const markAllAsPaid = () => {
     setTasksList(prev => prev.map(task => ({
       ...task,
       balance_paid: task.cod_amount,
       status: 'COMPLETED' as const
+    })));
+  };
+
+  // Deselect all tasks (reset to zero/pending)
+  const deselectAllTasks = () => {
+    setTasksList(prev => prev.map(task => ({
+      ...task,
+      balance_paid: 0,
+      status: 'PENDING' as const
     })));
   };
 
@@ -2145,8 +2169,8 @@ export function FinancialPanel() {
       {/* View Tasks Modal */}
       {
         taskModalOpen && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
-            <div className="bg-card dark:bg-[#1A2C53] rounded-xl sm:rounded-2xl border border-border dark:border-[#2A3C63] w-full max-w-5xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 sm:p-6">
+            <div className="bg-card dark:bg-[#1A2C53] rounded-xl border border-border dark:border-[#2A3C63] w-full max-w-3xl h-[80vh] max-h-[600px] overflow-hidden flex flex-col shadow-2xl">
               {/* Modal Header */}
               <div className="p-3 sm:p-4 border-b border-border dark:border-[#2A3C63] flex justify-between items-center shrink-0">
                 <div>
@@ -2163,7 +2187,7 @@ export function FinancialPanel() {
               </div>
 
               {/* Modal Body */}
-              <div className="flex-1 overflow-auto p-2 sm:p-4 min-h-0">
+              <div className="flex-1 overflow-hidden p-2 sm:p-4 flex flex-col min-h-0">
                 {isLoadingTasks ? (
                   <div className="flex flex-col items-center justify-center py-8 sm:py-12">
                     <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-[#C1EEFA] mb-3" />
@@ -2176,9 +2200,16 @@ export function FinancialPanel() {
                     <p className="text-muted-light dark:text-[#99BFD1] text-xs sm:text-sm">No completed deliveries with COD for this date</p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {/* Mark All as Paid Button */}
-                    <div className="flex justify-end">
+                  <div className="flex flex-col gap-3 min-h-0 flex-1">
+                    {/* Action Buttons */}
+                    <div className="flex justify-end gap-2 shrink-0">
+                      <button
+                        onClick={deselectAllTasks}
+                        className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-gray-500 dark:bg-gray-600 text-white rounded-lg hover:bg-gray-600 dark:hover:bg-gray-700 transition-all font-medium text-xs sm:text-sm"
+                      >
+                        <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        Deselect All
+                      </button>
                       <button
                         onClick={markAllAsPaid}
                         className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700 transition-all font-medium text-xs sm:text-sm"
@@ -2188,11 +2219,12 @@ export function FinancialPanel() {
                       </button>
                     </div>
 
-                    {/* Tasks Table */}
-                    <div className="overflow-x-auto rounded-lg border border-border dark:border-[#2A3C63]">
+                    {/* Tasks Table with Scroll */}
+                    <div className="flex-1 overflow-auto rounded-lg border border-border dark:border-[#2A3C63] min-h-0">
                       <table className="w-full text-xs sm:text-sm">
                         <thead className="bg-muted/30 dark:bg-[#223560]/50 sticky top-0">
                           <tr>
+                            <th className="w-8 px-2 sm:px-3 py-2"></th>
                             <th className="text-left px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">Task ID</th>
                             <th className="text-left px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap hidden sm:table-cell">Driver</th>
                             <th className="text-left px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">Customer</th>
@@ -2206,8 +2238,20 @@ export function FinancialPanel() {
                           {tasksList.map((task: TaskPaymentEntry) => {
                             const codPending = task.cod_amount - task.balance_paid;
                             const currency = (localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$';
+                            const isComplete = task.status === 'COMPLETED';
                             return (
-                              <tr key={task.job_id} className="border-t border-border/50 dark:border-[#2A3C63]/50 hover:bg-muted/20 dark:hover:bg-[#223560]/30">
+                              <tr key={task.job_id} className="border-t border-border/50 dark:border-[#2A3C63]/50 hover:bg-muted/20 dark:hover:bg-[#223560]/30 transition-colors">
+                                <td className="px-2 sm:px-3 py-2">
+                                  <button
+                                    onClick={() => toggleTaskPayment(task.job_id)}
+                                    className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${isComplete
+                                      ? 'bg-green-500 border-green-500 text-white'
+                                      : 'border-muted-light dark:border-[#99BFD1] hover:border-green-500 dark:hover:border-green-400'
+                                      }`}
+                                  >
+                                    {isComplete && <CheckCircle className="w-3.5 h-3.5" />}
+                                  </button>
+                                </td>
                                 <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] font-medium">{task.job_id}</td>
                                 <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] hidden sm:table-cell truncate max-w-[120px]">{task.fleet_name}</td>
                                 <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] truncate max-w-[100px] sm:max-w-[150px]">{task.customer_name}</td>
@@ -2233,7 +2277,7 @@ export function FinancialPanel() {
                                     className="bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded px-1.5 py-1 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#C1EEFA] font-medium cursor-pointer"
                                   >
                                     <option value="PENDING">Pending</option>
-                                    <option value="COMPLETED">Done</option>
+                                    <option value="COMPLETED">Completed</option>
                                   </select>
                                 </td>
                                 <td className="px-2 sm:px-3 py-2 text-right">
@@ -2258,7 +2302,7 @@ export function FinancialPanel() {
                               {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(2)}
                             </td>
                             <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] text-right font-semibold whitespace-nowrap sm:hidden">
-                              {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(0)}
+                              {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(2)}
                             </td>
                             <td className="px-2 sm:px-3 py-2 text-green-600 dark:text-green-400 text-right font-semibold whitespace-nowrap">
                               {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.balance_paid, 0).toFixed(2)}
