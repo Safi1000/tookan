@@ -2376,20 +2376,39 @@ export function FinancialPanel() {
                           width: '100%',
                           fontSize: '0.875rem'
                         }} className="table">
+                          {/* Style to hide number input arrows and define footer background */}
+                          <style>{`
+                            .no-spinner::-webkit-outer-spin-button,
+                            .no-spinner::-webkit-inner-spin-button {
+                              -webkit-appearance: none;
+                              margin: 0;
+                            }
+                            .no-spinner {
+                              -moz-appearance: textfield;
+                            }
+                            :root {
+                              --footer-bg: white;
+                            }
+                            .dark {
+                              --footer-bg: #1A2C53;
+                            }
+                          `}</style>
                           <thead style={{
-                            backgroundColor: 'rgba(0, 0, 0, 0.03)',
                             position: 'sticky',
-                            top: 0
-                          }}>
+                            top: 0,
+                            zIndex: 20,
+                            borderBottom: '1px solid var(--border)'
+                          }} className="bg-white dark:bg-[#1A2C53]">
                             <tr>
                               <th style={{ width: '2rem', padding: '0.5rem', textAlign: 'left' }} className="table-header"></th>
                               <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Task ID</th>
-                              <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap', display: 'none' }} className="table-header hidden-mobile">Driver</th>
+                              <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header hidden-mobile">Driver ID</th>
+                              <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header hidden-mobile">Driver Name</th>
                               <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Customer</th>
                               <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">COD</th>
                               <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Paid</th>
                               <th style={{ textAlign: 'center', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap', display: 'none' }} className="table-header hidden-mobile">Status</th>
-                              <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Pending</th>
+                              <th style={{ textAlign: 'right', padding: '0.5rem', paddingRight: '15px', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Pending</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2409,7 +2428,6 @@ export function FinancialPanel() {
                                         width: '1.25rem',
                                         height: '1.25rem',
                                         borderRadius: '50%',
-                                        border: isComplete ? '2px solid #22c55e' : '1px solid var(--muted-light)',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
@@ -2418,12 +2436,14 @@ export function FinancialPanel() {
                                         cursor: 'pointer',
                                         transition: 'all 0.2s'
                                       }}
+                                      className={`border ${isComplete ? 'border-[#22c55e]' : 'border-muted-light dark:border-white'}`}
                                     >
                                       {isComplete && <CheckCircle style={{ width: '0.875rem', height: '0.875rem' }} />}
                                     </button>
                                   </td>
                                   <td style={{ padding: '0.5rem', color: 'var(--heading)', fontWeight: 500 }} className="table-cell">{task.job_id}</td>
-                                  <td style={{ padding: '0.5rem', color: 'var(--heading)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '7.5rem', display: 'none' }} className="table-cell hidden-mobile">{task.fleet_name}</td>
+                                  <td style={{ padding: '0.5rem', color: 'var(--heading)', fontWeight: 500 }} className="table-cell hidden-mobile text-xs">{task.fleet_id}</td>
+                                  <td style={{ padding: '0.5rem', color: 'var(--heading)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '7.5rem' }} className="table-cell hidden-mobile">{task.fleet_name}</td>
                                   <td style={{ padding: '0.5rem', color: 'var(--heading)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '6.25rem' }} className="table-cell">{task.customer_name}</td>
                                   <td style={{ padding: '0.5rem', color: 'var(--heading)', textAlign: 'right', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-cell">
                                     {currency} {task.cod_amount.toFixed(2)}
@@ -2440,14 +2460,13 @@ export function FinancialPanel() {
                                       style={{
                                         width: '5rem',
                                         backgroundColor: 'var(--input-bg)',
-                                        border: '1px solid var(--input-border)',
                                         borderRadius: '0.25rem',
                                         padding: '0.25rem 0.375rem',
                                         color: '#16a34a',
                                         textAlign: 'right',
                                         fontWeight: 500,
                                         fontSize: '0.875rem'
-                                      }} className="input-paid"
+                                      }} className="input-paid no-spinner border border-input-border dark:border-white"
                                     />
                                   </td>
                                   <td style={{ padding: '0.5rem', textAlign: 'center', display: 'none' }} className="table-cell hidden-mobile">
@@ -2468,7 +2487,7 @@ export function FinancialPanel() {
                                       <option value="COMPLETED">Completed</option>
                                     </select>
                                   </td>
-                                  <td style={{ padding: '0.5rem', textAlign: 'right' }} className="table-cell">
+                                  <td style={{ padding: '0.5rem', paddingRight: '15px', textAlign: 'right' }} className="table-cell">
                                     <span style={{
                                       fontWeight: 500,
                                       whiteSpace: 'nowrap',
@@ -2481,30 +2500,82 @@ export function FinancialPanel() {
                               );
                             })}
                           </tbody>
-                          {/* Totals Row */}
+                          {/* Totals Row - Sticky Footer */}
                           <tfoot style={{
-                            backgroundColor: 'rgba(0, 0, 0, 0.03)',
                             position: 'sticky',
-                            bottom: 0
+                            bottom: 0,
+                            zIndex: 9999
                           }}>
-                            <tr>
-                              <td colSpan={2} style={{ padding: '0.5rem', color: 'var(--heading)', fontWeight: 600, display: 'none' }} className="table-cell hidden-mobile">
+                            <tr style={{
+                              backgroundColor: 'var(--footer-bg)'
+                            }}>
+                              {/* Desktop: spans 5 columns (Check, TaskID, DriverID, DriverName, Customer) */}
+                              <td style={{
+                                backgroundColor: 'var(--footer-bg)',
+                                padding: '0.5rem',
+                                color: 'var(--heading)',
+                                fontWeight: 600,
+                                borderTop: '1px solid var(--border)'
+                              }} className="table-cell">
                                 Total ({tasksList.length})
                               </td>
-                              <td colSpan={1} style={{ padding: '0.5rem', color: 'var(--heading)', fontWeight: 600 }} className="table-cell mobile-only">
-                                Total
-                              </td>
-                              <td style={{ padding: '0.5rem', color: 'var(--heading)', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap', display: 'none' }} className="table-cell hidden-mobile">
+                              <td style={{
+                                backgroundColor: 'var(--footer-bg)',
+                                borderTop: '1px solid var(--border)'
+                              }} className="table-cell"></td>
+                              <td style={{
+                                backgroundColor: 'var(--footer-bg)',
+                                borderTop: '1px solid var(--border)'
+                              }} className="table-cell hidden-mobile"></td>
+                              <td style={{
+                                backgroundColor: 'var(--footer-bg)',
+                                borderTop: '1px solid var(--border)'
+                              }} className="table-cell hidden-mobile"></td>
+                              <td style={{
+                                backgroundColor: 'var(--footer-bg)',
+                                borderTop: '1px solid var(--border)'
+                              }} className="table-cell"></td>
+                              {/* COD Total */}
+                              <td style={{
+                                backgroundColor: 'var(--footer-bg)',
+                                padding: '0.5rem',
+                                color: 'var(--heading)',
+                                textAlign: 'right',
+                                fontWeight: 600,
+                                whiteSpace: 'nowrap',
+                                borderTop: '1px solid var(--border)'
+                              }} className="table-cell">
                                 {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(2)}
                               </td>
-                              <td style={{ padding: '0.5rem', color: 'var(--heading)', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }} className="table-cell">
-                                {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(2)}
-                              </td>
-                              <td style={{ padding: '0.5rem', color: '#16a34a', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }} className="table-cell">
+                              {/* Paid Total */}
+                              <td style={{
+                                backgroundColor: 'var(--footer-bg)',
+                                padding: '0.5rem',
+                                color: '#16a34a',
+                                textAlign: 'right',
+                                fontWeight: 600,
+                                whiteSpace: 'nowrap',
+                                borderTop: '1px solid var(--border)'
+                              }} className="table-cell">
                                 {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.balance_paid, 0).toFixed(2)}
                               </td>
-                              <td style={{ display: 'none' }} className="hidden-mobile"></td>
-                              <td style={{ padding: '0.5rem', color: '#DE3544', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }} className="table-cell">
+                              {/* Status (hidden to match header) */}
+                              <td style={{
+                                backgroundColor: 'var(--footer-bg)',
+                                borderTop: '1px solid var(--border)',
+                                display: 'none'
+                              }} className="hidden-mobile"></td>
+                              {/* Pending Total */}
+                              <td style={{
+                                backgroundColor: 'var(--footer-bg)',
+                                padding: '0.5rem',
+                                paddingRight: '15px',
+                                color: '#DE3544',
+                                textAlign: 'right',
+                                fontWeight: 600,
+                                whiteSpace: 'nowrap',
+                                borderTop: '1px solid var(--border)'
+                              }} className="table-cell">
                                 {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + (t.cod_amount - t.balance_paid), 0).toFixed(2)}
                               </td>
                             </tr>
@@ -2542,17 +2613,16 @@ export function FinancialPanel() {
                     onClick={saveTaskPayments}
                     style={{
                       padding: '0.625rem 1.5rem',
-                      backgroundColor: 'var(--primary)',
+                      backgroundColor: '#1A2C53',
                       color: 'white',
                       borderRadius: '0.5rem',
-                      border: 'none',
                       cursor: 'pointer',
                       fontWeight: 500,
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.5rem',
                       transition: 'box-shadow 0.2s'
-                    }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'} className="button"
+                    }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'} className="button border border-transparent dark:border-white"
                   >
                     <Save style={{ width: '1rem', height: '1rem' }} />
                     Save
