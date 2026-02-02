@@ -2169,174 +2169,398 @@ export function FinancialPanel() {
       {/* View Tasks Modal */}
       {
         taskModalOpen && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 sm:p-6">
-            <div className="bg-card dark:bg-[#1A2C53] rounded-xl border border-border dark:border-[#2A3C63] w-full max-w-3xl h-[80vh] max-h-[600px] overflow-hidden flex flex-col shadow-2xl">
-              {/* Modal Header */}
-              <div className="p-3 sm:p-4 border-b border-border dark:border-[#2A3C63] flex justify-between items-center shrink-0">
-                <div>
-                  <h3 className="text-heading dark:text-[#C1EEFA] text-base sm:text-lg font-semibold">
-                    Tasks for {taskModalDate ? new Date(taskModalDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : ''}
-                  </h3>
-                  <p className="text-muted-light dark:text-[#99BFD1] text-xs sm:text-sm mt-0.5">
-                    {tasksList.length} completed deliveries with COD
-                  </p>
+          <>
+            <style>{`
+        @media (max-width: 640px) {
+          .modal-container { padding: 1rem; }
+          .modal-header { padding: 0.75rem; font-size: 0.875rem; }
+          .close-btn { width: 1.25rem; height: 1.25rem; }
+          .modal-body { padding: 0.5rem; }
+          .loader { width: 1.5rem; height: 1.5rem; margin-bottom: 0.75rem; }
+          .loader-text { font-size: 0.875rem; }
+          .empty-icon { width: 2.5rem; height: 2.5rem; margin-bottom: 0.75rem; }
+          .empty-title { font-size: 0.875rem; }
+          .empty-subtitle { font-size: 0.875rem; }
+          .action-button { padding: 0.375rem 0.75rem; font-size: 0.75rem; }
+          .action-icon { width: 0.875rem; height: 0.875rem; }
+          .table { font-size: 0.75rem; }
+          .table-cell { padding: 0.5rem; }
+          .table-header { padding: 0.5rem; }
+          .input-paid { width: 4rem; padding: 0.25rem 0.375rem; }
+          .select-status { padding: 0.25rem 0.375rem; }
+          .modal-footer { padding: 1.5rem; gap: 0.75rem; }
+          .button { padding: 0.625rem 1.5rem; font-size: 0.875rem; }
+        }
+      `}</style>
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 50
+            }} className="modal-container">
+              <div style={{
+                backgroundColor: 'var(--background)',
+                borderRadius: '0.75rem',
+                border: '1px solid var(--border)',
+                width: '100%',
+                maxWidth: '48rem',
+                height: '80vh',
+                maxHeight: '600px',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+              }}>
+                {/* Modal Header */}
+                <div style={{
+                  padding: '1rem',
+                  borderBottom: '1px solid var(--border)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexShrink: 0
+                }} className="modal-header">
+                  <div>
+                    <h3 style={{
+                      color: 'var(--heading)',
+                      fontSize: '1.125rem',
+                      fontWeight: 600,
+                      marginBottom: 0
+                    }}>
+                      Tasks for {taskModalDate ? new Date(taskModalDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : ''}
+                    </h3>
+                    <p style={{
+                      color: 'var(--muted-light)',
+                      fontSize: '0.875rem',
+                      marginTop: '0.125rem'
+                    }}>
+                      {tasksList.length} completed deliveries with COD
+                    </p>
+                  </div>
+                  <button onClick={closeTaskModal} style={{
+                    color: 'var(--muted-light)',
+                    padding: '0.25rem',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'color 0.2s'
+                  }} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--heading)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted-light)'} className="close-btn">
+                    <X style={{ width: '1.5rem', height: '1.5rem' }} />
+                  </button>
                 </div>
-                <button onClick={closeTaskModal} className="text-muted-light hover:text-heading dark:text-[#99BFD1] dark:hover:text-[#C1EEFA] p-1">
-                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
-                </button>
-              </div>
 
-              {/* Modal Body */}
-              <div className="flex-1 overflow-hidden p-2 sm:p-4 flex flex-col min-h-0">
-                {isLoadingTasks ? (
-                  <div className="flex flex-col items-center justify-center py-8 sm:py-12">
-                    <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-[#C1EEFA] mb-3" />
-                    <p className="text-muted-light dark:text-[#99BFD1] text-sm">Loading tasks...</p>
-                  </div>
-                ) : tasksList.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 sm:py-12">
-                    <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 text-muted-light dark:text-[#99BFD1] mb-3" />
-                    <p className="text-heading dark:text-[#C1EEFA] font-medium text-sm sm:text-base">No tasks found</p>
-                    <p className="text-muted-light dark:text-[#99BFD1] text-xs sm:text-sm">No completed deliveries with COD for this date</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-3 min-h-0 flex-1">
-                    {/* Action Buttons */}
-                    <div className="flex justify-end gap-2 shrink-0">
-                      <button
-                        onClick={deselectAllTasks}
-                        className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-gray-500 dark:bg-gray-600 text-white rounded-lg hover:bg-gray-600 dark:hover:bg-gray-700 transition-all font-medium text-xs sm:text-sm"
-                      >
-                        <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        Deselect All
-                      </button>
-                      <button
-                        onClick={markAllAsPaid}
-                        className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700 transition-all font-medium text-xs sm:text-sm"
-                      >
-                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        Mark All as Paid
-                      </button>
+                {/* Modal Body */}
+                <div style={{
+                  flex: 1,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minHeight: 0,
+                  padding: '1rem'
+                }} className="modal-body">
+                  {isLoadingTasks ? (
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingTop: '2rem',
+                      paddingBottom: '2rem'
+                    }}>
+                      <Loader2 style={{
+                        width: '2rem',
+                        height: '2rem',
+                        animation: 'spin 1s linear infinite',
+                        color: '#C1EEFA',
+                        marginBottom: '0.75rem'
+                      }} className="loader" />
+                      <p style={{
+                        color: 'var(--muted-light)',
+                        fontSize: '0.875rem'
+                      }} className="loader-text">Loading tasks...</p>
                     </div>
-
-                    {/* Tasks Table with Scroll */}
-                    <div className="flex-1 overflow-auto rounded-lg border border-border dark:border-[#2A3C63] min-h-0">
-                      <table className="w-full text-xs sm:text-sm">
-                        <thead className="bg-muted/30 dark:bg-[#223560]/50 sticky top-0">
-                          <tr>
-                            <th className="w-8 px-2 sm:px-3 py-2"></th>
-                            <th className="text-left px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">Task ID</th>
-                            <th className="text-left px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap hidden sm:table-cell">Driver</th>
-                            <th className="text-left px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">Customer</th>
-                            <th className="text-right px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">COD</th>
-                            <th className="text-right px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">Paid</th>
-                            <th className="text-center px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap hidden sm:table-cell">Status</th>
-                            <th className="text-right px-2 sm:px-3 py-2 text-muted-light dark:text-[#99BFD1] font-medium whitespace-nowrap">Pending</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {tasksList.map((task: TaskPaymentEntry) => {
-                            const codPending = task.cod_amount - task.balance_paid;
-                            const currency = (localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$';
-                            const isComplete = task.status === 'COMPLETED';
-                            return (
-                              <tr key={task.job_id} className="border-t border-border/50 dark:border-[#2A3C63]/50 hover:bg-muted/20 dark:hover:bg-[#223560]/30 transition-colors">
-                                <td className="px-2 sm:px-3 py-2">
-                                  <button
-                                    onClick={() => toggleTaskPayment(task.job_id)}
-                                    className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${isComplete
-                                      ? 'bg-green-500 border-green-500 text-white'
-                                      : 'border-muted-light dark:border-[#99BFD1] hover:border-green-500 dark:hover:border-green-400'
-                                      }`}
-                                  >
-                                    {isComplete && <CheckCircle className="w-3.5 h-3.5" />}
-                                  </button>
-                                </td>
-                                <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] font-medium">{task.job_id}</td>
-                                <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] hidden sm:table-cell truncate max-w-[120px]">{task.fleet_name}</td>
-                                <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] truncate max-w-[100px] sm:max-w-[150px]">{task.customer_name}</td>
-                                <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] text-right font-medium whitespace-nowrap">
-                                  {currency} {task.cod_amount.toFixed(2)}
-                                </td>
-                                <td className="px-2 sm:px-3 py-2 text-right">
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    max={task.cod_amount}
-                                    value={task.balance_paid || ''}
-                                    onChange={(e) => updateTaskPayment(task.job_id, 'balance_paid', parseFloat(e.target.value) || 0)}
-                                    placeholder="0.00"
-                                    className="w-16 sm:w-20 bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded px-1.5 py-1 text-green-600 dark:text-green-400 text-right focus:outline-none focus:border-[#C1EEFA] font-medium"
-                                  />
-                                </td>
-                                <td className="px-2 sm:px-3 py-2 text-center hidden sm:table-cell">
-                                  <select
-                                    value={task.status}
-                                    onChange={(e) => updateTaskPayment(task.job_id, 'status', e.target.value as 'PENDING' | 'COMPLETED')}
-                                    className="bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded px-1.5 py-1 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#C1EEFA] font-medium cursor-pointer"
-                                  >
-                                    <option value="PENDING">Pending</option>
-                                    <option value="COMPLETED">Completed</option>
-                                  </select>
-                                </td>
-                                <td className="px-2 sm:px-3 py-2 text-right">
-                                  <span className={`font-medium whitespace-nowrap ${codPending > 0 ? 'text-[#DE3544]' : 'text-green-600 dark:text-green-400'}`}>
-                                    {currency} {codPending.toFixed(2)}
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                        {/* Totals Row */}
-                        <tfoot className="bg-muted/30 dark:bg-[#223560]/50 sticky bottom-0">
-                          <tr>
-                            <td colSpan={2} className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] font-semibold hidden sm:table-cell">
-                              Total ({tasksList.length})
-                            </td>
-                            <td colSpan={1} className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] font-semibold sm:hidden">
-                              Total
-                            </td>
-                            <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] text-right font-semibold whitespace-nowrap hidden sm:table-cell">
-                              {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(2)}
-                            </td>
-                            <td className="px-2 sm:px-3 py-2 text-heading dark:text-[#C1EEFA] text-right font-semibold whitespace-nowrap sm:hidden">
-                              {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(2)}
-                            </td>
-                            <td className="px-2 sm:px-3 py-2 text-green-600 dark:text-green-400 text-right font-semibold whitespace-nowrap">
-                              {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.balance_paid, 0).toFixed(2)}
-                            </td>
-                            <td className="hidden sm:table-cell"></td>
-                            <td className="px-2 sm:px-3 py-2 text-[#DE3544] text-right font-semibold whitespace-nowrap">
-                              {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + (t.cod_amount - t.balance_paid), 0).toFixed(2)}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      </table>
+                  ) : tasksList.length === 0 ? (
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingTop: '2rem',
+                      paddingBottom: '2rem'
+                    }}>
+                      <AlertCircle style={{
+                        width: '2.5rem',
+                        height: '2.5rem',
+                        color: 'var(--muted-light)',
+                        marginBottom: '0.75rem'
+                      }} className="empty-icon" />
+                      <p style={{
+                        color: 'var(--heading)',
+                        fontWeight: 500,
+                        fontSize: '1rem'
+                      }} className="empty-title">No tasks found</p>
+                      <p style={{
+                        color: 'var(--muted-light)',
+                        fontSize: '0.875rem'
+                      }} className="empty-subtitle">No completed deliveries with COD for this date</p>
                     </div>
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem',
+                      minHeight: 0,
+                      flex: 1
+                    }}>
+                      {/* Action Buttons */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        gap: '0.5rem',
+                        flexShrink: 0
+                      }}>
+                        <button
+                          onClick={deselectAllTasks}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.375rem',
+                            padding: '0.375rem 0.75rem',
+                            backgroundColor: '#6b7280',
+                            color: 'white',
+                            borderRadius: '0.5rem',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: 500,
+                            fontSize: '0.75rem',
+                            transition: 'background-color 0.2s'
+                          }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#4b5563'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#6b7280'} className="action-button"
+                        >
+                          <X style={{ width: '0.875rem', height: '0.875rem' }} className="action-icon" />
+                          Deselect All
+                        </button>
+                        <button
+                          onClick={markAllAsPaid}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.375rem',
+                            padding: '0.375rem 0.75rem',
+                            backgroundColor: '#22c55e',
+                            color: 'white',
+                            borderRadius: '0.5rem',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: 500,
+                            fontSize: '0.75rem',
+                            transition: 'background-color 0.2s'
+                          }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#16a34a'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#22c55e'} className="action-button"
+                        >
+                          <CheckCircle style={{ width: '0.875rem', height: '0.875rem' }} className="action-icon" />
+                          Mark All as Paid
+                        </button>
+                      </div>
 
-              {/* Modal Footer */}
-              <div className="p-6 border-t border-border dark:border-[#2A3C63] flex justify-end gap-3">
-                <button
-                  onClick={closeTaskModal}
-                  className="px-6 py-2.5 text-muted-light dark:text-[#99BFD1] hover:text-heading dark:hover:text-[#C1EEFA] border border-border dark:border-[#2A3C63] rounded-lg transition-all font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={saveTaskPayments}
-                  className="px-6 py-2.5 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-lg hover:shadow-md transition-all font-medium flex items-center gap-2"
-                >
-                  <Save className="w-4 h-4" />
-                  Save
-                </button>
+                      {/* Tasks Table with Scroll */}
+                      <div style={{
+                        flex: 1,
+                        overflow: 'auto',
+                        borderRadius: '0.5rem',
+                        border: '1px solid var(--border)',
+                        minHeight: 0
+                      }}>
+                        <table style={{
+                          width: '100%',
+                          fontSize: '0.875rem'
+                        }} className="table">
+                          <thead style={{
+                            backgroundColor: 'rgba(0, 0, 0, 0.03)',
+                            position: 'sticky',
+                            top: 0
+                          }}>
+                            <tr>
+                              <th style={{ width: '2rem', padding: '0.5rem', textAlign: 'left' }} className="table-header"></th>
+                              <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Task ID</th>
+                              <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap', display: 'none' }} className="table-header hidden-mobile">Driver</th>
+                              <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Customer</th>
+                              <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">COD</th>
+                              <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Paid</th>
+                              <th style={{ textAlign: 'center', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap', display: 'none' }} className="table-header hidden-mobile">Status</th>
+                              <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Pending</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tasksList.map((task: TaskPaymentEntry) => {
+                              const codPending = task.cod_amount - task.balance_paid;
+                              const currency = (localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$';
+                              const isComplete = task.status === 'COMPLETED';
+                              return (
+                                <tr key={task.job_id} style={{
+                                  borderTop: '1px solid rgba(0, 0, 0, 0.05)',
+                                  transition: 'background-color 0.2s'
+                                }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.02)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                                  <td style={{ padding: '0.5rem' }} className="table-cell">
+                                    <button
+                                      onClick={() => toggleTaskPayment(task.job_id)}
+                                      style={{
+                                        width: '1.25rem',
+                                        height: '1.25rem',
+                                        borderRadius: '50%',
+                                        border: isComplete ? '2px solid #22c55e' : '1px solid var(--muted-light)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        backgroundColor: isComplete ? '#22c55e' : 'transparent',
+                                        color: isComplete ? 'white' : 'transparent',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                      }}
+                                    >
+                                      {isComplete && <CheckCircle style={{ width: '0.875rem', height: '0.875rem' }} />}
+                                    </button>
+                                  </td>
+                                  <td style={{ padding: '0.5rem', color: 'var(--heading)', fontWeight: 500 }} className="table-cell">{task.job_id}</td>
+                                  <td style={{ padding: '0.5rem', color: 'var(--heading)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '7.5rem', display: 'none' }} className="table-cell hidden-mobile">{task.fleet_name}</td>
+                                  <td style={{ padding: '0.5rem', color: 'var(--heading)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '6.25rem' }} className="table-cell">{task.customer_name}</td>
+                                  <td style={{ padding: '0.5rem', color: 'var(--heading)', textAlign: 'right', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-cell">
+                                    {currency} {task.cod_amount.toFixed(2)}
+                                  </td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'right' }} className="table-cell">
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      max={task.cod_amount}
+                                      value={task.balance_paid || ''}
+                                      onChange={(e) => updateTaskPayment(task.job_id, 'balance_paid', parseFloat(e.target.value) || 0)}
+                                      placeholder="0.00"
+                                      style={{
+                                        width: '5rem',
+                                        backgroundColor: 'var(--input-bg)',
+                                        border: '1px solid var(--input-border)',
+                                        borderRadius: '0.25rem',
+                                        padding: '0.25rem 0.375rem',
+                                        color: '#16a34a',
+                                        textAlign: 'right',
+                                        fontWeight: 500,
+                                        fontSize: '0.875rem'
+                                      }} className="input-paid"
+                                    />
+                                  </td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'center', display: 'none' }} className="table-cell hidden-mobile">
+                                    <select
+                                      value={task.status}
+                                      onChange={(e) => updateTaskPayment(task.job_id, 'status', e.target.value as 'PENDING' | 'COMPLETED')}
+                                      style={{
+                                        backgroundColor: 'var(--input-bg)',
+                                        border: '1px solid var(--input-border)',
+                                        borderRadius: '0.25rem',
+                                        padding: '0.25rem 0.375rem',
+                                        color: 'var(--heading)',
+                                        fontWeight: 500,
+                                        cursor: 'pointer'
+                                      }} className="select-status"
+                                    >
+                                      <option value="PENDING">Pending</option>
+                                      <option value="COMPLETED">Completed</option>
+                                    </select>
+                                  </td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'right' }} className="table-cell">
+                                    <span style={{
+                                      fontWeight: 500,
+                                      whiteSpace: 'nowrap',
+                                      color: codPending > 0 ? '#DE3544' : '#16a34a'
+                                    }}>
+                                      {currency} {codPending.toFixed(2)}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          {/* Totals Row */}
+                          <tfoot style={{
+                            backgroundColor: 'rgba(0, 0, 0, 0.03)',
+                            position: 'sticky',
+                            bottom: 0
+                          }}>
+                            <tr>
+                              <td colSpan={2} style={{ padding: '0.5rem', color: 'var(--heading)', fontWeight: 600, display: 'none' }} className="table-cell hidden-mobile">
+                                Total ({tasksList.length})
+                              </td>
+                              <td colSpan={1} style={{ padding: '0.5rem', color: 'var(--heading)', fontWeight: 600 }} className="table-cell mobile-only">
+                                Total
+                              </td>
+                              <td style={{ padding: '0.5rem', color: 'var(--heading)', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap', display: 'none' }} className="table-cell hidden-mobile">
+                                {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(2)}
+                              </td>
+                              <td style={{ padding: '0.5rem', color: 'var(--heading)', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }} className="table-cell">
+                                {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.cod_amount, 0).toFixed(2)}
+                              </td>
+                              <td style={{ padding: '0.5rem', color: '#16a34a', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }} className="table-cell">
+                                {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + t.balance_paid, 0).toFixed(2)}
+                              </td>
+                              <td style={{ display: 'none' }} className="hidden-mobile"></td>
+                              <td style={{ padding: '0.5rem', color: '#DE3544', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }} className="table-cell">
+                                {tasksList.reduce((sum: number, t: TaskPaymentEntry) => sum + (t.cod_amount - t.balance_paid), 0).toFixed(2)}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer */}
+                <div style={{
+                  padding: '1.5rem',
+                  borderTop: '1px solid var(--border)',
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '0.75rem'
+                }} className="modal-footer">
+                  <button
+                    onClick={closeTaskModal}
+                    style={{
+                      padding: '0.625rem 1.5rem',
+                      color: 'var(--muted-light)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '0.5rem',
+                      backgroundColor: 'transparent',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      transition: 'all 0.2s'
+                    }} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--heading)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted-light)'} className="button"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveTaskPayments}
+                    style={{
+                      padding: '0.625rem 1.5rem',
+                      backgroundColor: 'var(--primary)',
+                      color: 'white',
+                      borderRadius: '0.5rem',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      transition: 'box-shadow 0.2s'
+                    }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'} className="button"
+                  >
+                    <Save style={{ width: '1rem', height: '1rem' }} />
+                    Save
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          </>
         )
       }
     </div >
