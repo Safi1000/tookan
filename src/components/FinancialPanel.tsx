@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DollarSign, Wallet, CheckCircle, X, Search, Calendar, Save, Check, XCircle, Eye, Download, Loader2, AlertCircle } from 'lucide-react';
 import {
   createFleetWalletTransaction,
@@ -262,39 +262,41 @@ export function FinancialPanel() {
   // Load COD confirmations on mount
   // Calendar data is now loaded via RPC/direct query in the driver-specific useEffect below
 
+
   // Load driver performance data (COD totals) when drivers or date range changes
-  useEffect(() => {
-    const loadDriverPerformance = async () => {
-      if (drivers.length === 0) return;
+  const loadDriverPerformance = useCallback(async () => {
+    if (drivers.length === 0) return;
 
-      setIsLoadingPerformance(true);
-      try {
-        // Fetch performance for each driver by their fleet_id
-        const performanceData: Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number; paid_total: number; balance_total: number }> = [];
+    setIsLoadingPerformance(true);
+    try {
+      // Fetch performance for each driver by their fleet_id
+      const performanceData: Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number; paid_total: number; balance_total: number }> = [];
 
-        // Batch requests - fetch all drivers at once by passing their IDs
-        for (const driver of drivers) {
-          const fleetId = driver.fleet_id || driver.id;
-          const response = await fetchDriverPerformance(
-            String(fleetId), // Search by fleet_id
-            dateFrom || undefined,
-            dateTo || undefined
-          );
+      // Batch requests - fetch all drivers at once by passing their IDs
+      for (const driver of drivers) {
+        const fleetId = driver.fleet_id || driver.id;
+        const response = await fetchDriverPerformance(
+          String(fleetId), // Search by fleet_id
+          dateFrom || undefined,
+          dateTo || undefined
+        );
 
-          if (response.status === 'success' && response.data && response.data.length > 0) {
-            performanceData.push(...response.data);
-          }
+        if (response.status === 'success' && response.data && response.data.length > 0) {
+          performanceData.push(...response.data);
         }
-
-        setDriverPerformance(performanceData);
-      } catch (error) {
-        console.error('Error loading driver performance:', error);
-      } finally {
-        setIsLoadingPerformance(false);
       }
-    };
-    loadDriverPerformance();
+
+      setDriverPerformance(performanceData);
+    } catch (error) {
+      console.error('Error loading driver performance:', error);
+    } finally {
+      setIsLoadingPerformance(false);
+    }
   }, [drivers, dateFrom, dateTo]);
+
+  useEffect(() => {
+    loadDriverPerformance();
+  }, [loadDriverPerformance]);
 
   // Generate calendar days and fetch COD data from Supabase RPC when a driver is selected
   useEffect(() => {
@@ -828,6 +830,9 @@ export function FinancialPanel() {
         ? `All ${tasks.length} tasks marked as Paid`
         : `All ${tasks.length} tasks marked as Pending`
       );
+
+      // Refresh driver totals
+      await loadDriverPerformance();
     } catch (err) {
       console.error('Error saving calendar card payment:', err);
       toast.error('Failed to save payment');
@@ -875,6 +880,9 @@ export function FinancialPanel() {
       } else {
         toast.info('No changes to save');
       }
+
+      // Refresh driver totals
+      await loadDriverPerformance();
     } catch (err) {
       console.error('Error saving task payments:', err);
       toast.error('Failed to save some task payments');
@@ -1296,42 +1304,7 @@ export function FinancialPanel() {
                             Object.values(dailyPayments).reduce((sum, p) => sum + (p || 0), 0)).toFixed(2)}
                         </p>
                       </div>
-                      {Object.keys(dailyPayments).length > 0 && (
-                        <button
-                          onClick={async () => {
-                            const driver = drivers.find(d => d.id === selectedDriver);
-                            if (!driver) return;
 
-                            const fleetId = Number(driver.fleet_id || driver.id);
-                            const totalPaid = Object.values(dailyPayments).reduce((sum, p) => sum + (p || 0), 0);
-                            const codTotal = driverDailyCOD.reduce((sum, d) => sum + d.codReceived, 0);
-
-                            try {
-                              const result = await recordAgentPayment(fleetId, totalPaid, codTotal);
-                              if (result.status === 'success') {
-                                toast.success('Payment recorded successfully!');
-                                setDailyPayments({});
-                                // Reload driver performance to update the table
-                                const perfResponse = await fetchDriverPerformance(String(fleetId), dateFrom || undefined, dateTo || undefined);
-                                if (perfResponse.status === 'success' && perfResponse.data) {
-                                  setDriverPerformance(prev => {
-                                    const filtered = prev.filter(p => p.fleet_id !== fleetId);
-                                    return [...filtered, ...perfResponse.data];
-                                  });
-                                }
-                              } else {
-                                toast.error(result.message);
-                              }
-                            } catch (error) {
-                              toast.error('Failed to record payment');
-                            }
-                          }}
-                          className="px-4 py-2 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-lg hover:shadow-md transition-all font-medium text-sm"
-                        >
-                          <Save className="w-4 h-4 inline mr-2" />
-                          Save All Payments
-                        </button>
-                      )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
