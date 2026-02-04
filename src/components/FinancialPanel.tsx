@@ -1152,7 +1152,7 @@ export function FinancialPanel() {
                       <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Paid</p>
                       <p className="text-green-600 dark:text-green-400 text-2xl font-semibold">
                         {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'}{' '}
-                        {drivers.reduce((sum, d) => sum + (d.balance || 0), 0).toFixed(2)}
+                        {driverPerformance.reduce((sum, p) => sum + (p.paid_total || 0), 0).toFixed(2)}
                       </p>
                     </div>
 
@@ -1161,8 +1161,7 @@ export function FinancialPanel() {
                       <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Balance</p>
                       <p className="text-[#DE3544] dark:text-[#DE3544] text-2xl font-semibold">
                         {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'}{' '}
-                        {(driverPerformance.reduce((sum, p) => sum + (p.cod_total || 0), 0) -
-                          drivers.reduce((sum, d) => sum + (d.balance || 0), 0)).toFixed(2)}
+                        {driverPerformance.reduce((sum, p) => sum + (p.balance_total || 0), 0).toFixed(2)}
                       </p>
                     </div>
                   </div>
