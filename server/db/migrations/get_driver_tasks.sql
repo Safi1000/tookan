@@ -3,6 +3,7 @@ DROP FUNCTION IF EXISTS get_driver_tasks(BIGINT, TIMESTAMP, TIMESTAMP);
 DROP FUNCTION IF EXISTS get_driver_tasks(INTEGER, TIMESTAMP, TIMESTAMP);
 
 -- Create function to fetch driver tasks with SECURITY DEFINER to bypass RLS
+-- Updated: Now includes paid and balance columns for task-level payment tracking
 CREATE OR REPLACE FUNCTION get_driver_tasks(
   p_fleet_id BIGINT,
   p_date_from TIMESTAMP,
@@ -14,6 +15,8 @@ RETURNS TABLE (
   fleet_name TEXT,
   customer_name TEXT,
   cod_amount NUMERIC,
+  paid NUMERIC,
+  balance NUMERIC,
   pickup_address TEXT,
   delivery_address TEXT,
   creation_datetime TIMESTAMP
@@ -30,6 +33,8 @@ BEGIN
     t.fleet_name::TEXT,
     t.customer_name::TEXT,
     COALESCE(t.cod_amount::NUMERIC, 0) as cod_amount,
+    COALESCE(t.paid::NUMERIC, 0) as paid,
+    COALESCE(t.balance::NUMERIC, 0) as balance,
     t.pickup_address::TEXT,
     t.delivery_address::TEXT,
     t.creation_datetime::TIMESTAMP

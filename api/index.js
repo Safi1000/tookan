@@ -3865,19 +3865,53 @@ function getApp() {
               total_orders: 0,
               cod_total: 0,
               order_fees: 0,
-              avg_delivery_time: 0
+              avg_delivery_time: 0,
+              paid_total: 0,
+              balance_total: 0
             };
           }
 
           console.log(`🔍 RPC response for driver ${driver.id}:`, JSON.stringify(data));
           const stats = data && data[0] ? data[0] : { total_orders: 0, cod_total: 0, order_fees: 0, avg_delivery_time_minutes: 0 };
+
+          // Also fetch paid and balance totals from tasks table (with date filters)
+          let taskQuery = supabase
+            .from('tasks')
+            .select('paid, balance, pickup_address, delivery_address, cod_amount')
+            .eq('fleet_id', driver.id)
+            .eq('status', 2);
+
+          if (dateFrom) {
+            taskQuery = taskQuery.gte('creation_datetime', dateFrom);
+          }
+          if (dateTo) {
+            taskQuery = taskQuery.lte('creation_datetime', dateTo + 'T23:59:59');
+          }
+
+          const { data: taskData, error: taskError } = await taskQuery;
+
+          let paidTotal = 0;
+          let balanceTotal = 0;
+
+          if (!taskError && taskData) {
+            // Filter out pickup==delivery tasks and sum paid/balance
+            taskData
+              .filter(task => task.pickup_address !== task.delivery_address && parseFloat(task.cod_amount || 0) > 0)
+              .forEach(task => {
+                paidTotal += parseFloat(task.paid || 0);
+                balanceTotal += parseFloat(task.balance || 0);
+              });
+          }
+
           return {
             fleet_id: driver.id,
             name: driver.name,
             total_orders: parseInt(stats.total_orders || 0),
             cod_total: parseFloat(stats.cod_total || 0),
             order_fees: parseFloat(stats.order_fees || 0),
-            avg_delivery_time: parseFloat(stats.avg_delivery_time_minutes || 0)
+            avg_delivery_time: parseFloat(stats.avg_delivery_time_minutes || 0),
+            paid_total: paidTotal,
+            balance_total: balanceTotal
           };
         }));
 
@@ -5491,7 +5525,7 @@ function getApp() {
 
         let query = supabase
           .from('tasks')
-          .select('creation_datetime, cod_amount, status, pickup_address, delivery_address')
+          .select('creation_datetime, cod_amount, status, pickup_address, delivery_address, paid, balance')
           .eq('fleet_id', parseInt(fleetId))
           .eq('status', 2);  // Completed deliveries only
 
@@ -5506,7 +5540,7 @@ function getApp() {
 
         if (error) throw error;
 
-        // Group by date and sum COD, filtering pickup != delivery
+        // Group by date and sum COD, paid, balance, filtering pickup != delivery
         const dailyTotals = {};
         (tasks || []).forEach(task => {
           if (task.creation_datetime &&
@@ -5514,9 +5548,11 @@ function getApp() {
             task.cod_amount && parseFloat(task.cod_amount) > 0) {
             const date = task.creation_datetime.split('T')[0];
             if (!dailyTotals[date]) {
-              dailyTotals[date] = { date, codReceived: 0, orderCount: 0 };
+              dailyTotals[date] = { date, codReceived: 0, paidTotal: 0, balanceTotal: 0, orderCount: 0 };
             }
             dailyTotals[date].codReceived += parseFloat(task.cod_amount);
+            dailyTotals[date].paidTotal += parseFloat(task.paid || 0);
+            dailyTotals[date].balanceTotal += parseFloat(task.balance || 0);
             dailyTotals[date].orderCount++;
           }
         });
@@ -5532,6 +5568,68 @@ function getApp() {
         res.status(500).json({
           status: 'error',
           message: error.message || 'Failed to get daily COD'
+        });
+      }
+    });
+
+    // Update task payment (paid amount)
+    app.put('/api/tasks/:jobId/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+      try {
+        const { jobId } = req.params;
+        const { paid } = req.body;
+
+        if (paid === undefined) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Missing required field: paid'
+          });
+        }
+
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(503).json({
+            status: 'error',
+            message: 'Database not configured'
+          });
+        }
+
+        const numericJobId = parseInt(jobId);
+        const numericPaid = parseFloat(paid);
+
+        // Update the task's paid column - balance is auto-calculated by Supabase
+        const { data: updatedTask, error } = await supabase
+          .from('tasks')
+          .update({
+            paid: numericPaid,
+            updated_at: new Date().toISOString()
+          })
+          .eq('job_id', numericJobId)
+          .select('job_id, cod_amount, paid, balance')
+          .single();
+
+        if (error) {
+          console.error('Update task payment error:', error);
+          throw error;
+        }
+
+        if (!updatedTask) {
+          return res.status(404).json({
+            status: 'error',
+            message: `Task with job_id ${jobId} not found`
+          });
+        }
+
+        console.log(`💰 Updated task ${numericJobId} payment: paid=${numericPaid}, balance=${updatedTask.balance}`);
+
+        res.json({
+          status: 'success',
+          message: 'Task payment updated',
+          data: updatedTask
+        });
+      } catch (error) {
+        console.error('Update task payment error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to update task payment'
         });
       }
     });

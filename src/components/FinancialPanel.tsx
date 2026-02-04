@@ -10,6 +10,7 @@ import {
   fetchAllCustomers,
   fetchDriverPerformance,
   recordAgentPayment,
+  updateTaskPayment as updateTaskPaymentApi,
   type TookanApiResponse,
   type CustomerWallet,
   type DailyCODEntry
@@ -171,7 +172,7 @@ export function FinancialPanel() {
   const [isLoadingMerchants, setIsLoadingMerchants] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
-  const [driverPerformance, setDriverPerformance] = useState<Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number }>>([]);
+  const [driverPerformance, setDriverPerformance] = useState<Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number; paid_total: number; balance_total: number }>>([]);
   const [isLoadingPerformance, setIsLoadingPerformance] = useState(false);
 
   // Driver daily COD for calendar view
@@ -188,6 +189,8 @@ export function FinancialPanel() {
     customer_name: string;
     cod_amount: number;
     balance_paid: number;
+    db_paid: number;  // Existing paid amount from database
+    db_balance: number;  // Existing balance from database
     status: 'PENDING' | 'COMPLETED';
   }
   const [taskModalOpen, setTaskModalOpen] = useState(false);
@@ -266,7 +269,7 @@ export function FinancialPanel() {
       setIsLoadingPerformance(true);
       try {
         // Fetch performance for each driver by their fleet_id
-        const performanceData: Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number }> = [];
+        const performanceData: Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number; paid_total: number; balance_total: number }> = [];
 
         // Batch requests - fetch all drivers at once by passing their IDs
         for (const driver of drivers) {
@@ -680,16 +683,22 @@ export function FinancialPanel() {
 
       if (error) throw error;
 
-      // Map to TaskPaymentEntry format
-      const taskEntries: TaskPaymentEntry[] = (tasks || []).map((t: any) => ({
-        job_id: String(t.job_id),
-        fleet_id: t.fleet_id,
-        fleet_name: t.fleet_name || driver.name || 'Unknown',
-        customer_name: t.customer_name || 'N/A',
-        cod_amount: parseFloat(t.cod_amount) || 0,
-        balance_paid: 0,
-        status: 'PENDING' as const
-      }));
+      // Map to TaskPaymentEntry format, including existing paid/balance from DB
+      const taskEntries: TaskPaymentEntry[] = (tasks || []).map((t: any) => {
+        const dbPaid = parseFloat(t.paid) || 0;
+        const dbBalance = parseFloat(t.balance) || 0;
+        return {
+          job_id: String(t.job_id),
+          fleet_id: t.fleet_id,
+          fleet_name: t.fleet_name || driver.name || 'Unknown',
+          customer_name: t.customer_name || 'N/A',
+          cod_amount: parseFloat(t.cod_amount) || 0,
+          balance_paid: dbPaid,  // Pre-populate with existing DB value
+          db_paid: dbPaid,
+          db_balance: dbBalance,
+          status: dbPaid >= (parseFloat(t.cod_amount) || 0) ? 'COMPLETED' as const : 'PENDING' as const
+        };
+      });
 
       setTasksList(taskEntries);
     } catch (err) {
@@ -765,19 +774,25 @@ export function FinancialPanel() {
       [taskModalDate]: allCompleted ? 'COMPLETED' : 'PENDING'
     }));
 
-    // Record payment if there's a total
-    if (totalPaid > 0) {
-      try {
-        const driverFleetId = Number(driver.fleet_id || driver.id);
-        const performance = driverPerformance.find(p => p.fleet_id === driverFleetId);
-        const codTotal = performance?.cod_total || 0;
+    // Save each task's paid value to database individually
+    try {
+      // Find tasks that have changed (balance_paid differs from db_paid)
+      const changedTasks = tasksList.filter(t => t.balance_paid !== t.db_paid);
 
-        await recordAgentPayment(driverFleetId, totalPaid, codTotal);
-        toast.success(`Payment of ${totalPaid.toFixed(2)} recorded successfully`);
-      } catch (err) {
-        console.error('Error recording payment:', err);
-        toast.error('Failed to record payment');
+      if (changedTasks.length > 0) {
+        // Update each changed task
+        const updatePromises = changedTasks.map(task =>
+          updateTaskPaymentApi(task.job_id, task.balance_paid)
+        );
+
+        await Promise.all(updatePromises);
+        toast.success(`${changedTasks.length} task payment(s) saved successfully`);
+      } else {
+        toast.info('No payment changes to save');
       }
+    } catch (err) {
+      console.error('Error saving task payments:', err);
+      toast.error('Failed to save some task payments');
     }
 
     setTaskModalOpen(false);
@@ -840,11 +855,9 @@ export function FinancialPanel() {
     // Get COD total from performance data (already filtered by date on backend via RPC)
     const codTotal = performance?.cod_total || 0;
 
-    // Get paid from driver balance (wallet balance or 0)
-    const paid = driver.balance || 0;
-
-    // Balance = COD Received - Paid
-    const balance = codTotal - paid;
+    // Get paid and balance from performance data (date-filtered from backend)
+    const paid = performance?.paid_total || 0;
+    const balance = performance?.balance_total || 0;
 
     return {
       manual: 0,

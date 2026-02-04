@@ -1735,7 +1735,7 @@ export async function fetchDriverPerformance(
   dateFrom?: string,
   dateTo?: string,
   status?: string
-): Promise<TookanApiResponse<Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number }>>> {
+): Promise<TookanApiResponse<Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number; paid_total: number; balance_total: number }>>> {
   try {
     const params = new URLSearchParams();
     params.append('search', search);
@@ -2116,6 +2116,50 @@ export async function fetchDriverDailyCOD(
       status: 'error',
       message: error instanceof Error ? error.message : 'Network error occurred',
       data: [],
+    };
+  }
+}
+
+/**
+ * Update a task's paid amount
+ */
+export async function updateTaskPayment(
+  jobId: string | number,
+  paid: number
+): Promise<TookanApiResponse<{
+  job_id: number;
+  cod_amount: number;
+  paid: number;
+  balance: number;
+}>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tasks/${jobId}/payment`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ paid }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== 'success') {
+      return {
+        status: 'error',
+        message: data.message || 'Failed to update task payment',
+        data: { job_id: Number(jobId), cod_amount: 0, paid: 0, balance: 0 },
+      };
+    }
+
+    return {
+      status: 'success',
+      message: data.message || 'Task payment updated successfully',
+      data: data.data,
+    };
+  } catch (error) {
+    console.error('Update task payment error:', error);
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Network error occurred',
+      data: { job_id: Number(jobId), cod_amount: 0, paid: 0, balance: 0 },
     };
   }
 }
