@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { DollarSign, Wallet, CheckCircle, X, Search, Calendar, Save, Check, XCircle, Eye, Download, Loader2, AlertCircle } from 'lucide-react';
 import {
   createFleetWalletTransaction,
@@ -173,6 +173,7 @@ export function FinancialPanel() {
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [driverPerformance, setDriverPerformance] = useState<Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number; paid_total: number; balance_total: number }>>([]);
+  const loadPerformanceRequestId = useRef(0);
   const [isLoadingPerformance, setIsLoadingPerformance] = useState(false);
 
   // Driver daily COD for calendar view
@@ -264,33 +265,54 @@ export function FinancialPanel() {
 
 
   // Load driver performance data (COD totals) when drivers or date range changes
+  // Load driver performance data (COD totals) when drivers or date range changes
   const loadDriverPerformance = useCallback(async () => {
     if (drivers.length === 0) return;
+
+    // Race condition handling: Increment request ID
+    loadPerformanceRequestId.current += 1;
+    const requestId = loadPerformanceRequestId.current;
 
     setIsLoadingPerformance(true);
     try {
       // Fetch performance for each driver by their fleet_id
       const performanceData: Array<{ fleet_id: number; name: string; total_orders: number; cod_total: number; order_fees: number; avg_delivery_time: number; paid_total: number; balance_total: number }> = [];
 
-      // Batch requests - fetch all drivers at once by passing their IDs
-      for (const driver of drivers) {
+      // Batch requests - using Promise.all for speed and to reduce race window
+      // Optimize: Parallel fetch instead of serial to speed up data load
+      const promises = drivers.map(driver => {
         const fleetId = driver.fleet_id || driver.id;
-        const response = await fetchDriverPerformance(
-          String(fleetId), // Search by fleet_id
+        return fetchDriverPerformance(
+          String(fleetId),
           dateFrom || undefined,
           dateTo || undefined
-        );
+        ).then(response => {
+          if (response.status === 'success' && response.data && response.data.length > 0) {
+            return response.data;
+          }
+          return [];
+        });
+      });
 
-        if (response.status === 'success' && response.data && response.data.length > 0) {
-          performanceData.push(...response.data);
-        }
+      const results = await Promise.all(promises);
+
+      // Check if this request is still the latest one
+      if (requestId !== loadPerformanceRequestId.current) {
+        console.log('Ignoring stale performance data load');
+        return;
       }
+
+      // Flatten results
+      results.forEach(data => performanceData.push(...data));
 
       setDriverPerformance(performanceData);
     } catch (error) {
       console.error('Error loading driver performance:', error);
     } finally {
-      setIsLoadingPerformance(false);
+      // Only clear loading state if this was the latest request
+      if (requestId === loadPerformanceRequestId.current) {
+        setIsLoadingPerformance(false);
+      }
     }
   }, [drivers, dateFrom, dateTo]);
 
