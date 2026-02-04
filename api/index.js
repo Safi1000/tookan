@@ -5278,7 +5278,8 @@ function getApp() {
     // Record agent payment
     app.post('/api/agents/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
       try {
-        const { fleet_id, payment_amount, cod_total } = req.body;
+        const { fleet_id, payment_amount } = req.body;
+        // Note: cod_total from frontend is IGNORED - we calculate lifetime COD from database
 
         if (!fleet_id || payment_amount === undefined) {
           return res.status(400).json({
@@ -5294,11 +5295,13 @@ function getApp() {
           });
         }
 
+        const numericFleetId = parseInt(fleet_id);
+
         // Get current agent data
         const { data: agent, error: fetchError } = await supabase
           .from('agents')
           .select('fleet_id, name, total_paid, balance')
-          .eq('fleet_id', parseInt(fleet_id))
+          .eq('fleet_id', numericFleetId)
           .single();
 
         if (fetchError || !agent) {
@@ -5308,15 +5311,31 @@ function getApp() {
           });
         }
 
+        // Calculate LIFETIME COD total from tasks table (completed deliveries only)
+        // This ensures balance is always correct regardless of UI date filters
+        const { data: codResult, error: codError } = await supabase
+          .from('tasks')
+          .select('cod_amount, pickup_address, delivery_address')
+          .eq('fleet_id', numericFleetId)
+          .eq('status', 2); // Completed status
+
+        if (codError) {
+          console.error('Error fetching COD total:', codError);
+          throw codError;
+        }
+
+        // Sum COD amounts, filtering out pickup==delivery tasks (returns/pickups)
+        const lifetimeCodTotal = (codResult || [])
+          .filter(task => task.pickup_address !== task.delivery_address && parseFloat(task.cod_amount || 0) > 0)
+          .reduce((sum, task) => sum + parseFloat(task.cod_amount || 0), 0);
+
+        console.log(`📊 Agent ${numericFleetId} lifetime COD: ${lifetimeCodTotal}`);
+
         const currentPaid = parseFloat(agent.total_paid || 0);
         const newTotalPaid = currentPaid + parseFloat(payment_amount);
 
-        let newBalance = parseFloat(agent.balance || 0);
-        if (cod_total !== null && cod_total !== undefined) {
-          newBalance = parseFloat(cod_total) - newTotalPaid;
-        } else {
-          newBalance = newBalance - parseFloat(payment_amount);
-        }
+        // Calculate balance using LIFETIME COD total
+        const newBalance = lifetimeCodTotal - newTotalPaid;
 
         const { data: updatedAgent, error: updateError } = await supabase
           .from('agents')
@@ -5325,7 +5344,7 @@ function getApp() {
             balance: newBalance,
             updated_at: new Date().toISOString()
           })
-          .eq('fleet_id', parseInt(fleet_id))
+          .eq('fleet_id', numericFleetId)
           .select()
           .single();
 
@@ -5339,7 +5358,8 @@ function getApp() {
             name: updatedAgent.name,
             payment_amount: parseFloat(payment_amount),
             total_paid: updatedAgent.total_paid,
-            balance: updatedAgent.balance
+            balance: updatedAgent.balance,
+            lifetime_cod_total: lifetimeCodTotal
           }
         });
       } catch (error) {
