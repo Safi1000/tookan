@@ -3854,7 +3854,7 @@ function getApp() {
           const { data, error } = await supabase.rpc('get_driver_statistics_v2', {
             p_fleet_id: driver.id,
             p_date_from: dateFrom || null,
-            p_date_to: dateTo || null,
+            p_date_to: dateTo ? dateTo + 'T23:59:59' : null,
             p_status: status ? parseInt(status, 10) : null
           });
 
