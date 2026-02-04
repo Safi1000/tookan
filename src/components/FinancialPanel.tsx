@@ -758,6 +758,80 @@ export function FinancialPanel() {
     })));
   };
 
+  // Save calendar card payment - updates all tasks for that day
+  const saveCalendarCardPayment = async (date: string, paymentAmount: number, status: 'PENDING' | 'COMPLETED') => {
+    if (!selectedDriver || !supabase) return;
+
+    const driver = drivers.find(d => d.id === selectedDriver);
+    if (!driver) return;
+
+    const fleetId = Number(driver.fleet_id || driver.id);
+
+    try {
+      // Fetch tasks for this date
+      const startOfDay = `${date}T00:00:00`;
+      const endOfDay = `${date}T23:59:59`;
+
+      const { data: tasks, error } = await supabase.rpc('get_driver_tasks', {
+        p_fleet_id: fleetId,
+        p_date_from: startOfDay,
+        p_date_to: endOfDay
+      });
+
+      if (error) throw error;
+
+      if (!tasks || tasks.length === 0) {
+        toast.info('No tasks found for this date');
+        return;
+      }
+
+      // Calculate total COD for this day
+      const totalCod = tasks.reduce((sum: number, t: any) => sum + (parseFloat(t.cod_amount) || 0), 0);
+
+      // If payment >= total COD, pay all tasks fully
+      const isFullPayment = paymentAmount >= totalCod;
+
+      // Distribute payment across tasks
+      let remainingPayment = paymentAmount;
+      const updatePromises = tasks.map((task: any) => {
+        const taskCod = parseFloat(task.cod_amount) || 0;
+        let taskPaid = 0;
+        let taskCodCollected = false;
+
+        if (isFullPayment) {
+          // Full payment - pay each task its full COD amount
+          taskPaid = taskCod;
+          taskCodCollected = true;
+        } else {
+          // Partial payment - distribute proportionally or pay sequentially
+          const payForThisTask = Math.min(remainingPayment, taskCod);
+          taskPaid = payForThisTask;
+          taskCodCollected = payForThisTask >= taskCod;
+          remainingPayment -= payForThisTask;
+        }
+
+        return updateTaskPaymentApi(String(task.job_id), taskPaid, taskCodCollected);
+      });
+
+      await Promise.all(updatePromises);
+
+      // Update local state
+      setDailyPayments(prev => ({
+        ...prev,
+        [date]: paymentAmount
+      }));
+
+      setDailyStatuses(prev => ({
+        ...prev,
+        [date]: isFullPayment ? 'COMPLETED' : status
+      }));
+
+      toast.success(`Payment of ${paymentAmount.toFixed(2)} distributed across ${tasks.length} tasks`);
+    } catch (err) {
+      console.error('Error saving calendar card payment:', err);
+      toast.error('Failed to save payment');
+    }
+  };
   // Save task payments
   const saveTaskPayments = async () => {
     if (!selectedDriver || !taskModalDate) return;
@@ -1346,7 +1420,7 @@ export function FinancialPanel() {
 
                               {/* Edit/Save Button */}
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   if (isEditing) {
                                     // Save logic - capture both payment and status
                                     const paidInput = document.getElementById(`paid-${item.date}`) as HTMLInputElement;
@@ -1354,14 +1428,8 @@ export function FinancialPanel() {
                                     const newPaid = parseFloat(paidInput?.value || '0');
                                     const newStatus = statusSelect?.value as 'PENDING' | 'COMPLETED';
 
-                                    setDailyPayments(prev => ({
-                                      ...prev,
-                                      [item.date]: Math.min(newPaid, item.codReceived)
-                                    }));
-                                    setDailyStatuses(prev => ({
-                                      ...prev,
-                                      [item.date]: newStatus || 'PENDING'
-                                    }));
+                                    // Call the new function that updates all tasks in DB
+                                    await saveCalendarCardPayment(item.date, Math.min(newPaid, item.codReceived), newStatus || 'PENDING');
                                     setEditingDate(null);
                                   } else {
                                     // Enter edit mode
