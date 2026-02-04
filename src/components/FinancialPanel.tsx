@@ -2417,10 +2417,10 @@ export function FinancialPanel() {
                               <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header hidden-mobile">Driver ID</th>
                               <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header hidden-mobile">Driver Name</th>
                               <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Customer</th>
-                              <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">COD</th>
+                              <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Received</th>
                               <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Paid</th>
                               <th style={{ textAlign: 'center', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap', display: 'none' }} className="table-header hidden-mobile">Status</th>
-                              <th style={{ textAlign: 'right', padding: '0.5rem', paddingRight: '15px', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Pending</th>
+                              <th style={{ textAlign: 'right', padding: '0.5rem', paddingRight: '15px', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Balance</th>
                             </tr>
                           </thead>
                           <tbody>
