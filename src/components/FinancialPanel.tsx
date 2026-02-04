@@ -340,6 +340,12 @@ export function FinancialPanel() {
       }
 
       // Fetch COD data from Supabase - try RPC first, fallback to direct query
+
+      // Temporary maps to store payment state
+      const newDailyPayments: Record<string, number> = {};
+      const newDailyStatuses: Record<string, 'PENDING' | 'COMPLETED'> = {};
+
+      // Fetch COD data from Supabase - try RPC first, fallback to direct query
       if (supabase) {
         let rpcSuccess = false;
 
@@ -357,7 +363,7 @@ export function FinancialPanel() {
           if (!error && rpcData && Array.isArray(rpcData) && rpcData.length > 0) {
             rpcSuccess = true;
             // Merge RPC results with our date range map
-            rpcData.forEach((row: { date: string | Date; cod_received: number; order_count: number }) => {
+            rpcData.forEach((row: { date: string | Date; cod_received: number; paid_amount: number; order_count: number; all_collected: boolean }) => {
               // Handle date format - RPC returns DATE type which might be string or Date object
               let dateStr = '';
               if (typeof row.date === 'string') {
@@ -366,11 +372,18 @@ export function FinancialPanel() {
                 dateStr = (row.date as Date).toISOString().split('T')[0];
               }
 
-              console.log('Processing RPC row:', row, 'dateStr:', dateStr);
-
               if (dateStr && daysMap[dateStr]) {
-                daysMap[dateStr].codReceived = parseFloat(String(row.cod_received)) || 0;
+                const codReceived = parseFloat(String(row.cod_received)) || 0;
+                daysMap[dateStr].codReceived = codReceived;
                 daysMap[dateStr].orderCount = Number(row.order_count) || 0;
+
+                // Populate payments and status
+                const paidAmount = parseFloat(String(row.paid_amount)) || 0;
+                newDailyPayments[dateStr] = paidAmount;
+
+                // If RPC says all collected, or simply if paid >= received (and received > 0)
+                const isCompleted = row.all_collected || (codReceived > 0 && paidAmount >= codReceived);
+                newDailyStatuses[dateStr] = isCompleted ? 'COMPLETED' : 'PENDING';
               }
             });
           } else if (error) {
@@ -390,8 +403,6 @@ export function FinancialPanel() {
               p_date_to: dateTo + 'T23:59:59'
             });
 
-            console.log('RPC fallback response:', { taskCount: tasks?.length, error });
-
             if (!error && tasks) {
               // Group tasks by date and sum COD amounts
               // Filter: pickup_address != delivery_address (real deliveries only)
@@ -401,11 +412,31 @@ export function FinancialPanel() {
                   task.cod_amount && parseFloat(task.cod_amount) > 0) {
                   const taskDate = task.creation_datetime.split('T')[0];
                   if (daysMap[taskDate]) {
-                    daysMap[taskDate].codReceived += parseFloat(task.cod_amount || 0);
+                    const amount = parseFloat(task.cod_amount || 0);
+                    daysMap[taskDate].codReceived += amount;
                     daysMap[taskDate].orderCount++;
+
+                    // Aggregate paid amount and check status
+                    const paid = parseFloat(task.paid || 0);
+                    newDailyPayments[taskDate] = (newDailyPayments[taskDate] || 0) + paid;
+
+                    // For fallback Status logic: check if this individual task is collected
+                    // We can't know global "all_collected" easily in this loop without tracking all tasks per day
+                    // So we'll refine it after the loop if needed, or just check paid >= codReceived
                   }
                 }
               });
+
+              // Post-process fallback status
+              Object.keys(daysMap).forEach(d => {
+                if (daysMap[d].codReceived > 0) {
+                  const paid = newDailyPayments[d] || 0;
+                  const received = daysMap[d].codReceived;
+                  // Simple fallback status determination
+                  newDailyStatuses[d] = paid >= received ? 'COMPLETED' : 'PENDING';
+                }
+              });
+
             } else if (error) {
               console.error('RPC fallback error:', error);
               toast.error('Failed to fetch daily COD data');
@@ -420,9 +451,10 @@ export function FinancialPanel() {
       const days = Object.values(daysMap).sort((a, b) => a.date.localeCompare(b.date));
       console.log('Final calendar days:', days);
       setDriverDailyCOD(days);
-      // Reset daily payments and statuses when date range changes
-      setDailyPayments({});
-      setDailyStatuses({});
+
+      // Set the aggregated payments and statuses
+      setDailyPayments(newDailyPayments);
+      setDailyStatuses(newDailyStatuses);
       setIsLoadingDailyCOD(false);
     };
 

@@ -9,7 +9,9 @@ CREATE OR REPLACE FUNCTION get_driver_daily_cod(
 RETURNS TABLE (
   date DATE,
   cod_received NUMERIC,
-  order_count INTEGER
+  paid_amount NUMERIC,
+  order_count INTEGER,
+  all_collected BOOLEAN
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -20,7 +22,9 @@ BEGIN
   SELECT 
     DATE(t.creation_datetime) as date,
     COALESCE(SUM(t.cod_amount), 0)::NUMERIC as cod_received,
-    COUNT(*)::INTEGER as order_count
+    COALESCE(SUM(t.paid), 0)::NUMERIC as paid_amount,
+    COUNT(*)::INTEGER as order_count,
+    BOOL_AND(COALESCE(t.cod_collected, false)) as all_collected
   FROM tasks t
   WHERE t.fleet_id = p_fleet_id
     AND t.status = 2  -- Completed deliveries only
