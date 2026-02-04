@@ -748,12 +748,38 @@ export function FinancialPanel() {
   };
 
   // Update a single task's payment
+  // Update a single task's payment
   const updateTaskPayment = (jobId: string, field: 'balance_paid' | 'status', value: number | 'PENDING' | 'COMPLETED') => {
-    setTasksList(prev => prev.map(task =>
-      task.job_id === jobId
-        ? { ...task, [field]: value }
-        : task
-    ));
+    setTasksList(prev => prev.map(task => {
+      if (task.job_id === jobId) {
+        let updates: any = { [field]: value };
+
+        // Handle balance_paid updates
+        if (field === 'balance_paid') {
+          const numValue = typeof value === 'number' ? value : 0;
+          let validPaid = numValue;
+
+          // Ensure it doesn't exceed COD amount
+          if (validPaid > task.cod_amount) {
+            validPaid = task.cod_amount;
+          } else if (validPaid < 0) {
+            validPaid = 0;
+          }
+
+          updates.balance_paid = validPaid;
+
+          // Auto-sync status based on amount
+          // If Paid != COD -> Pending
+          // If Paid == COD -> Completed
+          const isFullyPaid = Math.abs(validPaid - task.cod_amount) < 0.01;
+          updates.cod_collected = isFullyPaid;
+          updates.status = isFullyPaid ? 'COMPLETED' : 'PENDING';
+        }
+
+        return { ...task, ...updates };
+      }
+      return task;
+    }));
   };
 
   // Toggle task payment (Complete <-> Pending)
