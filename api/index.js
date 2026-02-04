@@ -3850,6 +3850,7 @@ function getApp() {
 
         // Use RPC function for optimized stats calculation
         const results = await Promise.all(driverIds.map(async (driver) => {
+          // Get order stats from get_driver_statistics_v2
           const { data, error } = await supabase.rpc('get_driver_statistics_v2', {
             p_fleet_id: driver.id,
             p_date_from: dateFrom || null,
@@ -3874,33 +3875,19 @@ function getApp() {
           console.log(`🔍 RPC response for driver ${driver.id}:`, JSON.stringify(data));
           const stats = data && data[0] ? data[0] : { total_orders: 0, cod_total: 0, order_fees: 0, avg_delivery_time_minutes: 0 };
 
-          // Also fetch paid and balance totals from tasks table (with date filters)
-          let taskQuery = supabase
-            .from('tasks')
-            .select('paid, balance, pickup_address, delivery_address, cod_amount')
-            .eq('fleet_id', driver.id)
-            .eq('status', 2);
-
-          if (dateFrom) {
-            taskQuery = taskQuery.gte('creation_datetime', dateFrom);
-          }
-          if (dateTo) {
-            taskQuery = taskQuery.lte('creation_datetime', dateTo + 'T23:59:59');
-          }
-
-          const { data: taskData, error: taskError } = await taskQuery;
+          // Get payment stats using the new RPC function
+          const { data: paymentData, error: paymentError } = await supabase.rpc('get_driver_payment_stats', {
+            p_fleet_id: driver.id,
+            p_date_from: dateFrom ? dateFrom : null,
+            p_date_to: dateTo ? dateTo + 'T23:59:59' : null
+          });
 
           let paidTotal = 0;
           let balanceTotal = 0;
 
-          if (!taskError && taskData) {
-            // Filter out pickup==delivery tasks and sum paid/balance
-            taskData
-              .filter(task => task.pickup_address !== task.delivery_address && parseFloat(task.cod_amount || 0) > 0)
-              .forEach(task => {
-                paidTotal += parseFloat(task.paid || 0);
-                balanceTotal += parseFloat(task.balance || 0);
-              });
+          if (!paymentError && paymentData && paymentData[0]) {
+            paidTotal = parseFloat(paymentData[0].paid_total || 0);
+            balanceTotal = parseFloat(paymentData[0].balance_total || 0);
           }
 
           return {
