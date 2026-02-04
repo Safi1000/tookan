@@ -5559,11 +5559,11 @@ function getApp() {
       }
     });
 
-    // Update task payment (paid amount)
+    // Update task payment (paid amount and cod_collected status)
     app.put('/api/tasks/:jobId/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
       try {
         const { jobId } = req.params;
-        const { paid } = req.body;
+        const { paid, cod_collected } = req.body;
 
         if (paid === undefined) {
           return res.status(400).json({
@@ -5582,15 +5582,23 @@ function getApp() {
         const numericJobId = parseInt(jobId);
         const numericPaid = parseFloat(paid);
 
-        // Update the task's paid column - balance is auto-calculated by Supabase
+        // Build update object with paid and optionally cod_collected
+        const updateData = {
+          paid: numericPaid,
+          updated_at: new Date().toISOString()
+        };
+
+        // Only include cod_collected if explicitly provided
+        if (cod_collected !== undefined) {
+          updateData.cod_collected = Boolean(cod_collected);
+        }
+
+        // Update the task's paid column and cod_collected - balance is auto-calculated by Supabase
         const { data: updatedTask, error } = await supabase
           .from('tasks')
-          .update({
-            paid: numericPaid,
-            updated_at: new Date().toISOString()
-          })
+          .update(updateData)
           .eq('job_id', numericJobId)
-          .select('job_id, cod_amount, paid, balance')
+          .select('job_id, cod_amount, paid, balance, cod_collected')
           .single();
 
         if (error) {
@@ -5605,7 +5613,7 @@ function getApp() {
           });
         }
 
-        console.log(`💰 Updated task ${numericJobId} payment: paid=${numericPaid}, balance=${updatedTask.balance}`);
+        console.log(`💰 Updated task ${numericJobId}: paid=${numericPaid}, balance=${updatedTask.balance}, cod_collected=${updatedTask.cod_collected}`);
 
         res.json({
           status: 'success',

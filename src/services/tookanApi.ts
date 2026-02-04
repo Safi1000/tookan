@@ -2121,22 +2121,24 @@ export async function fetchDriverDailyCOD(
 }
 
 /**
- * Update a task's paid amount
+ * Update a task's paid amount and cod_collected status
  */
 export async function updateTaskPayment(
   jobId: string | number,
-  paid: number
+  paid: number,
+  cod_collected?: boolean
 ): Promise<TookanApiResponse<{
   job_id: number;
   cod_amount: number;
   paid: number;
   balance: number;
+  cod_collected: boolean;
 }>> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/tasks/${jobId}/payment`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ paid }),
+      body: JSON.stringify({ paid, cod_collected }),
     });
 
     const data = await response.json();

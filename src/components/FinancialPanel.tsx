@@ -191,6 +191,7 @@ export function FinancialPanel() {
     balance_paid: number;
     db_paid: number;  // Existing paid amount from database
     db_balance: number;  // Existing balance from database
+    cod_collected: boolean;  // true = completed, false = pending
     status: 'PENDING' | 'COMPLETED';
   }
   const [taskModalOpen, setTaskModalOpen] = useState(false);
@@ -683,10 +684,11 @@ export function FinancialPanel() {
 
       if (error) throw error;
 
-      // Map to TaskPaymentEntry format, including existing paid/balance from DB
+      // Map to TaskPaymentEntry format, including existing paid/balance/cod_collected from DB
       const taskEntries: TaskPaymentEntry[] = (tasks || []).map((t: any) => {
         const dbPaid = parseFloat(t.paid) || 0;
         const dbBalance = parseFloat(t.balance) || 0;
+        const codCollected = Boolean(t.cod_collected);
         return {
           job_id: String(t.job_id),
           fleet_id: t.fleet_id,
@@ -696,7 +698,8 @@ export function FinancialPanel() {
           balance_paid: dbPaid,  // Pre-populate with existing DB value
           db_paid: dbPaid,
           db_balance: dbBalance,
-          status: dbPaid >= (parseFloat(t.cod_amount) || 0) ? 'COMPLETED' as const : 'PENDING' as const
+          cod_collected: codCollected,
+          status: codCollected ? 'COMPLETED' as const : 'PENDING' as const
         };
       });
 
@@ -727,6 +730,7 @@ export function FinancialPanel() {
         return {
           ...task,
           balance_paid: isComplete ? 0 : task.cod_amount,
+          cod_collected: !isComplete,
           status: isComplete ? 'PENDING' : 'COMPLETED'
         };
       }
@@ -739,6 +743,7 @@ export function FinancialPanel() {
     setTasksList(prev => prev.map(task => ({
       ...task,
       balance_paid: task.cod_amount,
+      cod_collected: true,
       status: 'COMPLETED' as const
     })));
   };
@@ -748,6 +753,7 @@ export function FinancialPanel() {
     setTasksList(prev => prev.map(task => ({
       ...task,
       balance_paid: 0,
+      cod_collected: false,
       status: 'PENDING' as const
     })));
   };
@@ -760,7 +766,8 @@ export function FinancialPanel() {
     if (!driver) return;
 
     const totalPaid = tasksList.reduce((sum, t) => sum + t.balance_paid, 0);
-    const allCompleted = tasksList.every(t => t.status === 'COMPLETED');
+    const totalCod = tasksList.reduce((sum, t) => sum + t.cod_amount, 0);
+    const allCompleted = tasksList.every(t => t.cod_collected);
 
     // Update daily payments state
     setDailyPayments(prev => ({
@@ -768,27 +775,30 @@ export function FinancialPanel() {
       [taskModalDate]: totalPaid
     }));
 
-    // Update daily status
+    // Update daily status - use cod_collected to determine if day is completed
     setDailyStatuses(prev => ({
       ...prev,
       [taskModalDate]: allCompleted ? 'COMPLETED' : 'PENDING'
     }));
 
-    // Save each task's paid value to database individually
+    // Save each task's paid value and cod_collected to database individually
     try {
-      // Find tasks that have changed (balance_paid differs from db_paid)
-      const changedTasks = tasksList.filter(t => t.balance_paid !== t.db_paid);
+      // Find tasks that have changed payment or status
+      const changedTasks = tasksList.filter(t =>
+        t.balance_paid !== t.db_paid ||
+        t.cod_collected !== Boolean(t.status === 'COMPLETED' && t.db_paid >= t.cod_amount)
+      );
 
       if (changedTasks.length > 0) {
-        // Update each changed task
+        // Update each changed task with paid and cod_collected
         const updatePromises = changedTasks.map(task =>
-          updateTaskPaymentApi(task.job_id, task.balance_paid)
+          updateTaskPaymentApi(task.job_id, task.balance_paid, task.cod_collected)
         );
 
         await Promise.all(updatePromises);
-        toast.success(`${changedTasks.length} task payment(s) saved successfully`);
+        toast.success(`${changedTasks.length} task(s) saved successfully`);
       } else {
-        toast.info('No payment changes to save');
+        toast.info('No changes to save');
       }
     } catch (err) {
       console.error('Error saving task payments:', err);
@@ -2419,7 +2429,7 @@ export function FinancialPanel() {
                               <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Customer</th>
                               <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Received</th>
                               <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Paid</th>
-                              <th style={{ textAlign: 'center', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap', display: 'none' }} className="table-header hidden-mobile">Status</th>
+                              <th style={{ textAlign: 'center', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Status</th>
                               <th style={{ textAlign: 'right', padding: '0.5rem', paddingRight: '15px', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Balance</th>
                             </tr>
                           </thead>
@@ -2481,18 +2491,31 @@ export function FinancialPanel() {
                                       }} className="input-paid no-spinner border border-input-border dark:border-white"
                                     />
                                   </td>
-                                  <td style={{ padding: '0.5rem', textAlign: 'center', display: 'none' }} className="table-cell hidden-mobile">
+                                  <td style={{ padding: '0.5rem', textAlign: 'center' }} className="table-cell">
                                     <select
-                                      value={task.status}
-                                      onChange={(e) => updateTaskPayment(task.job_id, 'status', e.target.value as 'PENDING' | 'COMPLETED')}
+                                      value={task.cod_collected ? 'COMPLETED' : 'PENDING'}
+                                      onChange={(e) => {
+                                        const isCompleted = e.target.value === 'COMPLETED';
+                                        setTasksList(prev => prev.map(t =>
+                                          t.job_id === task.job_id
+                                            ? {
+                                              ...t,
+                                              cod_collected: isCompleted,
+                                              status: isCompleted ? 'COMPLETED' : 'PENDING',
+                                              balance_paid: isCompleted ? t.cod_amount : t.balance_paid
+                                            }
+                                            : t
+                                        ));
+                                      }}
                                       style={{
-                                        backgroundColor: 'var(--input-bg)',
-                                        border: '1px solid var(--input-border)',
-                                        borderRadius: '0.25rem',
-                                        padding: '0.25rem 0.375rem',
-                                        color: 'var(--heading)',
-                                        fontWeight: 500,
-                                        cursor: 'pointer'
+                                        backgroundColor: task.cod_collected ? '#dcfce7' : '#fef3c7',
+                                        border: `1px solid ${task.cod_collected ? '#22c55e' : '#f59e0b'}`,
+                                        borderRadius: '0.375rem',
+                                        padding: '0.375rem 0.5rem',
+                                        color: task.cod_collected ? '#16a34a' : '#d97706',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        fontSize: '0.75rem'
                                       }} className="select-status"
                                     >
                                       <option value="PENDING">Pending</option>
