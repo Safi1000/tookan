@@ -788,26 +788,24 @@ export function FinancialPanel() {
       // Calculate total COD for this day
       const totalCod = tasks.reduce((sum: number, t: any) => sum + (parseFloat(t.cod_amount) || 0), 0);
 
-      // If payment >= total COD, pay all tasks fully
-      const isFullPayment = paymentAmount >= totalCod;
+      // Strict All-or-Nothing logic:
+      // If status is COMPLETED, we pay everything.
+      // If status is PENDING, we pay 0 (reset).
+      const shouldPayAll = status === 'COMPLETED';
 
-      // Distribute payment across tasks
-      let remainingPayment = paymentAmount;
       const updatePromises = tasks.map((task: any) => {
         const taskCod = parseFloat(task.cod_amount) || 0;
         let taskPaid = 0;
         let taskCodCollected = false;
 
-        if (isFullPayment) {
-          // Full payment - pay each task its full COD amount
+        if (shouldPayAll) {
+          // Full payment
           taskPaid = taskCod;
           taskCodCollected = true;
         } else {
-          // Partial payment - distribute proportionally or pay sequentially
-          const payForThisTask = Math.min(remainingPayment, taskCod);
-          taskPaid = payForThisTask;
-          taskCodCollected = payForThisTask >= taskCod;
-          remainingPayment -= payForThisTask;
+          // Reset to Pending (0 paid)
+          taskPaid = 0;
+          taskCodCollected = false;
         }
 
         return updateTaskPaymentApi(String(task.job_id), taskPaid, taskCodCollected);
@@ -818,15 +816,18 @@ export function FinancialPanel() {
       // Update local state
       setDailyPayments(prev => ({
         ...prev,
-        [date]: paymentAmount
+        [date]: shouldPayAll ? totalCod : 0
       }));
 
       setDailyStatuses(prev => ({
         ...prev,
-        [date]: isFullPayment ? 'COMPLETED' : status
+        [date]: shouldPayAll ? 'COMPLETED' : 'PENDING'
       }));
 
-      toast.success(`Payment of ${paymentAmount.toFixed(2)} distributed across ${tasks.length} tasks`);
+      toast.success(shouldPayAll
+        ? `All ${tasks.length} tasks marked as Paid`
+        : `All ${tasks.length} tasks marked as Pending`
+      );
     } catch (err) {
       console.error('Error saving calendar card payment:', err);
       toast.error('Failed to save payment');
@@ -1366,17 +1367,16 @@ export function FinancialPanel() {
                               <div>
                                 <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Balance Paid</p>
                                 {isEditing ? (
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    max={item.codReceived}
-                                    defaultValue={paidAmount || ''}
-                                    placeholder="0.00"
-                                    id={`paid-${item.date}`}
-                                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1 text-green-600 dark:text-green-400 text-sm focus:outline-none focus:border-[#C1EEFA] font-medium"
-                                    autoFocus
-                                  />
+                                  <div className="flex items-center gap-2">
+                                    <p className={`font-semibold ${(dailyStatuses[item.date] === 'COMPLETED')
+                                      ? 'text-[#16a34a] dark:text-[#22c55e]'
+                                      : 'text-muted-light dark:text-[#99BFD1]'
+                                      }`}>
+                                      {/* Show what will be paid based on status */}
+                                      {currency} {(dailyStatuses[item.date] === 'COMPLETED' ? item.codReceived : 0).toFixed(2)}
+                                    </p>
+                                    <input type="hidden" id={`paid-${item.date}`} value={dailyStatuses[item.date] === 'COMPLETED' ? item.codReceived : 0} />
+                                  </div>
                                 ) : (
                                   <div>
                                     <p className="text-heading dark:text-[#C1EEFA] font-semibold">{currency} {paidAmount.toFixed(2)}</p>
@@ -1390,7 +1390,13 @@ export function FinancialPanel() {
                                   <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Status</p>
                                   <select
                                     id={`status-${item.date}`}
-                                    defaultValue={dailyStatuses[item.date] || 'PENDING'}
+                                    value={dailyStatuses[item.date] || ((paidAmount >= item.codReceived && paidAmount > 0) ? 'COMPLETED' : 'PENDING')}
+                                    onChange={(e) => {
+                                      setDailyStatuses(prev => ({
+                                        ...prev,
+                                        [item.date]: e.target.value as 'PENDING' | 'COMPLETED'
+                                      }));
+                                    }}
                                     className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1.5 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-[#C1EEFA] font-medium cursor-pointer"
                                   >
                                     <option value="PENDING">Pending</option>

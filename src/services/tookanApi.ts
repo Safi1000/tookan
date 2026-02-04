@@ -2147,7 +2147,7 @@ export async function updateTaskPayment(
       return {
         status: 'error',
         message: data.message || 'Failed to update task payment',
-        data: { job_id: Number(jobId), cod_amount: 0, paid: 0, balance: 0 },
+        data: { job_id: Number(jobId), cod_amount: 0, paid: 0, balance: 0, cod_collected: false },
       };
     }
 
@@ -2161,7 +2161,7 @@ export async function updateTaskPayment(
     return {
       status: 'error',
       message: error instanceof Error ? error.message : 'Network error occurred',
-      data: { job_id: Number(jobId), cod_amount: 0, paid: 0, balance: 0 },
+      data: { job_id: Number(jobId), cod_amount: 0, paid: 0, balance: 0, cod_collected: false },
     };
   }
 }

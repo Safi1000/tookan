@@ -20,7 +20,7 @@ RETURNS TABLE (
   cod_collected BOOLEAN,
   pickup_address TEXT,
   delivery_address TEXT,
-  creation_datetime TIMESTAMP
+  creation_datetime TIMESTAMP 
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
