@@ -1,7 +1,11 @@
 -- RPC function to get daily COD totals for a specific driver
 -- This function aggregates COD amounts by date for completed deliveries
 
+-- Drop the function first because we are changing the return type
+DROP FUNCTION IF EXISTS get_driver_daily_cod(INTEGER, DATE, DATE);
+
 CREATE OR REPLACE FUNCTION get_driver_daily_cod(
+
   p_fleet_id INTEGER,
   p_date_from DATE DEFAULT NULL,
   p_date_to DATE DEFAULT NULL
