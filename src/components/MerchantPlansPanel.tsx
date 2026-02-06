@@ -613,7 +613,7 @@ export function MerchantPlansPanel() {
             <div>
               <p className="text-muted-light dark:text-[#99BFD1] text-sm">Unassigned Merchants</p>
               <p className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">
-                {totalCustomers}
+                {Math.max(0, totalCustomers - totalAssigned)}
               </p>
             </div>
           </div>
