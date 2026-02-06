@@ -358,6 +358,46 @@ function getApp() {
       }
     });
 
+    // GET Customers from Supabase (for Merchant Linking)
+    app.get('/api/tookan/customers', authenticate, async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({
+            status: 'error',
+            message: 'Supabase not configured',
+            data: { customers: [] }
+          });
+        }
+
+        const { data: customers, error } = await supabase
+          .from('customers')
+          .select('id, vendor_id, customer_name, customer_phone, plan_id')
+          .order('customer_name', { ascending: true });
+
+        if (error) {
+          console.error('Fetch customers error:', error);
+          return res.status(500).json({
+            status: 'error',
+            message: error.message || 'Failed to fetch customers',
+            data: { customers: [] }
+          });
+        }
+
+        res.json({
+          status: 'success',
+          message: 'Customers fetched successfully',
+          data: { customers: customers || [] }
+        });
+      } catch (error) {
+        console.error('Get customers error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to get customers',
+          data: { customers: [] }
+        });
+      }
+    });
+
     // Tookan Webhook endpoint
     app.post('/api/tookan/webhook', async (req, res) => {
       try {
