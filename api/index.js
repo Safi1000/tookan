@@ -371,7 +371,7 @@ function getApp() {
 
         const { data: customers, error } = await supabase
           .from('customers')
-          .select('id, vendor_id, customer_name, customer_phone, plan_id')
+          .select('vendor_id, customer_name, customer_phone, plan_id')
           .order('customer_name', { ascending: true });
 
         if (error) {
@@ -419,7 +419,7 @@ function getApp() {
 
         const { data: customer, error } = await supabase
           .from('customers')
-          .select('id, vendor_id, customer_name, customer_phone, plan_id')
+          .select('vendor_id, customer_name, customer_phone, plan_id')
           .eq('vendor_id', vendor_id.trim())
           .single();
 
@@ -445,9 +445,9 @@ function getApp() {
     });
 
     // Link Customer to Plan (update plan_id)
-    app.put('/api/customers/:id/plan', authenticate, async (req, res) => {
+    app.put('/api/customers/:vendor_id/plan', authenticate, async (req, res) => {
       try {
-        const { id } = req.params;
+        const { vendor_id } = req.params;
         const { plan_id } = req.body;
 
         if (!isSupabaseConfigured || !supabase) {
@@ -460,7 +460,7 @@ function getApp() {
         const { data: customer, error } = await supabase
           .from('customers')
           .update({ plan_id: plan_id || null })
-          .eq('id', id)
+          .eq('vendor_id', vendor_id)
           .select()
           .single();
 

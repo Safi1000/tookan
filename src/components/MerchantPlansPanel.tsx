@@ -84,7 +84,7 @@ export function MerchantPlansPanel() {
         if (response.ok && data.status === 'success' && data.data?.customer) {
           const c = data.data.customer;
           setSearchedCustomer({
-            id: c.id?.toString() || '',
+            id: c.vendor_id?.toString() || '',
             vendorId: c.vendor_id?.toString() || '',
             name: c.customer_name || 'Unknown Merchant',
             phone: c.customer_phone || '',
@@ -346,7 +346,7 @@ export function MerchantPlansPanel() {
     try {
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`${API_BASE_URL}/api/customers/${searchedCustomer.id}/plan`, {
+      const response = await fetch(`${API_BASE_URL}/api/customers/${searchedCustomer.vendorId}/plan`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -360,7 +360,7 @@ export function MerchantPlansPanel() {
         toast.success('Plan linked to merchant successfully');
         // Update local state
         setMerchants(merchants.map(m =>
-          m.id === searchedCustomer.id
+          m.vendorId === searchedCustomer.vendorId
             ? { ...m, planId: selectedPlanForLink }
             : m
         ));
