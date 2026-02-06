@@ -425,8 +425,7 @@ export function MerchantPlansPanel() {
                 <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Plan Name</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchants Assigned</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Fee Rule</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Created By</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Last Updated</th>
+
                 <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Actions</th>
               </tr>
             </thead>
@@ -453,8 +452,7 @@ export function MerchantPlansPanel() {
                       <span className="text-heading dark:text-[#C1EEFA] text-sm">{getFeeRuleSummary(plan)}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{plan.createdBy}</td>
-                  <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{plan.lastUpdated}</td>
+
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <button
