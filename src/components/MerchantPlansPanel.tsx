@@ -13,7 +13,8 @@ import {
   Percent,
   UserPlus,
   UserMinus,
-  Link
+  Link,
+  Search
 } from 'lucide-react';
 import { fetchAllCustomers, fetchReportsSummary } from '../services/tookanApi';
 import { toast } from 'sonner';
@@ -51,9 +52,12 @@ export function MerchantPlansPanel() {
   const [totalCustomers, setTotalCustomers] = useState(0);
 
   // Quick Link State
-  const [selectedCustomerForLink, setSelectedCustomerForLink] = useState<string>('');
+  const [searchVendorId, setSearchVendorId] = useState<string>('');
   const [selectedPlanForLink, setSelectedPlanForLink] = useState<string>('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Computed: Found Merchant
+  const foundMerchant = searchVendorId ? merchants.find(m => m.id === searchVendorId.trim()) : null;
 
   // Fetch merchant plans on mount
   useEffect(() => {
@@ -286,14 +290,14 @@ export function MerchantPlansPanel() {
 
   // Handle Quick Link
   const handleQuickLink = () => {
-    if (!selectedCustomerForLink || !selectedPlanForLink) {
-      toast.error('Please select both a merchant and a plan');
+    if (!foundMerchant || !selectedPlanForLink) {
+      toast.error('Please find a merchant and select a plan');
       return;
     }
 
     // Optimistic update as per requirement (Frontend only)
     setMerchants(merchants.map(m =>
-      m.id === selectedCustomerForLink
+      m.id === foundMerchant.id
         ? { ...m, planId: selectedPlanForLink }
         : m
     ));
@@ -301,7 +305,8 @@ export function MerchantPlansPanel() {
     toast.success('Plan linked to merchant successfully');
 
     // Reset selection
-    setSelectedCustomerForLink('');
+    // Reset selection
+    setSearchVendorId('');
     setSelectedPlanForLink('');
   };
 
@@ -529,48 +534,51 @@ export function MerchantPlansPanel() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
           {/* Merchant Dropdown */}
           <div className="flex-1">
-            <FormControl fullWidth variant="outlined" size="small" className="bg-input-bg dark:bg-[#223560] rounded-xl">
-              <InputLabel id="merchant-select-label" className="text-heading dark:text-[#C1EEFA]" style={{ color: 'white' }}>Select Merchant</InputLabel>
-              <Select
-                labelId="merchant-select-label"
-                value={selectedCustomerForLink}
-                label="Select Merchant"
-                onChange={(e) => setSelectedCustomerForLink(e.target.value)}
-                className="text-heading dark:text-[#C1EEFA]"
-                style={{ color: 'white' }}
-                inputProps={{
-                  className: "text-heading dark:text-[#C1EEFA]",
-                  style: { color: 'white' }
-                }}
-                sx={{
-                  '.MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
-                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
-                  '.MuiSvgIcon-root': { color: 'var(--muted-foreground)' }
-                }}
-                MenuProps={{
-                  PaperProps: {
-                    className: "bg-surface dark:bg-[#1A2C53] text-heading dark:text-[#C1EEFA] border border-border dark:border-[#2A3C63]",
-                    sx: {
-                      '& .MuiMenuItem-root': {
-                        '&:hover': { backgroundColor: 'rgba(var(--primary-rgb), 0.1)' },
-                        '&.Mui-selected': { backgroundColor: 'rgba(var(--primary-rgb), 0.2)' },
-                        '&.Mui-selected:hover': { backgroundColor: 'rgba(var(--primary-rgb), 0.3)' }
-                      }
-                    }
-                  }
-                }}
-              >
-                <MenuItem value="">
-                  <em>None</em>
-                </MenuItem>
-                {merchants.sort((a, b) => a.name.localeCompare(b.name)).map(merchant => (
-                  <MenuItem key={merchant.id} value={merchant.id}>
-                    {merchant.name} ({merchant.phone})
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            {/* Merchant Search - Vendor ID Input */}
+            <div className="flex-1 space-y-3">
+              <div className="relative">
+                <InputLabel className="text-heading dark:text-[#C1EEFA] mb-1.5" style={{ color: 'white' }}>Search by Vendor ID</InputLabel>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchVendorId}
+                    onChange={(e) => setSearchVendorId(e.target.value)}
+                    placeholder="Enter Vendor ID (e.g., 12345)"
+                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 pl-11 text-base text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all"
+                  />
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2">
+                    <Search className="w-5 h-5 text-muted-light dark:text-[#99BFD1]" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Exact Match Details Card */}
+              {foundMerchant ? (
+                <div className="bg-[#10B981]/10 dark:bg-[#10B981]/20 border border-[#10B981]/30 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#10B981]/20 flex items-center justify-center shrink-0">
+                      <CheckCircle className="w-4 h-4 text-[#10B981]" />
+                    </div>
+                    <div>
+                      <p className="text-heading dark:text-[#C1EEFA] text-sm font-bold leading-tight">{foundMerchant.name}</p>
+                      <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-0.5">{foundMerchant.phone}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : searchVendorId.trim() !== '' && (
+                <div className="bg-destructive/10 dark:bg-destructive/20 border border-destructive/30 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-destructive/20 flex items-center justify-center shrink-0">
+                      <XCircle className="w-4 h-4 text-destructive" />
+                    </div>
+                    <div>
+                      <p className="text-destructive font-semibold text-sm">No merchant found</p>
+                      <p className="text-destructive/80 text-xs mt-0.5">Check the Vendor ID</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Plan Dropdown */}
@@ -622,7 +630,7 @@ export function MerchantPlansPanel() {
           {/* Link Button */}
           <button
             onClick={handleQuickLink}
-            disabled={!selectedCustomerForLink || !selectedPlanForLink}
+            disabled={!foundMerchant || !selectedPlanForLink}
             className="flex items-center justify-center gap-2 px-6 py-2.5 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 disabled:hover:scale-100 h-[40px]"
           >
             <Link className="w-4 h-4" />
@@ -673,16 +681,7 @@ export function MerchantPlansPanel() {
 
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedPlanForAssign(plan);
-                          setShowAssignModal(true);
-                        }}
-                        className="p-2 hover:bg-primary/10 dark:hover:bg-[#C1EEFA]/10 rounded-lg transition-colors"
-                        title="Assign Merchants"
-                      >
-                        <UserPlus className="w-4 h-4 text-primary dark:text-[#C1EEFA]" />
-                      </button>
+
                       <button
                         onClick={() => handleEditPlan(plan)}
                         className="p-2 hover:bg-[#3B82F6]/10 rounded-lg transition-colors"
