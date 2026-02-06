@@ -51,6 +51,8 @@ export function MerchantPlansPanel() {
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [selectedPlanForAssign, setSelectedPlanForAssign] = useState<Plan | null>(null);
   const [totalCustomers, setTotalCustomers] = useState(0);
+  const [planCounts, setPlanCounts] = useState<Record<string, number>>({});
+  const [totalAssigned, setTotalAssigned] = useState(0);
 
   // Quick Link State
   const [searchVendorId, setSearchVendorId] = useState<string>('');
@@ -147,6 +149,32 @@ export function MerchantPlansPanel() {
       }
     };
     loadPlans();
+  }, [refreshTrigger]);
+
+  // Fetch plan customer counts
+  useEffect(() => {
+    const loadCounts = async () => {
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch(`${API_BASE_URL}/api/plans/customer-counts`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+
+        const data = await response.json();
+        if (response.ok && data.status === 'success') {
+          setPlanCounts(data.data.counts || {});
+          setTotalAssigned(data.data.totalAssigned || 0);
+        }
+      } catch (error) {
+        console.error('Error loading plan counts:', error);
+      }
+    };
+    loadCounts();
   }, [refreshTrigger]);
 
   // Fetch merchants on mount
@@ -368,6 +396,7 @@ export function MerchantPlansPanel() {
         setSearchVendorId('');
         setSelectedPlanForLink('');
         setSearchedCustomer(null);
+        setRefreshTrigger(prev => prev + 1);
       } else {
         toast.error(data.message || 'Failed to link plan');
       }
@@ -571,7 +600,7 @@ export function MerchantPlansPanel() {
             <div>
               <p className="text-muted-light dark:text-[#99BFD1] text-sm">Assigned Merchants</p>
               <p className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">
-                {(merchants || []).filter(m => m.planId).length}
+                {totalAssigned}
               </p>
             </div>
           </div>
@@ -628,14 +657,17 @@ export function MerchantPlansPanel() {
                   </div>
                 </div>
               ) : searchedCustomer ? (
-                <div className="bg-[#10B981]/10 dark:bg-[#10B981]/20 border border-[#10B981]/30 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
+                <div className={`${searchedCustomer.planId ? 'bg-[#F59E0B]/10 dark:bg-[#F59E0B]/20 border-[#F59E0B]/30' : 'bg-[#10B981]/10 dark:bg-[#10B981]/20 border-[#10B981]/30'} border rounded-xl p-3 animate-in fade-in slide-in-from-top-2`}>
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#10B981]/20 flex items-center justify-center shrink-0">
-                      <CheckCircle className="w-4 h-4 text-[#10B981]" />
+                    <div className={`w-8 h-8 rounded-full ${searchedCustomer.planId ? 'bg-[#F59E0B]/20' : 'bg-[#10B981]/20'} flex items-center justify-center shrink-0`}>
+                      <CheckCircle className={`w-4 h-4 ${searchedCustomer.planId ? 'text-[#F59E0B]' : 'text-[#10B981]'}`} />
                     </div>
                     <div>
                       <p className="text-heading dark:text-[#C1EEFA] text-sm font-bold leading-tight">{searchedCustomer.name}</p>
                       <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-0.5">{searchedCustomer.phone}</p>
+                      {searchedCustomer.planId && (
+                        <p className="text-[#F59E0B] text-xs mt-1 font-medium">⚠️ Already linked to a plan (will be reassigned)</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -741,7 +773,7 @@ export function MerchantPlansPanel() {
                   <td className="px-6 py-4">
                     <span className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] rounded-lg text-sm font-medium">
                       <Users className="w-4 h-4" />
-                      {(merchants || []).filter(m => m.planId === plan.id).length}
+                      {planCounts[plan.id] || 0}
                     </span>
                   </td>
                   <td className="px-6 py-4">

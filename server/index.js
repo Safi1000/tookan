@@ -102,6 +102,54 @@ app.delete('/api/merchant-plans/:id', authenticate, async (req, res) => {
   }
 });
 
+// Get customer counts per plan
+app.get('/api/plans/customer-counts', authenticate, async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.json({
+        status: 'success',
+        data: { counts: {}, totalAssigned: 0 }
+      });
+    }
+
+    // Get all customers with plan_id
+    const { data: customers, error } = await supabase
+      .from('customers')
+      .select('plan_id')
+      .not('plan_id', 'is', null);
+
+    if (error) {
+      console.error('Get customer counts error:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: error.message || 'Failed to get customer counts'
+      });
+    }
+
+    // Count customers per plan
+    const counts = {};
+    (customers || []).forEach(c => {
+      if (c.plan_id) {
+        counts[c.plan_id] = (counts[c.plan_id] || 0) + 1;
+      }
+    });
+
+    res.json({
+      status: 'success',
+      data: {
+        counts,
+        totalAssigned: customers?.length || 0
+      }
+    });
+  } catch (error) {
+    console.error('Get customer counts error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to get customer counts'
+    });
+  }
+});
+
 // Search Customer by Vendor ID (exact match)
 app.get('/api/customers/search', authenticate, async (req, res) => {
   try {
