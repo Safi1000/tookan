@@ -53,6 +53,7 @@ export function MerchantPlansPanel() {
   // Quick Link State
   const [selectedCustomerForLink, setSelectedCustomerForLink] = useState<string>('');
   const [selectedPlanForLink, setSelectedPlanForLink] = useState<string>('');
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Fetch merchant plans on mount
   useEffect(() => {
@@ -71,9 +72,20 @@ export function MerchantPlansPanel() {
 
         const data = await response.json();
         if (response.ok && data.status === 'success' && data.data?.plans) {
-          setPlans(data.data.plans);
+          const mappedPlans: Plan[] = data.data.plans.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            feeType: p.type as 'fixed' | 'percentage',
+            feeAmount: p.type === 'fixed' ? Number(p.amount) : 0,
+            feePercentage: p.type === 'percentage' ? Number(p.amount) : 0,
+            description: p.description || '',
+            merchantCount: 0, // Count will be updated separately or left as 0 for now
+            createdBy: 'Admin',
+            lastUpdated: p.updated_at ? new Date(p.updated_at).toISOString().split('T')[0] :
+              (p.created_at ? new Date(p.created_at).toISOString().split('T')[0] : '-')
+          }));
+          setPlans(mappedPlans);
         } else {
-          // If no plans endpoint or empty, start with empty array
           setPlans([]);
         }
       } catch (error) {
@@ -84,7 +96,7 @@ export function MerchantPlansPanel() {
       }
     };
     loadPlans();
-  }, []);
+  }, [refreshTrigger]);
 
   // Fetch merchants on mount
   useEffect(() => {
@@ -152,24 +164,54 @@ export function MerchantPlansPanel() {
   };
 
   // Handle plan submission
-  const handleSavePlan = () => {
-    if (editingPlan) {
-      setPlans(plans.map(p =>
-        p.id === editingPlan.id
-          ? { ...p, ...planForm, lastUpdated: new Date().toISOString().split('T')[0] }
-          : p
-      ));
-    } else {
-      const newPlan: Plan = {
-        id: `PLAN-${String(plans.length + 1).padStart(3, '0')}`,
-        ...planForm,
-        merchantCount: 0,
-        createdBy: 'Admin User',
-        lastUpdated: new Date().toISOString().split('T')[0],
-      };
-      setPlans([...plans, newPlan]);
+  const handleSavePlan = async () => {
+    if (!planForm.name) {
+      toast.error('Plan name is required');
+      return;
     }
-    resetPlanForm();
+
+    try {
+      const payload = {
+        name: planForm.name,
+        description: planForm.description,
+        type: planForm.feeType,
+        amount: planForm.feeType === 'fixed' ? Number(planForm.feeAmount) : Number(planForm.feePercentage)
+      };
+
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      };
+
+      let response;
+      if (editingPlan) {
+        response = await fetch(`${API_BASE_URL}/api/merchant-plans/${editingPlan.id}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(payload)
+        });
+      } else {
+        response = await fetch(`${API_BASE_URL}/api/merchant-plans`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload)
+        });
+      }
+
+      const data = await response.json();
+      if (data.status === 'success') {
+        toast.success(editingPlan ? 'Plan updated successfully' : 'Plan created successfully');
+        setRefreshTrigger(prev => prev + 1);
+        resetPlanForm();
+      } else {
+        toast.error(data.message || 'Failed to save plan');
+      }
+    } catch (error) {
+      console.error('Error saving plan:', error);
+      toast.error('Failed to save plan');
+    }
   };
 
   // Reset plan form
@@ -199,10 +241,31 @@ export function MerchantPlansPanel() {
   };
 
   // Handle delete plan
-  const handleDeletePlan = (planId: string) => {
-    if (confirm('Are you sure you want to delete this plan? All assigned merchants will be unassigned.')) {
-      setPlans((plans || []).filter(p => p.id !== planId));
-      setMerchants(merchants.map(m => m.planId === planId ? { ...m, planId: null } : m));
+  const handleDeletePlan = async (planId: string) => {
+    if (confirm('Are you sure you want to delete this plan?')) {
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+        const token = localStorage.getItem('auth_token');
+
+        const response = await fetch(`${API_BASE_URL}/api/merchant-plans/${planId}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+
+        const data = await response.json();
+        if (data.status === 'success') {
+          toast.success('Plan deleted successfully');
+          setRefreshTrigger(prev => prev + 1);
+        } else {
+          toast.error(data.message || 'Failed to delete plan');
+        }
+      } catch (error) {
+        console.error('Error deleting plan:', error);
+        toast.error('Failed to delete plan');
+      }
     }
   };
 

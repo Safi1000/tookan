@@ -8,6 +8,7 @@ const taskStorage = require('./taskStorage');
 const tagService = require('./tagService');
 // Database models and middleware
 const merchantPlansModel = require('./db/models/merchantPlans');
+const plansModel = require('./db/models/plans');
 const withdrawalRequestsModel = require('./db/models/withdrawalRequests');
 const taskModel = require('./db/models/tasks');
 const userModel = require('./db/models/users');
@@ -29,6 +30,77 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Merchant Plans APIs
+app.get('/api/merchant-plans', authenticate, async (req, res) => {
+  try {
+    const plans = await plansModel.getAllPlans();
+    res.json({
+      status: 'success',
+      data: { plans }
+    });
+  } catch (error) {
+    console.error('Get plans error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to get plans'
+    });
+  }
+});
+
+app.post('/api/merchant-plans', authenticate, async (req, res) => {
+  try {
+    const plan = await plansModel.createPlan(req.body);
+    res.json({
+      status: 'success',
+      data: { plan }
+    });
+  } catch (error) {
+    console.error('Create plan error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to create plan'
+    });
+  }
+});
+
+app.put('/api/merchant-plans/:id', authenticate, async (req, res) => {
+  try {
+    const plan = await plansModel.updatePlan(req.params.id, req.body);
+    res.json({
+      status: 'success',
+      data: { plan }
+    });
+  } catch (error) {
+    console.error('Update plan error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to update plan'
+    });
+  }
+});
+
+app.delete('/api/merchant-plans/:id', authenticate, async (req, res) => {
+  try {
+    const success = await plansModel.deletePlan(req.params.id);
+    if (!success) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Plan not found or failed to delete'
+      });
+    }
+    res.json({
+      status: 'success',
+      message: 'Plan deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete plan error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to delete plan'
+    });
+  }
+});
 
 // Get API key from environment variable
 const getApiKey = () => {
