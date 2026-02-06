@@ -11,7 +11,9 @@ import {
   DollarSign,
   Percent,
   UserPlus,
-  UserMinus
+  UserMinus,
+  Link,
+  ChevronDown
 } from 'lucide-react';
 import { fetchAllCustomers } from '../services/tookanApi';
 import { toast } from 'sonner';
@@ -46,6 +48,10 @@ export function MerchantPlansPanel() {
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [selectedPlanForAssign, setSelectedPlanForAssign] = useState<Plan | null>(null);
+
+  // Quick Link State
+  const [selectedCustomerForLink, setSelectedCustomerForLink] = useState<string>('');
+  const [selectedPlanForLink, setSelectedPlanForLink] = useState<string>('');
 
   // Fetch merchant plans on mount
   useEffect(() => {
@@ -197,6 +203,27 @@ export function MerchantPlansPanel() {
     setMerchants(merchants.map(m =>
       m.id === merchantId ? { ...m, planId: null } : m
     ));
+  };
+
+  // Handle Quick Link
+  const handleQuickLink = () => {
+    if (!selectedCustomerForLink || !selectedPlanForLink) {
+      toast.error('Please select both a merchant and a plan');
+      return;
+    }
+
+    // Optimistic update as per requirement (Frontend only)
+    setMerchants(merchants.map(m =>
+      m.id === selectedCustomerForLink
+        ? { ...m, planId: selectedPlanForLink }
+        : m
+    ));
+
+    toast.success('Plan linked to merchant successfully');
+
+    // Reset selection
+    setSelectedCustomerForLink('');
+    setSelectedPlanForLink('');
   };
 
 
@@ -410,6 +437,70 @@ export function MerchantPlansPanel() {
               </p>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Quick Link Section */}
+      <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <Link className="w-5 h-5 text-primary dark:text-[#C1EEFA]" />
+          <h3 className="text-heading dark:text-[#C1EEFA] font-semibold text-lg">Link Plan to Merchant</h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+          {/* Merchant Dropdown */}
+          <div className="flex-1">
+            <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">Select Merchant</label>
+            <div className="relative">
+              <select
+                value={selectedCustomerForLink}
+                onChange={(e) => setSelectedCustomerForLink(e.target.value)}
+                className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] transition-all appearance-none"
+              >
+                <option value="">Select a merchant...</option>
+                {merchants.sort((a, b) => a.name.localeCompare(b.name)).map(merchant => (
+                  <option key={merchant.id} value={merchant.id}>
+                    {merchant.name} ({merchant.phone})
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                <ChevronDown className="w-4 h-4 text-muted-light dark:text-[#99BFD1]" />
+              </div>
+            </div>
+          </div>
+
+          {/* Plan Dropdown */}
+          <div className="flex-1">
+            <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">Select Plan</label>
+            <div className="relative">
+              <select
+                value={selectedPlanForLink}
+                onChange={(e) => setSelectedPlanForLink(e.target.value)}
+                className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] transition-all appearance-none"
+              >
+                <option value="">Select a plan...</option>
+                {plans.map(plan => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.name} ({getFeeRuleSummary(plan)})
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                <ChevronDown className="w-4 h-4 text-muted-light dark:text-[#99BFD1]" />
+              </div>
+            </div>
+          </div>
+
+          {/* Link Button */}
+          <button
+            onClick={handleQuickLink}
+            disabled={!selectedCustomerForLink || !selectedPlanForLink}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 disabled:hover:scale-100 h-[50px]"
+          >
+            <Link className="w-4 h-4" />
+            Link Plan
+          </button>
         </div>
       </div>
 
