@@ -53,6 +53,15 @@ export function MerchantPlansPanel() {
   const [totalCustomers, setTotalCustomers] = useState(0);
   const [planCounts, setPlanCounts] = useState<Record<string, number>>({});
   const [totalAssigned, setTotalAssigned] = useState(0);
+  const [activeTab, setActiveTab] = useState<'plans' | 'customers'>('plans');
+  const [assignedCustomers, setAssignedCustomers] = useState<Array<{
+    vendorId: string;
+    name: string;
+    phone: string;
+    planId: string;
+    planName?: string;
+  }>>([]);
+  const [isLoadingAssigned, setIsLoadingAssigned] = useState(false);
 
   // Quick Link State
   const [searchVendorId, setSearchVendorId] = useState<string>('');
@@ -176,6 +185,36 @@ export function MerchantPlansPanel() {
     };
     loadCounts();
   }, [refreshTrigger]);
+
+  // Fetch assigned customers when on customers tab
+  useEffect(() => {
+    if (activeTab !== 'customers') return;
+
+    const loadAssignedCustomers = async () => {
+      setIsLoadingAssigned(true);
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch(`${API_BASE_URL}/api/customers/assigned`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+
+        const data = await response.json();
+        if (response.ok && data.status === 'success') {
+          setAssignedCustomers(data.data.customers || []);
+        }
+      } catch (error) {
+        console.error('Error loading assigned customers:', error);
+      } finally {
+        setIsLoadingAssigned(false);
+      }
+    };
+    loadAssignedCustomers();
+  }, [activeTab, refreshTrigger]);
 
   // Fetch merchants on mount
   useEffect(() => {
@@ -412,6 +451,33 @@ export function MerchantPlansPanel() {
   const openNewPlanForm = () => {
     resetPlanForm();
     setShowPlanForm(true);
+  };
+
+  // Handle unlinking a customer from their plan
+  const handleUnlinkCustomer = async (vendorId: string) => {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/customers/${vendorId}/plan`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ plan_id: null })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        toast.success('Customer unlinked from plan successfully');
+        setRefreshTrigger(prev => prev + 1);
+      } else {
+        toast.error(data.message || 'Failed to unlink customer');
+      }
+    } catch (error) {
+      console.error('Unlink customer error:', error);
+      toast.error('Failed to unlink customer from plan');
+    }
   };
 
   return (
@@ -745,70 +811,137 @@ export function MerchantPlansPanel() {
         </div>
       </div>
 
-      {/* Plans Table */}
+      {/* Tabbed Section */}
       <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm">
-        <div className="p-6 border-b border-border">
-          <h3 className="text-heading dark:text-[#C1EEFA] font-semibold">Plan Overview</h3>
+        {/* Tab Header */}
+        <div className="p-6 border-b border-border flex items-center justify-between">
+          <div className="flex gap-4">
+            <button
+              onClick={() => setActiveTab('plans')}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${activeTab === 'plans'
+                  ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53]'
+                  : 'text-muted-light dark:text-[#99BFD1] hover:bg-muted/20'
+                }`}
+            >
+              Plan Overview
+            </button>
+            <button
+              onClick={() => setActiveTab('customers')}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${activeTab === 'customers'
+                  ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53]'
+                  : 'text-muted-light dark:text-[#99BFD1] hover:bg-muted/20'
+                }`}
+            >
+              Assigned Customers ({totalAssigned})
+            </button>
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="table-header-bg dark:bg-[#1A2C53]">
-              <tr>
-                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Plan Name</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchants Assigned</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Fee Rule</th>
 
-                <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {plans.map((plan, index) => (
-                <tr key={plan.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                  <td className="px-6 py-4">
-                    <div>
-                      <p className="text-heading dark:text-[#C1EEFA] font-medium">{plan.name}</p>
-                      <p className="text-muted-light dark:text-[#99BFD1] text-sm">{plan.id}</p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] rounded-lg text-sm font-medium">
-                      <Users className="w-4 h-4" />
-                      {planCounts[plan.id] || 0}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      {plan.feeType === 'fixed' && <DollarSign className="w-4 h-4 text-[#10B981]" />}
-                      {plan.feeType === 'percentage' && <Percent className="w-4 h-4 text-[#3B82F6]" />}
-
-                      <span className="text-heading dark:text-[#C1EEFA] text-sm">{getFeeRuleSummary(plan)}</span>
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-
-                      <button
-                        onClick={() => handleEditPlan(plan)}
-                        className="p-2 hover:bg-[#3B82F6]/10 rounded-lg transition-colors"
-                        title="Edit Plan"
-                      >
-                        <Edit2 className="w-4 h-4 text-[#3B82F6]" />
-                      </button>
-                      <button
-                        onClick={() => handleDeletePlan(plan.id)}
-                        className="p-2 hover:bg-destructive/10 rounded-lg transition-colors"
-                        title="Delete Plan"
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </button>
-                    </div>
-                  </td>
+        {/* Plans Table */}
+        {activeTab === 'plans' && (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-table-header dark:bg-[#1A2C53]">
+                  <th className="text-left px-6 py-4 text-table-header-text dark:text-[#99BFD1] font-semibold text-sm tracking-wide">Plan Name</th>
+                  <th className="text-left px-6 py-4 text-table-header-text dark:text-[#99BFD1] font-semibold text-sm tracking-wide">Merchants</th>
+                  <th className="text-left px-6 py-4 text-table-header-text dark:text-[#99BFD1] font-semibold text-sm tracking-wide">Fee Structure</th>
+                  <th className="text-left px-6 py-4 text-table-header-text dark:text-[#99BFD1] font-semibold text-sm tracking-wide">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {plans.map((plan, index) => (
+                  <tr key={plan.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                    <td className="px-6 py-4">
+                      <div>
+                        <p className="text-heading dark:text-[#C1EEFA] font-medium">{plan.name}</p>
+                        <p className="text-muted-light dark:text-[#99BFD1] text-sm">{plan.id}</p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] rounded-lg text-sm font-medium">
+                        <Users className="w-4 h-4" />
+                        {planCounts[plan.id] || 0}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        {plan.feeType === 'fixed' && <DollarSign className="w-4 h-4 text-[#10B981]" />}
+                        {plan.feeType === 'percentage' && <Percent className="w-4 h-4 text-[#3B82F6]" />}
+                        <span className="text-heading dark:text-[#C1EEFA] text-sm">{getFeeRuleSummary(plan)}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleEditPlan(plan)}
+                          className="p-2 hover:bg-[#3B82F6]/10 rounded-lg transition-colors"
+                          title="Edit Plan"
+                        >
+                          <Edit2 className="w-4 h-4 text-[#3B82F6]" />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePlan(plan.id)}
+                          className="p-2 hover:bg-destructive/10 rounded-lg transition-colors"
+                          title="Delete Plan"
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Assigned Customers Table */}
+        {activeTab === 'customers' && (
+          <div className="overflow-x-auto">
+            {isLoadingAssigned ? (
+              <div className="p-8 text-center text-muted-light dark:text-[#99BFD1]">Loading assigned customers...</div>
+            ) : assignedCustomers.length === 0 ? (
+              <div className="p-8 text-center text-muted-light dark:text-[#99BFD1]">No customers are currently assigned to plans</div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-table-header dark:bg-[#1A2C53]">
+                    <th className="text-left px-6 py-4 text-table-header-text dark:text-[#99BFD1] font-semibold text-sm tracking-wide">Vendor ID</th>
+                    <th className="text-left px-6 py-4 text-table-header-text dark:text-[#99BFD1] font-semibold text-sm tracking-wide">Customer Name</th>
+                    <th className="text-left px-6 py-4 text-table-header-text dark:text-[#99BFD1] font-semibold text-sm tracking-wide">Phone</th>
+                    <th className="text-left px-6 py-4 text-table-header-text dark:text-[#99BFD1] font-semibold text-sm tracking-wide">Plan</th>
+                    <th className="text-left px-6 py-4 text-table-header-text dark:text-[#99BFD1] font-semibold text-sm tracking-wide">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assignedCustomers.map((customer, index) => (
+                    <tr key={customer.vendorId} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-mono text-sm">{customer.vendorId}</td>
+                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{customer.name}</td>
+                      <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{customer.phone || '-'}</td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center gap-2 px-3 py-1 bg-[#10B981]/10 dark:bg-[#10B981]/20 text-[#10B981] rounded-lg text-sm font-medium">
+                          {customer.planName}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => handleUnlinkCustomer(customer.vendorId)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded-lg text-sm font-medium transition-colors"
+                          title="Unlink from plan"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Unlink
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Assign Merchants Modal - Modern and Sleek */}

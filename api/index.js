@@ -444,6 +444,59 @@ function getApp() {
       }
     });
 
+    // Get assigned customers with plan details
+    app.get('/api/customers/assigned', authenticate, async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.json({
+            status: 'success',
+            data: { customers: [] }
+          });
+        }
+
+        const { data: customers, error } = await supabase
+          .from('customers')
+          .select('vendor_id, customer_name, customer_phone, plan_id')
+          .not('plan_id', 'is', null);
+
+        if (error) {
+          console.error('Get assigned customers error:', error);
+          return res.status(500).json({
+            status: 'error',
+            message: error.message || 'Failed to get assigned customers'
+          });
+        }
+
+        const { data: plansData } = await supabase
+          .from('plans')
+          .select('id, name');
+
+        const plansMap = (plansData || []).reduce((acc, p) => {
+          acc[p.id] = p.name;
+          return acc;
+        }, {});
+
+        const result = (customers || []).map(c => ({
+          vendorId: c.vendor_id,
+          name: c.customer_name || 'Unknown',
+          phone: c.customer_phone || '',
+          planId: c.plan_id,
+          planName: plansMap[c.plan_id] || 'Unknown Plan'
+        }));
+
+        res.json({
+          status: 'success',
+          data: { customers: result }
+        });
+      } catch (error) {
+        console.error('Get assigned customers error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to get assigned customers'
+        });
+      }
+    });
+
     // Search Customer by Vendor ID (exact match)
     app.get('/api/customers/search', authenticate, async (req, res) => {
       try {
