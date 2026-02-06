@@ -48,23 +48,7 @@ const getWebhookSecret = () => {
   return secret;
 };
 
-// Get total customer count from DB (for Merchant Panel)
-app.get('/api/customers/count', authenticate, async (req, res) => {
-  try {
-    const count = await customerModel.getCustomerCount();
-    res.json({
-      status: 'success',
-      data: { count }
-    });
-  } catch (error) {
-    console.error('❌ Get customer count error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message || 'Failed to get customer count',
-      data: { count: 0 }
-    });
-  }
-});
+// Driver Wallet - Create Transaction
 
 // Driver Wallet - Create Transaction
 app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermission('manage_wallets'), async (req, res) => {

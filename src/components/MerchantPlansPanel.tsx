@@ -15,7 +15,7 @@ import {
   UserMinus,
   Link
 } from 'lucide-react';
-import { fetchAllCustomers } from '../services/tookanApi';
+import { fetchAllCustomers, fetchReportsSummary } from '../services/tookanApi';
 import { toast } from 'sonner';
 
 
@@ -118,18 +118,9 @@ export function MerchantPlansPanel() {
   useEffect(() => {
     const loadCustomerCount = async () => {
       try {
-        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-        const token = localStorage.getItem('auth_token');
-        const response = await fetch(`${API_BASE_URL}/api/customers/count`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          }
-        });
-        const data = await response.json();
-        if (data.status === 'success') {
-          setTotalCustomers(data.data.count);
+        const result = await fetchReportsSummary({});
+        if (result.status === 'success' && result.data?.totals?.customers) {
+          setTotalCustomers(result.data.totals.customers);
         }
       } catch (error) {
         console.error('Error loading customer count:', error);
