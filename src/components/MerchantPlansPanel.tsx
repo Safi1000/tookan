@@ -459,10 +459,24 @@ export function MerchantPlansPanel() {
                 onChange={(e) => setSelectedCustomerForLink(e.target.value)}
                 className="text-heading dark:text-[#C1EEFA]"
                 sx={{
+                  color: 'inherit',
                   '.MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
-                  '.MuiSvgIcon-root': { color: 'var(--muted-foreground)' }
+                  '.MuiSvgIcon-root': { color: 'var(--muted-foreground)' },
+                  '.MuiSelect-select': { color: 'inherit' }
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    className: "bg-surface dark:bg-[#1A2C53] text-heading dark:text-[#C1EEFA] border border-border dark:border-[#2A3C63]",
+                    sx: {
+                      '& .MuiMenuItem-root': {
+                        '&:hover': { backgroundColor: 'rgba(var(--primary-rgb), 0.1)' },
+                        '&.Mui-selected': { backgroundColor: 'rgba(var(--primary-rgb), 0.2)' },
+                        '&.Mui-selected:hover': { backgroundColor: 'rgba(var(--primary-rgb), 0.3)' }
+                      }
+                    }
+                  }
                 }}
               >
                 <MenuItem value="">
@@ -488,10 +502,24 @@ export function MerchantPlansPanel() {
                 onChange={(e) => setSelectedPlanForLink(e.target.value)}
                 className="text-heading dark:text-[#C1EEFA]"
                 sx={{
+                  color: 'inherit',
                   '.MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
-                  '.MuiSvgIcon-root': { color: 'var(--muted-foreground)' }
+                  '.MuiSvgIcon-root': { color: 'var(--muted-foreground)' },
+                  '.MuiSelect-select': { color: 'inherit' }
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    className: "bg-surface dark:bg-[#1A2C53] text-heading dark:text-[#C1EEFA] border border-border dark:border-[#2A3C63]",
+                    sx: {
+                      '& .MuiMenuItem-root': {
+                        '&:hover': { backgroundColor: 'rgba(var(--primary-rgb), 0.1)' },
+                        '&.Mui-selected': { backgroundColor: 'rgba(var(--primary-rgb), 0.2)' },
+                        '&.Mui-selected:hover': { backgroundColor: 'rgba(var(--primary-rgb), 0.3)' }
+                      }
+                    }
+                  }
                 }}
               >
                 <MenuItem value="">
