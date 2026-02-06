@@ -35,6 +35,7 @@ interface Plan {
 
 interface Merchant {
   id: string;
+  vendorId: string;
   name: string;
   phone: string;
   planId: string | null;
@@ -57,7 +58,9 @@ export function MerchantPlansPanel() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Computed: Found Merchant
-  const foundMerchant = searchVendorId ? merchants.find(m => m.id === searchVendorId.trim()) : null;
+  const foundMerchant = searchVendorId ? merchants.find(m =>
+    m.vendorId === searchVendorId.trim() || m.id === searchVendorId.trim()
+  ) : null;
 
   // Fetch merchant plans on mount
   useEffect(() => {
@@ -112,6 +115,7 @@ export function MerchantPlansPanel() {
           const customersList = response.data.customers;
           const merchantsData: Merchant[] = customersList.map((customer: any) => ({
             id: customer.id?.toString() || customer.vendor_id?.toString() || '',
+            vendorId: customer.vendor_id?.toString() || customer.id?.toString() || '', // Explicitly map vendor_id
             name: customer.customer_name || customer.name || 'Unknown Merchant',
             phone: customer.customer_phone || customer.phone || '',
             planId: customer.plan_id || customer.planId || null
@@ -544,11 +548,8 @@ export function MerchantPlansPanel() {
                     value={searchVendorId}
                     onChange={(e) => setSearchVendorId(e.target.value)}
                     placeholder="Enter Vendor ID (e.g., 12345)"
-                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 pl-11 text-base text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all"
+                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-base text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all"
                   />
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2">
-                    <Search className="w-5 h-5 text-muted-light dark:text-[#99BFD1]" />
-                  </div>
                 </div>
               </div>
 
