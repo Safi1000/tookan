@@ -61,6 +61,8 @@ function getApp() {
 
     // Import all the route handlers from server/index.js
     // For Vercel, we'll include the essential routes inline
+    // Note: merchantPlans legacy model removed in favor of plansModel
+    const plansModel = require('../server/db/models/plans');
 
     const getApiKey = () => {
       const apiKey = process.env.TOOKAN_API_KEY;
@@ -283,6 +285,77 @@ function getApp() {
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || 'development'
       });
+    });
+
+    // Merchant Plans APIs
+    app.get('/api/merchant-plans', authenticate, async (req, res) => {
+      try {
+        const plans = await plansModel.getAllPlans();
+        res.json({
+          status: 'success',
+          data: { plans }
+        });
+      } catch (error) {
+        console.error('Get plans error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to get plans'
+        });
+      }
+    });
+
+    app.post('/api/merchant-plans', authenticate, async (req, res) => {
+      try {
+        const plan = await plansModel.createPlan(req.body);
+        res.json({
+          status: 'success',
+          data: { plan }
+        });
+      } catch (error) {
+        console.error('Create plan error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to create plan'
+        });
+      }
+    });
+
+    app.put('/api/merchant-plans/:id', authenticate, async (req, res) => {
+      try {
+        const plan = await plansModel.updatePlan(req.params.id, req.body);
+        res.json({
+          status: 'success',
+          data: { plan }
+        });
+      } catch (error) {
+        console.error('Update plan error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to update plan'
+        });
+      }
+    });
+
+    app.delete('/api/merchant-plans/:id', authenticate, async (req, res) => {
+      try {
+        const success = await plansModel.deletePlan(req.params.id);
+        if (!success) {
+          return res.status(404).json({
+            status: 'error',
+            message: 'Plan not found or failed to delete'
+          });
+        }
+        res.json({
+          status: 'success',
+          message: 'Plan deleted successfully'
+        });
+      } catch (error) {
+        console.error('Delete plan error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Failed to delete plan'
+        });
+      }
     });
 
     // Tookan Webhook endpoint

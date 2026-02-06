@@ -7,7 +7,7 @@ const { generateExcel, generateCSV } = require('./exportUtils');
 const taskStorage = require('./taskStorage');
 const tagService = require('./tagService');
 // Database models and middleware
-const merchantPlansModel = require('./db/models/merchantPlans');
+// const merchantPlansModel = require('./db/models/merchantPlans'); // Removed legacy model
 const plansModel = require('./db/models/plans');
 const withdrawalRequestsModel = require('./db/models/withdrawalRequests');
 const taskModel = require('./db/models/tasks');
@@ -5506,7 +5506,7 @@ app.get('/api/tookan/fleets', authenticate, async (req, res) => {
 
 
 // ============================================
-// MERCHANT PLANS - PLAN MANAGEMENT
+// MERCHANT PLANS - PLAN MANAGEMENT (Legacy removed)
 // ============================================
 
 // Note: Tookan API may not support direct merchant plan assignment
