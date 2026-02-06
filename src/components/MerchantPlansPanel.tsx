@@ -1,36 +1,29 @@
 import { useState, useEffect } from 'react';
-import { 
-  Plus, 
-  Edit2, 
-  Trash2, 
-  X, 
-  CheckCircle, 
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  X,
+  CheckCircle,
   XCircle,
   Package,
   Users,
   DollarSign,
   Percent,
-  Layers,
   UserPlus,
-  UserMinus,
-  ChevronDown
+  UserMinus
 } from 'lucide-react';
 import { fetchAllCustomers } from '../services/tookanApi';
 import { toast } from 'sonner';
 
-interface TieredFee {
-  minOrders: number;
-  maxOrders: number | null;
-  fee: number;
-}
+
 
 interface Plan {
   id: string;
   name: string;
-  feeType: 'fixed' | 'percentage' | 'tiered';
+  feeType: 'fixed' | 'percentage';
   feeAmount: number;
   feePercentage: number;
-  tieredFees: TieredFee[];
   description: string;
   merchantCount: number;
   createdBy: string;
@@ -53,7 +46,7 @@ export function MerchantPlansPanel() {
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [selectedPlanForAssign, setSelectedPlanForAssign] = useState<Plan | null>(null);
-  
+
   // Fetch merchant plans on mount
   useEffect(() => {
     const loadPlans = async () => {
@@ -68,7 +61,7 @@ export function MerchantPlansPanel() {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           }
         });
-        
+
         const data = await response.json();
         if (response.ok && data.status === 'success' && data.data?.plans) {
           setPlans(data.data.plans);
@@ -85,7 +78,7 @@ export function MerchantPlansPanel() {
     };
     loadPlans();
   }, []);
-  
+
   // Fetch merchants on mount
   useEffect(() => {
     const loadMerchants = async () => {
@@ -113,14 +106,13 @@ export function MerchantPlansPanel() {
     };
     loadMerchants();
   }, []);
-  
+
   // Plan form state
   const [planForm, setPlanForm] = useState({
     name: '',
-    feeType: 'fixed' as 'fixed' | 'percentage' | 'tiered',
+    feeType: 'fixed' as 'fixed' | 'percentage',
     feeAmount: 0,
     feePercentage: 0,
-    tieredFees: [{ minOrders: 0, maxOrders: 100, fee: 5.00 }] as TieredFee[],
     description: '',
   });
 
@@ -131,8 +123,7 @@ export function MerchantPlansPanel() {
         return `$${(plan.feeAmount || 0).toFixed(2)} per order`;
       case 'percentage':
         return `${plan.feePercentage}% of order value`;
-      case 'tiered':
-        return `Tiered: ${plan.tieredFees.length} tiers`;
+
       default:
         return '-';
     }
@@ -141,8 +132,8 @@ export function MerchantPlansPanel() {
   // Handle plan submission
   const handleSavePlan = () => {
     if (editingPlan) {
-      setPlans(plans.map(p => 
-        p.id === editingPlan.id 
+      setPlans(plans.map(p =>
+        p.id === editingPlan.id
           ? { ...p, ...planForm, lastUpdated: new Date().toISOString().split('T')[0] }
           : p
       ));
@@ -166,7 +157,6 @@ export function MerchantPlansPanel() {
       feeType: 'fixed',
       feeAmount: 0,
       feePercentage: 0,
-      tieredFees: [{ minOrders: 0, maxOrders: 100, fee: 5.00 }],
       description: '',
     });
     setEditingPlan(null);
@@ -181,7 +171,6 @@ export function MerchantPlansPanel() {
       feeType: plan.feeType,
       feeAmount: plan.feeAmount,
       feePercentage: plan.feePercentage,
-      tieredFees: plan.tieredFees.length > 0 ? plan.tieredFees : [{ minOrders: 0, maxOrders: 100, fee: 5.00 }],
       description: plan.description,
     });
     setShowPlanForm(true);
@@ -198,44 +187,19 @@ export function MerchantPlansPanel() {
   // Handle merchant assignment
   const handleAssignMerchant = (merchantId: string) => {
     if (!selectedPlanForAssign) return;
-    setMerchants(merchants.map(m => 
+    setMerchants(merchants.map(m =>
       m.id === merchantId ? { ...m, planId: selectedPlanForAssign.id } : m
     ));
   };
 
   // Handle merchant unassignment
   const handleUnassignMerchant = (merchantId: string) => {
-    setMerchants(merchants.map(m => 
+    setMerchants(merchants.map(m =>
       m.id === merchantId ? { ...m, planId: null } : m
     ));
   };
 
-  // Add tier to tiered fees
-  const addTier = () => {
-    const lastTier = planForm.tieredFees[planForm.tieredFees.length - 1];
-    const newMin = lastTier.maxOrders ? lastTier.maxOrders + 1 : 0;
-    setPlanForm({
-      ...planForm,
-      tieredFees: [...planForm.tieredFees, { minOrders: newMin, maxOrders: newMin + 100, fee: 3.00 }]
-    });
-  };
 
-  // Remove tier from tiered fees
-  const removeTier = (index: number) => {
-    if (planForm.tieredFees.length > 1) {
-      setPlanForm({
-        ...planForm,
-        tieredFees: planForm.tieredFees.filter((_, i) => i !== index)
-      });
-    }
-  };
-
-  // Update tier
-  const updateTier = (index: number, field: keyof TieredFee, value: number | null) => {
-    const newTiers = [...planForm.tieredFees];
-    newTiers[index] = { ...newTiers[index], [field]: value };
-    setPlanForm({ ...planForm, tieredFees: newTiers });
-  };
 
   // Open new plan form
   const openNewPlanForm = () => {
@@ -251,7 +215,7 @@ export function MerchantPlansPanel() {
           <h1 className="text-heading text-3xl mb-2 font-bold">Merchant Plans</h1>
           <p className="text-subheading dark:text-[#99BFD1] text-muted-light">Manage pricing plans and assign merchants</p>
         </div>
-        <button 
+        <button
           onClick={openNewPlanForm}
           className="flex items-center gap-2 px-6 py-3 bg-destructive dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all font-semibold"
         >
@@ -305,11 +269,10 @@ export function MerchantPlansPanel() {
                 <button
                   type="button"
                   onClick={() => setPlanForm({ ...planForm, feeType: 'fixed' })}
-                  className={`flex-1 p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${
-                    planForm.feeType === 'fixed' 
-                      ? 'bg-primary/10 dark:bg-[#C1EEFA]/10 border-primary dark:border-[#C1EEFA] text-primary dark:text-[#C1EEFA] shadow-lg' 
-                      : 'border-border dark:border-[#2A3C63] hover:border-primary/50 dark:hover:border-[#C1EEFA]/50 text-muted-light dark:text-[#99BFD1] hover:bg-muted/30 dark:hover:bg-[#223560]/50'
-                  }`}
+                  className={`flex-1 p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${planForm.feeType === 'fixed'
+                    ? 'bg-primary/10 dark:bg-[#C1EEFA]/10 border-primary dark:border-[#C1EEFA] text-primary dark:text-[#C1EEFA] shadow-lg'
+                    : 'border-border dark:border-[#2A3C63] hover:border-primary/50 dark:hover:border-[#C1EEFA]/50 text-muted-light dark:text-[#99BFD1] hover:bg-muted/30 dark:hover:bg-[#223560]/50'
+                    }`}
                 >
                   <DollarSign className="w-6 h-6 mx-auto mb-2" />
                   <span className="text-sm font-semibold block">Fixed</span>
@@ -318,29 +281,16 @@ export function MerchantPlansPanel() {
                 <button
                   type="button"
                   onClick={() => setPlanForm({ ...planForm, feeType: 'percentage' })}
-                  className={`flex-1 p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${
-                    planForm.feeType === 'percentage' 
-                      ? 'bg-primary/10 dark:bg-[#C1EEFA]/10 border-primary dark:border-[#C1EEFA] text-primary dark:text-[#C1EEFA] shadow-lg' 
-                      : 'border-border dark:border-[#2A3C63] hover:border-primary/50 dark:hover:border-[#C1EEFA]/50 text-muted-light dark:text-[#99BFD1] hover:bg-muted/30 dark:hover:bg-[#223560]/50'
-                  }`}
+                  className={`flex-1 p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${planForm.feeType === 'percentage'
+                    ? 'bg-primary/10 dark:bg-[#C1EEFA]/10 border-primary dark:border-[#C1EEFA] text-primary dark:text-[#C1EEFA] shadow-lg'
+                    : 'border-border dark:border-[#2A3C63] hover:border-primary/50 dark:hover:border-[#C1EEFA]/50 text-muted-light dark:text-[#99BFD1] hover:bg-muted/30 dark:hover:bg-[#223560]/50'
+                    }`}
                 >
                   <Percent className="w-6 h-6 mx-auto mb-2" />
                   <span className="text-sm font-semibold block">Percentage</span>
                   <span className="text-xs text-muted-light dark:text-[#99BFD1] mt-1 block">% of order</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setPlanForm({ ...planForm, feeType: 'tiered' })}
-                  className={`flex-1 p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${
-                    planForm.feeType === 'tiered' 
-                      ? 'bg-primary/10 dark:bg-[#C1EEFA]/10 border-primary dark:border-[#C1EEFA] text-primary dark:text-[#C1EEFA] shadow-lg' 
-                      : 'border-border dark:border-[#2A3C63] hover:border-primary/50 dark:hover:border-[#C1EEFA]/50 text-muted-light dark:text-[#99BFD1] hover:bg-muted/30 dark:hover:bg-[#223560]/50'
-                  }`}
-                >
-                  <Layers className="w-6 h-6 mx-auto mb-2" />
-                  <span className="text-sm font-semibold block">Tiered</span>
-                  <span className="text-xs text-muted-light dark:text-[#99BFD1] mt-1 block">Volume-based</span>
-                </button>
+
               </div>
             </div>
 
@@ -384,68 +334,7 @@ export function MerchantPlansPanel() {
               </div>
             )}
 
-            {/* Tiered Fees */}
-            {planForm.feeType === 'tiered' && (
-              <div>
-                <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-3 font-semibold">
-                  Tiered Fee Structure
-                </label>
-                <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
-                  {planForm.tieredFees.map((tier, index) => (
-                    <div key={index} className="flex items-center gap-3 p-4 bg-muted/30 dark:bg-[#223560]/50 rounded-xl border border-border dark:border-[#2A3C63]">
-                      <div className="flex-1 grid grid-cols-3 gap-3">
-                        <div>
-                          <label className="text-xs text-muted-light dark:text-[#99BFD1] mb-1.5 block font-medium">Min Orders</label>
-                          <input
-                            type="number"
-                            value={tier.minOrders}
-                            onChange={(e) => updateTier(index, 'minOrders', parseInt(e.target.value) || 0)}
-                            className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg px-3 py-2 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] transition-all"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-muted-light dark:text-[#99BFD1] mb-1.5 block font-medium">Max Orders</label>
-                          <input
-                            type="number"
-                            value={tier.maxOrders || ''}
-                            onChange={(e) => updateTier(index, 'maxOrders', e.target.value ? parseInt(e.target.value) : null)}
-                            placeholder="∞"
-                            className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg px-3 py-2 text-sm text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] transition-all"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-muted-light dark:text-[#99BFD1] mb-1.5 block font-medium">Fee (BHD)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={tier.fee}
-                            onChange={(e) => updateTier(index, 'fee', parseFloat(e.target.value) || 0)}
-                            className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg px-3 py-2 text-sm text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] transition-all"
-                          />
-                        </div>
-                      </div>
-                      {planForm.tieredFees.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeTier(index)}
-                          className="p-2 hover:bg-destructive/10 rounded-lg transition-all hover:scale-110"
-                        >
-                          <X className="w-4 h-4 text-destructive" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={addTier}
-                  className="w-full mt-3 p-3 border-2 border-dashed border-border dark:border-[#2A3C63] hover:border-primary dark:hover:border-[#C1EEFA] rounded-xl text-muted-light dark:text-[#99BFD1] hover:text-primary dark:hover:text-[#C1EEFA] transition-all flex items-center justify-center gap-2 text-sm font-medium hover:bg-primary/5 dark:hover:bg-[#C1EEFA]/5"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Tier
-                </button>
-              </div>
-            )}
+
 
             {/* Description */}
             <div>
@@ -560,7 +449,7 @@ export function MerchantPlansPanel() {
                     <div className="flex items-center gap-2">
                       {plan.feeType === 'fixed' && <DollarSign className="w-4 h-4 text-[#10B981]" />}
                       {plan.feeType === 'percentage' && <Percent className="w-4 h-4 text-[#3B82F6]" />}
-                      {plan.feeType === 'tiered' && <Layers className="w-4 h-4 text-[#F59E0B]" />}
+
                       <span className="text-heading dark:text-[#C1EEFA] text-sm">{getFeeRuleSummary(plan)}</span>
                     </div>
                   </td>
@@ -568,7 +457,7 @@ export function MerchantPlansPanel() {
                   <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{plan.lastUpdated}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <button 
+                      <button
                         onClick={() => {
                           setSelectedPlanForAssign(plan);
                           setShowAssignModal(true);
@@ -578,14 +467,14 @@ export function MerchantPlansPanel() {
                       >
                         <UserPlus className="w-4 h-4 text-primary dark:text-[#C1EEFA]" />
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleEditPlan(plan)}
                         className="p-2 hover:bg-[#3B82F6]/10 rounded-lg transition-colors"
                         title="Edit Plan"
                       >
                         <Edit2 className="w-4 h-4 text-[#3B82F6]" />
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleDeletePlan(plan.id)}
                         className="p-2 hover:bg-destructive/10 rounded-lg transition-colors"
                         title="Delete Plan"
@@ -604,14 +493,14 @@ export function MerchantPlansPanel() {
       {/* Assign Merchants Modal - Modern and Sleek */}
       {showAssignModal && selectedPlanForAssign && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div 
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => {
               setShowAssignModal(false);
               setSelectedPlanForAssign(null);
-            }} 
+            }}
           />
-          <div 
+          <div
             className="relative bg-card dark:bg-[#1A2C53] rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col animate-in zoom-in-95 duration-200 border border-border dark:border-[#2A3C63]"
             onClick={(e) => e.stopPropagation()}
           >
@@ -645,13 +534,12 @@ export function MerchantPlansPanel() {
                   merchants.map((merchant) => {
                     const isAssigned = merchant.planId === selectedPlanForAssign.id;
                     return (
-                      <div 
-                        key={merchant.id} 
-                        className={`p-4 rounded-xl border-2 transition-all hover:scale-[1.02] ${
-                          isAssigned 
-                            ? 'bg-[#10B981]/10 dark:bg-[#10B981]/20 border-[#10B981]/30 shadow-sm' 
-                            : 'bg-muted/20 dark:bg-[#223560]/50 border-border dark:border-[#2A3C63] hover:border-primary/50 dark:hover:border-[#C1EEFA]/50'
-                        }`}
+                      <div
+                        key={merchant.id}
+                        className={`p-4 rounded-xl border-2 transition-all hover:scale-[1.02] ${isAssigned
+                          ? 'bg-[#10B981]/10 dark:bg-[#10B981]/20 border-[#10B981]/30 shadow-sm'
+                          : 'bg-muted/20 dark:bg-[#223560]/50 border-border dark:border-[#2A3C63] hover:border-primary/50 dark:hover:border-[#C1EEFA]/50'
+                          }`}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0 flex-1">
