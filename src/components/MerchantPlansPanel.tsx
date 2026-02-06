@@ -48,6 +48,7 @@ export function MerchantPlansPanel() {
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [selectedPlanForAssign, setSelectedPlanForAssign] = useState<Plan | null>(null);
+  const [totalCustomers, setTotalCustomers] = useState(0);
 
   // Quick Link State
   const [selectedCustomerForLink, setSelectedCustomerForLink] = useState<string>('');
@@ -111,6 +112,30 @@ export function MerchantPlansPanel() {
       }
     };
     loadMerchants();
+  }, []);
+
+  // Fetch total customer count
+  useEffect(() => {
+    const loadCustomerCount = async () => {
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch(`${API_BASE_URL}/api/customers/count`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+          setTotalCustomers(data.data.count);
+        }
+      } catch (error) {
+        console.error('Error loading customer count:', error);
+      }
+    };
+    loadCustomerCount();
   }, []);
 
   // Plan form state
@@ -433,7 +458,7 @@ export function MerchantPlansPanel() {
             <div>
               <p className="text-muted-light dark:text-[#99BFD1] text-sm">Unassigned Merchants</p>
               <p className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">
-                {(merchants || []).filter(m => !m.planId).length}
+                {totalCustomers}
               </p>
             </div>
           </div>
@@ -451,20 +476,23 @@ export function MerchantPlansPanel() {
           {/* Merchant Dropdown */}
           <div className="flex-1">
             <FormControl fullWidth variant="outlined" size="small" className="bg-input-bg dark:bg-[#223560] rounded-xl">
-              <InputLabel id="merchant-select-label" className="text-heading dark:text-[#C1EEFA]">Select Merchant</InputLabel>
+              <InputLabel id="merchant-select-label" className="text-heading dark:text-[#C1EEFA]" style={{ color: 'white' }}>Select Merchant</InputLabel>
               <Select
                 labelId="merchant-select-label"
                 value={selectedCustomerForLink}
                 label="Select Merchant"
                 onChange={(e) => setSelectedCustomerForLink(e.target.value)}
                 className="text-heading dark:text-[#C1EEFA]"
+                style={{ color: 'white' }}
+                inputProps={{
+                  className: "text-heading dark:text-[#C1EEFA]",
+                  style: { color: 'white' }
+                }}
                 sx={{
-                  color: 'inherit',
                   '.MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
-                  '.MuiSvgIcon-root': { color: 'var(--muted-foreground)' },
-                  '.MuiSelect-select': { color: 'inherit' }
+                  '.MuiSvgIcon-root': { color: 'var(--muted-foreground)' }
                 }}
                 MenuProps={{
                   PaperProps: {
@@ -494,20 +522,23 @@ export function MerchantPlansPanel() {
           {/* Plan Dropdown */}
           <div className="flex-1">
             <FormControl fullWidth variant="outlined" size="small" className="bg-input-bg dark:bg-[#223560] rounded-xl">
-              <InputLabel id="plan-select-label" className="text-heading dark:text-[#C1EEFA]">Select Plan</InputLabel>
+              <InputLabel id="plan-select-label" className="text-heading dark:text-[#C1EEFA]" style={{ color: 'white' }}>Select Plan</InputLabel>
               <Select
                 labelId="plan-select-label"
                 value={selectedPlanForLink}
                 label="Select Plan"
                 onChange={(e) => setSelectedPlanForLink(e.target.value)}
                 className="text-heading dark:text-[#C1EEFA]"
+                style={{ color: 'white' }}
+                inputProps={{
+                  className: "text-heading dark:text-[#C1EEFA]",
+                  style: { color: 'white' }
+                }}
                 sx={{
-                  color: 'inherit',
                   '.MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
-                  '.MuiSvgIcon-root': { color: 'var(--muted-foreground)' },
-                  '.MuiSelect-select': { color: 'inherit' }
+                  '.MuiSvgIcon-root': { color: 'var(--muted-foreground)' }
                 }}
                 MenuProps={{
                   PaperProps: {
