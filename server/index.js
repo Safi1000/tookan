@@ -102,6 +102,94 @@ app.delete('/api/merchant-plans/:id', authenticate, async (req, res) => {
   }
 });
 
+// Search Customer by Vendor ID (exact match)
+app.get('/api/customers/search', authenticate, async (req, res) => {
+  try {
+    const { vendor_id } = req.query;
+
+    if (!vendor_id) {
+      return res.json({
+        status: 'success',
+        data: { customer: null }
+      });
+    }
+
+    if (!isConfigured()) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'Supabase not configured'
+      });
+    }
+
+    const { data: customer, error } = await supabase
+      .from('customers')
+      .select('id, vendor_id, customer_name, customer_phone, plan_id')
+      .eq('vendor_id', vendor_id.trim())
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Search customer error:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: error.message || 'Failed to search customer'
+      });
+    }
+
+    res.json({
+      status: 'success',
+      data: { customer: customer || null }
+    });
+  } catch (error) {
+    console.error('Search customer error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to search customer'
+    });
+  }
+});
+
+// Link Customer to Plan (update plan_id)
+app.put('/api/customers/:id/plan', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { plan_id } = req.body;
+
+    if (!isConfigured()) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'Supabase not configured'
+      });
+    }
+
+    const { data: customer, error } = await supabase
+      .from('customers')
+      .update({ plan_id: plan_id || null })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Link customer to plan error:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: error.message || 'Failed to link customer to plan'
+      });
+    }
+
+    res.json({
+      status: 'success',
+      message: 'Customer linked to plan successfully',
+      data: { customer }
+    });
+  } catch (error) {
+    console.error('Link customer to plan error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to link customer to plan'
+    });
+  }
+});
+
 // Get API key from environment variable
 const getApiKey = () => {
   const apiKey = process.env.TOOKAN_API_KEY;

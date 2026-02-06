@@ -56,11 +56,55 @@ export function MerchantPlansPanel() {
   const [searchVendorId, setSearchVendorId] = useState<string>('');
   const [selectedPlanForLink, setSelectedPlanForLink] = useState<string>('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [searchedCustomer, setSearchedCustomer] = useState<{ id: string; vendorId: string; name: string; phone: string; planId: string | null } | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
 
-  // Computed: Found Merchant
-  const foundMerchant = searchVendorId ? merchants.find(m =>
-    m.vendorId === searchVendorId.trim() || m.id === searchVendorId.trim()
-  ) : null;
+  // Search customer from database when vendor_id changes
+  useEffect(() => {
+    const searchCustomer = async () => {
+      const vendorId = searchVendorId.trim();
+      if (!vendorId) {
+        setSearchedCustomer(null);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch(`${API_BASE_URL}/api/customers/search?vendor_id=${encodeURIComponent(vendorId)}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+
+        const data = await response.json();
+        if (response.ok && data.status === 'success' && data.data?.customer) {
+          const c = data.data.customer;
+          setSearchedCustomer({
+            id: c.id?.toString() || '',
+            vendorId: c.vendor_id?.toString() || '',
+            name: c.customer_name || 'Unknown Merchant',
+            phone: c.customer_phone || '',
+            planId: c.plan_id || null
+          });
+        } else {
+          setSearchedCustomer(null);
+        }
+      } catch (error) {
+        console.error('Search customer error:', error);
+        setSearchedCustomer(null);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    // Debounce search
+    const timeoutId = setTimeout(searchCustomer, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchVendorId]);
 
   // Fetch merchant plans on mount
   useEffect(() => {
@@ -292,26 +336,45 @@ export function MerchantPlansPanel() {
     ));
   };
 
-  // Handle Quick Link
-  const handleQuickLink = () => {
-    if (!foundMerchant || !selectedPlanForLink) {
+  // Handle Quick Link (persists to database)
+  const handleQuickLink = async () => {
+    if (!searchedCustomer || !selectedPlanForLink) {
       toast.error('Please find a merchant and select a plan');
       return;
     }
 
-    // Optimistic update as per requirement (Frontend only)
-    setMerchants(merchants.map(m =>
-      m.id === foundMerchant.id
-        ? { ...m, planId: selectedPlanForLink }
-        : m
-    ));
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/customers/${searchedCustomer.id}/plan`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ plan_id: selectedPlanForLink })
+      });
 
-    toast.success('Plan linked to merchant successfully');
-
-    // Reset selection
-    // Reset selection
-    setSearchVendorId('');
-    setSelectedPlanForLink('');
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        toast.success('Plan linked to merchant successfully');
+        // Update local state
+        setMerchants(merchants.map(m =>
+          m.id === searchedCustomer.id
+            ? { ...m, planId: selectedPlanForLink }
+            : m
+        ));
+        // Reset selection
+        setSearchVendorId('');
+        setSelectedPlanForLink('');
+        setSearchedCustomer(null);
+      } else {
+        toast.error(data.message || 'Failed to link plan');
+      }
+    } catch (error) {
+      console.error('Link plan error:', error);
+      toast.error('Failed to link plan to merchant');
+    }
   };
 
 
@@ -554,15 +617,25 @@ export function MerchantPlansPanel() {
               </div>
 
               {/* Exact Match Details Card */}
-              {foundMerchant ? (
+              {isSearching ? (
+                <div className="bg-muted/30 dark:bg-[#223560]/50 border border-border dark:border-[#2A3C63] rounded-xl p-3 animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-muted/50 dark:bg-[#2A3C63]" />
+                    <div className="space-y-2">
+                      <div className="h-4 w-32 bg-muted/50 dark:bg-[#2A3C63] rounded" />
+                      <div className="h-3 w-24 bg-muted/50 dark:bg-[#2A3C63] rounded" />
+                    </div>
+                  </div>
+                </div>
+              ) : searchedCustomer ? (
                 <div className="bg-[#10B981]/10 dark:bg-[#10B981]/20 border border-[#10B981]/30 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-[#10B981]/20 flex items-center justify-center shrink-0">
                       <CheckCircle className="w-4 h-4 text-[#10B981]" />
                     </div>
                     <div>
-                      <p className="text-heading dark:text-[#C1EEFA] text-sm font-bold leading-tight">{foundMerchant.name}</p>
-                      <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-0.5">{foundMerchant.phone}</p>
+                      <p className="text-heading dark:text-[#C1EEFA] text-sm font-bold leading-tight">{searchedCustomer.name}</p>
+                      <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-0.5">{searchedCustomer.phone}</p>
                     </div>
                   </div>
                 </div>
@@ -631,7 +704,7 @@ export function MerchantPlansPanel() {
           {/* Link Button */}
           <button
             onClick={handleQuickLink}
-            disabled={!foundMerchant || !selectedPlanForLink}
+            disabled={!searchedCustomer || !selectedPlanForLink}
             className="flex items-center justify-center gap-2 px-6 py-2.5 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 disabled:hover:scale-100 h-[40px]"
           >
             <Link className="w-4 h-4" />
