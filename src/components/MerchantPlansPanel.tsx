@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import {
   Plus,
   Edit2,
@@ -12,8 +13,7 @@ import {
   Percent,
   UserPlus,
   UserMinus,
-  Link,
-  ChevronDown
+  Link
 } from 'lucide-react';
 import { fetchAllCustomers } from '../services/tookanApi';
 import { toast } from 'sonner';
@@ -450,53 +450,67 @@ export function MerchantPlansPanel() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
           {/* Merchant Dropdown */}
           <div className="flex-1">
-            <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">Select Merchant</label>
-            <div className="relative">
-              <select
+            <FormControl fullWidth variant="outlined" size="small" className="bg-input-bg dark:bg-[#223560] rounded-xl">
+              <InputLabel id="merchant-select-label" className="text-heading dark:text-[#C1EEFA]">Select Merchant</InputLabel>
+              <Select
+                labelId="merchant-select-label"
                 value={selectedCustomerForLink}
+                label="Select Merchant"
                 onChange={(e) => setSelectedCustomerForLink(e.target.value)}
-                className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] transition-all appearance-none"
+                className="text-heading dark:text-[#C1EEFA]"
+                sx={{
+                  '.MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
+                  '.MuiSvgIcon-root': { color: 'var(--muted-foreground)' }
+                }}
               >
-                <option value="">Select a merchant...</option>
+                <MenuItem value="">
+                  <em>None</em>
+                </MenuItem>
                 {merchants.sort((a, b) => a.name.localeCompare(b.name)).map(merchant => (
-                  <option key={merchant.id} value={merchant.id}>
+                  <MenuItem key={merchant.id} value={merchant.id}>
                     {merchant.name} ({merchant.phone})
-                  </option>
+                  </MenuItem>
                 ))}
-              </select>
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                <ChevronDown className="w-4 h-4 text-muted-light dark:text-[#99BFD1]" />
-              </div>
-            </div>
+              </Select>
+            </FormControl>
           </div>
 
           {/* Plan Dropdown */}
           <div className="flex-1">
-            <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">Select Plan</label>
-            <div className="relative">
-              <select
+            <FormControl fullWidth variant="outlined" size="small" className="bg-input-bg dark:bg-[#223560] rounded-xl">
+              <InputLabel id="plan-select-label" className="text-heading dark:text-[#C1EEFA]">Select Plan</InputLabel>
+              <Select
+                labelId="plan-select-label"
                 value={selectedPlanForLink}
+                label="Select Plan"
                 onChange={(e) => setSelectedPlanForLink(e.target.value)}
-                className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-base text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] transition-all appearance-none"
+                className="text-heading dark:text-[#C1EEFA]"
+                sx={{
+                  '.MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
+                  '.MuiSvgIcon-root': { color: 'var(--muted-foreground)' }
+                }}
               >
-                <option value="">Select a plan...</option>
+                <MenuItem value="">
+                  <em>None</em>
+                </MenuItem>
                 {plans.map(plan => (
-                  <option key={plan.id} value={plan.id}>
+                  <MenuItem key={plan.id} value={plan.id}>
                     {plan.name} ({getFeeRuleSummary(plan)})
-                  </option>
+                  </MenuItem>
                 ))}
-              </select>
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                <ChevronDown className="w-4 h-4 text-muted-light dark:text-[#99BFD1]" />
-              </div>
-            </div>
+              </Select>
+            </FormControl>
           </div>
 
           {/* Link Button */}
           <button
             onClick={handleQuickLink}
             disabled={!selectedCustomerForLink || !selectedPlanForLink}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 disabled:hover:scale-100 h-[50px]"
+            className="flex items-center justify-center gap-2 px-6 py-2.5 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 disabled:hover:scale-100 h-[40px]"
           >
             <Link className="w-4 h-4" />
             Link Plan
