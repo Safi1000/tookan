@@ -497,6 +497,124 @@ function getApp() {
       }
     });
 
+    // API Key validation middleware for external APIs
+    const validateApiKey = (req, res, next) => {
+      const apiKey = req.headers['x-api-key'];
+      const validApiKey = process.env.EXTERNAL_API_KEY;
+
+      if (!apiKey) {
+        return res.status(401).json({
+          status: 'error',
+          message: 'Missing API key. Provide x-api-key header.'
+        });
+      }
+
+      if (!validApiKey || apiKey !== validApiKey) {
+        return res.status(401).json({
+          status: 'error',
+          message: 'Invalid API key'
+        });
+      }
+
+      next();
+    };
+
+    // GET all customers with plans (external API with API key auth)
+    app.get('/api/get_all_customers_with_plans', validateApiKey, async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({
+            status: 'error',
+            message: 'Database not configured'
+          });
+        }
+
+        const { start_date, end_date } = req.query;
+
+        // Build query for customers with plan_id NOT NULL
+        let query = supabase
+          .from('customers')
+          .select('vendor_id, customer_name, customer_phone, plan_id, created_at')
+          .not('plan_id', 'is', null);
+
+        // Apply date range filter if provided
+        if (start_date) {
+          query = query.gte('created_at', start_date);
+        }
+        if (end_date) {
+          query = query.lte('created_at', end_date);
+        }
+
+        const { data: customers, error: customersError } = await query;
+
+        if (customersError) {
+          console.error('Get customers with plans error:', customersError);
+          return res.status(500).json({
+            status: 'error',
+            message: customersError.message || 'Failed to fetch customers'
+          });
+        }
+
+        if (!customers || customers.length === 0) {
+          return res.json({
+            status: 'success',
+            count: 0,
+            data: []
+          });
+        }
+
+        // Get unique plan IDs
+        const planIds = [...new Set(customers.map(c => c.plan_id).filter(Boolean))];
+
+        // Fetch plan details
+        const { data: plans, error: plansError } = await supabase
+          .from('plans')
+          .select('id, name, description, type, amount')
+          .in('id', planIds);
+
+        if (plansError) {
+          console.error('Get plans error:', plansError);
+          return res.status(500).json({
+            status: 'error',
+            message: plansError.message || 'Failed to fetch plan details'
+          });
+        }
+
+        // Create plans lookup map
+        const plansMap = (plans || []).reduce((acc, plan) => {
+          acc[plan.id] = {
+            name: plan.name,
+            description: plan.description,
+            type: plan.type,
+            amount: plan.amount
+          };
+          return acc;
+        }, {});
+
+        // Build response with nested plan details
+        const result = customers.map(customer => ({
+          vendor_id: customer.vendor_id,
+          customer_name: customer.customer_name,
+          customer_phone: customer.customer_phone,
+          plan_id: customer.plan_id,
+          plan: plansMap[customer.plan_id] || null
+        }));
+
+        res.json({
+          status: 'success',
+          count: result.length,
+          data: result
+        });
+
+      } catch (error) {
+        console.error('Get all customers with plans error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Internal server error'
+        });
+      }
+    });
+
     // Search Customer by Vendor ID (exact match)
     app.get('/api/customers/search', authenticate, async (req, res) => {
       try {
