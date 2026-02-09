@@ -692,6 +692,48 @@ function getApp() {
       }
     });
 
+    // GET single customer withdraw fees by vendor_id (external API with API key auth)
+    app.get('/api/get_customer_withdraw_fees/:vendor_id', validateApiKey, async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { vendor_id } = req.params;
+
+        if (!vendor_id) {
+          return res.status(400).json({ status: 'error', message: 'vendor_id is required' });
+        }
+
+        const { data: customer, error } = await supabase
+          .from('customers')
+          .select('vendor_id, customer_name, customer_phone, withdraw_fees')
+          .eq('vendor_id', parseInt(vendor_id))
+          .single();
+
+        if (error) {
+          if (error.code === 'PGRST116') {
+            return res.status(404).json({ status: 'error', message: 'Customer not found' });
+          }
+          return res.status(500).json({ status: 'error', message: error.message });
+        }
+
+        res.json({
+          status: 'success',
+          data: {
+            vendor_id: customer.vendor_id,
+            customer_name: customer.customer_name,
+            customer_phone: customer.customer_phone,
+            withdraw_fees: customer.withdraw_fees
+          }
+        });
+
+      } catch (error) {
+        console.error('Get customer withdraw fees error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
+      }
+    });
+
     // ========== WITHDRAWAL FEES ENDPOINTS ==========
     let globalWithdrawalFee = null;
 
