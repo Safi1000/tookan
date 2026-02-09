@@ -900,6 +900,11 @@ export function ReportsPanel() {
                     const vendorIdStr = String(order.vendor_id || '');
                     const customerPlan = vendorIdStr ? customerPlanMap[vendorIdStr] : null;
 
+                    // Debug logging
+                    if (index === 0) {
+                      console.log('🔍 DEBUG Order sample:', { vendor_id: order.vendor_id, vendorIdStr, customerPlan, customerPlanMapKeys: Object.keys(customerPlanMap).slice(0, 5) });
+                    }
+
                     if (customerPlan) {
                       computedOrderFees = customerPlan.planAmount;
                       displayTags = customerPlan.planName;
