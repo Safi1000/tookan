@@ -206,6 +206,55 @@ app.get('/api/customers/assigned', authenticate, async (req, res) => {
   }
 });
 
+// GET customers with plans including plan details (for Reports Panel)
+app.get('/api/customers/with-plans', authenticate, async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    // Fetch customers with plan_id set
+    const { data: customers, error } = await supabase
+      .from('customers')
+      .select('vendor_id, customer_name, customer_phone, plan_id')
+      .not('plan_id', 'is', null);
+
+    if (error) {
+      return res.status(500).json({ status: 'error', message: error.message });
+    }
+
+    if (!customers || customers.length === 0) {
+      return res.json({ status: 'success', data: [] });
+    }
+
+    // Fetch plans with full details
+    const planIds = [...new Set(customers.map(c => c.plan_id).filter(Boolean))];
+    const { data: plans } = await supabase
+      .from('plans')
+      .select('id, name, description, type, amount')
+      .in('id', planIds);
+
+    const plansMap = (plans || []).reduce((acc, p) => {
+      acc[p.id] = { name: p.name, description: p.description, type: p.type, amount: p.amount };
+      return acc;
+    }, {});
+
+    // Map customers with plan details
+    const result = customers.map(c => ({
+      vendor_id: c.vendor_id,
+      customer_name: c.customer_name,
+      customer_phone: c.customer_phone,
+      plan_id: c.plan_id,
+      plan: plansMap[c.plan_id] || null
+    }));
+
+    res.json({ status: 'success', data: result });
+  } catch (error) {
+    console.error('Get customers with plans error:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
+  }
+});
+
 // API Key validation middleware
 const validateApiKey = (req, res, next) => {
   const apiKey = req.headers['x-api-key'];

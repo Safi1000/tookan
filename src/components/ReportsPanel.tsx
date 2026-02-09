@@ -34,6 +34,7 @@ export function ReportsPanel() {
   const [totals, setTotals] = useState({ orders: 0, drivers: 0, merchants: 0, deliveries: 0 });
   const [driverPerformanceData, setDriverPerformanceData] = useState<any[]>([]);
   const [customerPerformanceData, setCustomerPerformanceData] = useState<any[]>([]);
+  const [customerPlanMap, setCustomerPlanMap] = useState<Record<string, { planName: string; planAmount: number }>>({});
   const [tookanFeeRate, setTookanFeeRate] = useState(0.05);
   const [showFeeSettings, setShowFeeSettings] = useState(false);
   const [feeRateInput, setFeeRateInput] = useState('0.05');
@@ -207,6 +208,33 @@ export function ReportsPanel() {
             merchants: summaryResult.data.totals.customers // Map customers from DB to merchants for display
           });
         }
+      }
+
+      // Fetch customers with plans for Order Fees override
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+        const token = localStorage.getItem('auth_token');
+        const planMapResponse = await fetch(`${API_BASE_URL}/api/customers/with-plans`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (planMapResponse.ok) {
+          const planMapData = await planMapResponse.json();
+          if (planMapData.status === 'success' && planMapData.data) {
+            const newPlanMap: Record<string, { planName: string; planAmount: number }> = {};
+            planMapData.data.forEach((c: any) => {
+              if (c.vendor_id && c.plan) {
+                newPlanMap[String(c.vendor_id)] = {
+                  planName: c.plan.name || 'Plan',
+                  planAmount: parseFloat(c.plan.amount) || 0
+                };
+              }
+            });
+            setCustomerPlanMap(newPlanMap);
+            console.log('📋 Customer Plan Map:', Object.keys(newPlanMap).length, 'customers with plans');
+          }
+        }
+      } catch (planErr) {
+        console.warn('Could not fetch customer plans:', planErr);
       }
 
       // Update totals from actual fetched data - REMOVED TO PREVENT OVERWRITING RPC DATA
@@ -866,7 +894,16 @@ export function ReportsPanel() {
 
                     // Compute order fees based on tags
                     let computedOrderFees = 0;
-                    if (tags) {
+                    let displayTags = tags || '';
+
+                    // Check if customer has a plan - override fees and tags
+                    const vendorIdStr = String(order.vendor_id || '');
+                    const customerPlan = vendorIdStr ? customerPlanMap[vendorIdStr] : null;
+
+                    if (customerPlan) {
+                      computedOrderFees = customerPlan.planAmount;
+                      displayTags = customerPlan.planName;
+                    } else if (tags) {
                       const tagsLower = tags.toLowerCase();
                       if (tagsLower.includes('same day delivery')) {
                         computedOrderFees = sameDayFee;
@@ -922,7 +959,13 @@ export function ReportsPanel() {
                             {mapStatus(order.status)}
                           </span>
                         </td>
-                        <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{tags || '-'}</td>
+                        <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">
+                          {customerPlan ? (
+                            <span className="px-2 py-1 rounded-lg text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                              {displayTags}
+                            </span>
+                          ) : (displayTags || '-')}
+                        </td>
                       </tr>
                     );
                   })}
