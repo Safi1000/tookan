@@ -615,6 +615,37 @@ function getApp() {
       }
     });
 
+    // GET all customers with withdraw fees (external API with API key auth)
+    app.get('/api/get_all_customers_with_withdraw_fees', validateApiKey, async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { data: customers, error } = await supabase
+          .from('customers')
+          .select('vendor_id, customer_name, customer_phone, withdraw_fees')
+          .not('withdraw_fees', 'is', null)
+          .order('customer_name', { ascending: true });
+
+        if (error) {
+          return res.status(500).json({ status: 'error', message: error.message || 'Failed to fetch customers' });
+        }
+
+        const result = (customers || []).map(c => ({
+          vendor_id: c.vendor_id,
+          customer_name: c.customer_name,
+          customer_phone: c.customer_phone,
+          withdraw_fees: c.withdraw_fees
+        }));
+
+        res.json({ status: 'success', count: result.length, data: result });
+      } catch (error) {
+        console.error('Get all customers with withdraw fees error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
+      }
+    });
+
     // ========== WITHDRAWAL FEES ENDPOINTS ==========
     let globalWithdrawalFee = null;
 
