@@ -796,6 +796,113 @@ function getApp() {
       }
     });
 
+    // ========== WITHDRAWAL REQUEST RECEIVER API ==========
+
+    const validateIban = (iban) => {
+      if (!iban || typeof iban !== 'string') return false;
+      const cleanIban = iban.replace(/\s/g, '').toUpperCase();
+      return /^[A-Z0-9]{15,34}$/.test(cleanIban);
+    };
+
+    const validatePartnerApiKey = (req, res, next) => {
+      const authHeader = req.headers['authorization'];
+      const validApiKey = process.env.EXTERNAL_API_KEY;
+
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.error('[WITHDRAWAL] Unauthorized: Missing or invalid Authorization header');
+        return res.status(401).send();
+      }
+
+      const token = authHeader.substring(7);
+
+      if (!validApiKey || token !== validApiKey) {
+        console.error('[WITHDRAWAL] Unauthorized: Invalid API key');
+        return res.status(401).send();
+      }
+
+      next();
+    };
+
+    app.post('/api/withdrawal/request', validatePartnerApiKey, async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          console.error('[WITHDRAWAL] Database not configured');
+          return res.status(500).send();
+        }
+
+        const { id, email, type, requested_amount, tax_applied, final_amount, iban_number } = req.body;
+
+        // Validation: Required fields
+        const missingFields = [];
+        if (id === undefined || id === null) missingFields.push('id');
+        if (!email) missingFields.push('email');
+        if (type === undefined || type === null) missingFields.push('type');
+        if (requested_amount === undefined || requested_amount === null) missingFields.push('requested_amount');
+        if (final_amount === undefined || final_amount === null) missingFields.push('final_amount');
+        if (!iban_number) missingFields.push('iban_number');
+
+        if (missingFields.length > 0) {
+          console.error(`[WITHDRAWAL] Validation failed: Missing fields: ${missingFields.join(', ')}`, { body: req.body });
+          return res.status(400).send();
+        }
+
+        const typeNum = Number(type);
+        if (typeNum !== 1 && typeNum !== 2) {
+          console.error(`[WITHDRAWAL] Validation failed: Invalid type ${type}`, { body: req.body });
+          return res.status(400).send();
+        }
+
+        const reqAmount = Number(requested_amount);
+        if (isNaN(reqAmount) || reqAmount <= 0) {
+          console.error(`[WITHDRAWAL] Validation failed: requested_amount must be > 0`, { body: req.body });
+          return res.status(400).send();
+        }
+
+        const finAmount = Number(final_amount);
+        if (isNaN(finAmount) || finAmount < 0) {
+          console.error(`[WITHDRAWAL] Validation failed: final_amount must be >= 0`, { body: req.body });
+          return res.status(400).send();
+        }
+
+        if (!validateIban(iban_number)) {
+          console.error(`[WITHDRAWAL] Validation failed: Invalid IBAN`, { body: req.body });
+          return res.status(400).send();
+        }
+
+        const fleetId = typeNum === 1 ? Number(id) : null;
+        const vendorId = typeNum === 2 ? Number(id) : null;
+
+        const withdrawalRecord = {
+          fleet_id: fleetId,
+          vendor_id: vendorId,
+          email: email.trim(),
+          requested_amount: reqAmount,
+          tax_applied: Number(tax_applied) || 0,
+          final_amount: finAmount,
+          iban: iban_number.replace(/\s/g, '').toUpperCase(),
+          status: 'pending'
+        };
+
+        const { data, error } = await supabase
+          .from('withdrawals')
+          .insert(withdrawalRecord)
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error('[WITHDRAWAL] Database insert error:', error);
+          return res.status(500).send();
+        }
+
+        console.log(`[WITHDRAWAL] Success: Created withdrawal ${data.id} for ${typeNum === 1 ? 'fleet' : 'vendor'} ${id}`);
+        return res.status(200).send();
+
+      } catch (error) {
+        console.error('[WITHDRAWAL] Unexpected error:', error);
+        return res.status(500).send();
+      }
+    });
+
     // ========== WITHDRAWAL FEES ENDPOINTS ==========
     let globalWithdrawalFee = null;
 

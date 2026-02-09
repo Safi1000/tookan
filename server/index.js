@@ -527,6 +527,136 @@ app.get('/api/get_customer_withdraw_fees/:vendor_id', validateApiKey, async (req
   }
 });
 
+// ========== WITHDRAWAL REQUEST RECEIVER API ==========
+
+/**
+ * Validates IBAN format (basic validation)
+ * - Length between 15-34 characters
+ * - Alphanumeric only
+ */
+const validateIban = (iban) => {
+  if (!iban || typeof iban !== 'string') return false;
+  const cleanIban = iban.replace(/\s/g, '').toUpperCase();
+  return /^[A-Z0-9]{15,34}$/.test(cleanIban);
+};
+
+/**
+ * Partner API Key validation middleware
+ * Uses Bearer token from Authorization header
+ */
+const validatePartnerApiKey = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const validApiKey = process.env.EXTERNAL_API_KEY; // Using existing EXTERNAL_API_KEY
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.error('[WITHDRAWAL] Unauthorized: Missing or invalid Authorization header');
+    return res.status(401).send();
+  }
+
+  const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+  if (!validApiKey || token !== validApiKey) {
+    console.error('[WITHDRAWAL] Unauthorized: Invalid API key');
+    return res.status(401).send();
+  }
+
+  next();
+};
+
+/**
+ * POST /api/withdrawal/request
+ * 
+ * Receives withdrawal requests from external partner system.
+ * Routes to fleet_id or vendor_id based on type field.
+ * Returns only binary acknowledgement (200/400/401/500).
+ */
+app.post('/api/withdrawal/request', validatePartnerApiKey, async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      console.error('[WITHDRAWAL] Database not configured');
+      return res.status(500).send();
+    }
+
+    const { id, email, type, requested_amount, tax_applied, final_amount, iban_number } = req.body;
+
+    // Validation: Required fields
+    const missingFields = [];
+    if (id === undefined || id === null) missingFields.push('id');
+    if (!email) missingFields.push('email');
+    if (type === undefined || type === null) missingFields.push('type');
+    if (requested_amount === undefined || requested_amount === null) missingFields.push('requested_amount');
+    if (final_amount === undefined || final_amount === null) missingFields.push('final_amount');
+    if (!iban_number) missingFields.push('iban_number');
+
+    if (missingFields.length > 0) {
+      console.error(`[WITHDRAWAL] Validation failed: Missing fields: ${missingFields.join(', ')}`, { body: req.body });
+      return res.status(400).send();
+    }
+
+    // Validation: Type must be 1 (fleet) or 2 (vendor)
+    const typeNum = Number(type);
+    if (typeNum !== 1 && typeNum !== 2) {
+      console.error(`[WITHDRAWAL] Validation failed: Invalid type ${type}. Must be 1 (fleet) or 2 (vendor)`, { body: req.body });
+      return res.status(400).send();
+    }
+
+    // Validation: requested_amount > 0
+    const reqAmount = Number(requested_amount);
+    if (isNaN(reqAmount) || reqAmount <= 0) {
+      console.error(`[WITHDRAWAL] Validation failed: requested_amount must be > 0, got: ${requested_amount}`, { body: req.body });
+      return res.status(400).send();
+    }
+
+    // Validation: final_amount >= 0
+    const finAmount = Number(final_amount);
+    if (isNaN(finAmount) || finAmount < 0) {
+      console.error(`[WITHDRAWAL] Validation failed: final_amount must be >= 0, got: ${final_amount}`, { body: req.body });
+      return res.status(400).send();
+    }
+
+    // Validation: IBAN format
+    if (!validateIban(iban_number)) {
+      console.error(`[WITHDRAWAL] Validation failed: Invalid IBAN format: ${iban_number}`, { body: req.body });
+      return res.status(400).send();
+    }
+
+    // Route based on type
+    const fleetId = typeNum === 1 ? Number(id) : null;
+    const vendorId = typeNum === 2 ? Number(id) : null;
+
+    // Build record for insertion
+    const withdrawalRecord = {
+      fleet_id: fleetId,
+      vendor_id: vendorId,
+      email: email.trim(),
+      requested_amount: reqAmount,
+      tax_applied: Number(tax_applied) || 0,
+      final_amount: finAmount,
+      iban: iban_number.replace(/\s/g, '').toUpperCase(),
+      status: 'pending'
+    };
+
+    // Insert into database
+    const { data, error } = await supabase
+      .from('withdrawals')
+      .insert(withdrawalRecord)
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('[WITHDRAWAL] Database insert error:', error, { record: withdrawalRecord });
+      return res.status(500).send();
+    }
+
+    console.log(`[WITHDRAWAL] Success: Created withdrawal ${data.id} for ${typeNum === 1 ? 'fleet' : 'vendor'} ${id}`);
+    return res.status(200).send();
+
+  } catch (error) {
+    console.error('[WITHDRAWAL] Unexpected error:', error, { body: req.body });
+    return res.status(500).send();
+  }
+});
+
 // ========== WITHDRAWAL FEES ENDPOINTS ==========
 
 // Global withdrawal fee storage (in production, use settings table)
