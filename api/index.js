@@ -661,6 +661,68 @@ function getApp() {
       }
     });
 
+    // GET single customer plan by vendor_id (external API with API key auth)
+    app.get('/api/get_customer_plan/:vendor_id', validateApiKey, async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { vendor_id } = req.params;
+
+        if (!vendor_id) {
+          return res.status(400).json({ status: 'error', message: 'vendor_id is required' });
+        }
+
+        const { data: customer, error } = await supabase
+          .from('customers')
+          .select('vendor_id, customer_name, customer_phone, plan_id')
+          .eq('vendor_id', parseInt(vendor_id))
+          .single();
+
+        if (error) {
+          if (error.code === 'PGRST116') {
+            return res.status(404).json({ status: 'error', message: 'Customer not found' });
+          }
+          return res.status(500).json({ status: 'error', message: error.message });
+        }
+
+        if (!customer.plan_id) {
+          return res.json({
+            status: 'success',
+            data: {
+              vendor_id: customer.vendor_id,
+              customer_name: customer.customer_name,
+              customer_phone: customer.customer_phone,
+              plan_id: null,
+              plan: null
+            }
+          });
+        }
+
+        const { data: plan } = await supabase
+          .from('plans')
+          .select('id, name, description, type, amount')
+          .eq('id', customer.plan_id)
+          .single();
+
+        res.json({
+          status: 'success',
+          data: {
+            vendor_id: customer.vendor_id,
+            customer_name: customer.customer_name,
+            customer_phone: customer.customer_phone,
+            plan_id: customer.plan_id,
+            plan: plan ? { name: plan.name, description: plan.description, type: plan.type, amount: plan.amount } : null
+          }
+        });
+
+      } catch (error) {
+        console.error('Get customer plan error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
+      }
+    });
+
     // GET all customers with withdraw fees (external API with API key auth)
     app.get('/api/get_all_customers_with_withdraw_fees', validateApiKey, async (req, res) => {
       try {
