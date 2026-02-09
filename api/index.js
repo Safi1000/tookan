@@ -615,6 +615,80 @@ function getApp() {
       }
     });
 
+    // ========== WITHDRAWAL FEES ENDPOINTS ==========
+    let globalWithdrawalFee = null;
+
+    app.get('/api/withdrawal-fees/current', authenticate, async (req, res) => {
+      try {
+        res.json({ status: 'success', data: { fee: globalWithdrawalFee } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: 'Failed to get current fee' });
+      }
+    });
+
+    app.post('/api/withdrawal-fees/set', authenticate, async (req, res) => {
+      try {
+        const { fee } = req.body;
+        if (typeof fee !== 'number' || fee < 0) {
+          return res.status(400).json({ status: 'error', message: 'Invalid fee amount' });
+        }
+        globalWithdrawalFee = fee;
+        if (isSupabaseConfigured && supabase) {
+          await supabase.from('customers').update({ withdraw_fees: fee }).not('withdraw_fees', 'is', null);
+        }
+        res.json({ status: 'success', message: 'Withdrawal fee updated', data: { fee } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: 'Failed to set fee' });
+      }
+    });
+
+    app.get('/api/withdrawal-fees/customers', authenticate, async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.json({ status: 'success', data: { customers: [] } });
+        }
+        const { data: customers, error } = await supabase
+          .from('customers')
+          .select('vendor_id, customer_name, customer_phone, withdraw_fees')
+          .not('withdraw_fees', 'is', null);
+        if (error) return res.status(500).json({ status: 'error', message: error.message });
+        const result = (customers || []).map(c => ({
+          vendorId: c.vendor_id, name: c.customer_name || 'Unknown', phone: c.customer_phone || '', withdrawFees: c.withdraw_fees
+        }));
+        res.json({ status: 'success', data: { customers: result } });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: 'Failed to get linked customers' });
+      }
+    });
+
+    app.post('/api/withdrawal-fees/link', authenticate, async (req, res) => {
+      try {
+        const { vendor_id, fee } = req.body;
+        if (!vendor_id) return res.status(400).json({ status: 'error', message: 'Vendor ID is required' });
+        if (!isSupabaseConfigured || !supabase) return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        const { data: existing } = await supabase.from('customers').select('vendor_id').eq('vendor_id', vendor_id.toString()).single();
+        if (!existing) return res.status(404).json({ status: 'error', message: 'Customer not found' });
+        const { error } = await supabase.from('customers').update({ withdraw_fees: fee }).eq('vendor_id', vendor_id.toString());
+        if (error) return res.status(500).json({ status: 'error', message: error.message });
+        res.json({ status: 'success', message: 'Customer linked to withdrawal fee' });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: 'Failed to link customer' });
+      }
+    });
+
+    app.post('/api/withdrawal-fees/unlink', authenticate, async (req, res) => {
+      try {
+        const { vendor_id } = req.body;
+        if (!vendor_id) return res.status(400).json({ status: 'error', message: 'Vendor ID is required' });
+        if (!isSupabaseConfigured || !supabase) return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        const { error } = await supabase.from('customers').update({ withdraw_fees: null }).eq('vendor_id', vendor_id.toString());
+        if (error) return res.status(500).json({ status: 'error', message: error.message });
+        res.json({ status: 'success', message: 'Customer unlinked from withdrawal fee' });
+      } catch (error) {
+        res.status(500).json({ status: 'error', message: 'Failed to unlink customer' });
+      }
+    });
+
     // Search Customer by Vendor ID (exact match)
     app.get('/api/customers/search', authenticate, async (req, res) => {
       try {

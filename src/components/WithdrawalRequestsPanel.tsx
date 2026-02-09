@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, X, Search, Calendar, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { Check, X, Search, Calendar, CheckCircle, XCircle, RefreshCw, DollarSign, Link, Unlink, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithdrawalRequests, approveWithdrawalRequest, rejectWithdrawalRequest, type WithdrawalRequest } from '../services/tookanApi';
 
@@ -62,20 +62,34 @@ export function WithdrawalRequestsPanel() {
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Withdrawal Fees Modal State
+  const [showFeesModal, setShowFeesModal] = useState(false);
+  const [feesTab, setFeesTab] = useState<'link' | 'unlink'>('link');
+  const [withdrawalFee, setWithdrawalFee] = useState('');
+  const [linkVendorId, setLinkVendorId] = useState('');
+  const [linkedCustomers, setLinkedCustomers] = useState<Array<{ vendorId: string; name: string; phone: string; withdrawFees: number }>>([]);
+  const [isLoadingFees, setIsLoadingFees] = useState(false);
+  const [currentFee, setCurrentFee] = useState<number | null>(null);
+
   // Load withdrawal requests
   useEffect(() => {
     loadWithdrawals();
   }, [dateFrom, dateTo]);
 
+  // Fetch linked customers when modal opens
+  useEffect(() => {
+    if (showFeesModal) {
+      loadLinkedCustomers();
+      loadCurrentFee();
+    }
+  }, [showFeesModal]);
+
   const loadWithdrawals = async () => {
     setIsLoading(true);
     try {
-      const result = await fetchWithdrawalRequests({
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined
-      });
+      const result = await fetchWithdrawalRequests();
       if (result.status === 'success' && result.data) {
-        setWithdrawals(result.data.requests || []);
+        setWithdrawals(result.data || []);
       } else {
         // Fallback to mock data if API fails
         setWithdrawals(mockWithdrawals as WithdrawalRequest[]);
@@ -88,9 +102,141 @@ export function WithdrawalRequestsPanel() {
     }
   };
 
+  const loadCurrentFee = async () => {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/withdrawal-fees/current`, {
+        headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+      });
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        setCurrentFee(data.data.fee);
+        setWithdrawalFee(data.data.fee?.toString() || '');
+      }
+    } catch (error) {
+      console.error('Failed to load current fee:', error);
+    }
+  };
+
+  const loadLinkedCustomers = async () => {
+    setIsLoadingFees(true);
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/withdrawal-fees/customers`, {
+        headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+      });
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        setLinkedCustomers(data.data.customers || []);
+      }
+    } catch (error) {
+      console.error('Failed to load linked customers:', error);
+    } finally {
+      setIsLoadingFees(false);
+    }
+  };
+
+  const handleSetFee = async () => {
+    const feeValue = parseFloat(withdrawalFee);
+    if (isNaN(feeValue) || feeValue < 0) {
+      toast.error('Please enter a valid fee amount');
+      return;
+    }
+
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/withdrawal-fees/set`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ fee: feeValue })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        toast.success(`Withdrawal fee set to $${feeValue.toFixed(2)} for all linked customers`);
+        setCurrentFee(feeValue);
+        loadLinkedCustomers();
+      } else {
+        toast.error(data.message || 'Failed to set fee');
+      }
+    } catch (error) {
+      console.error('Failed to set fee:', error);
+      toast.error('Failed to set withdrawal fee');
+    }
+  };
+
+  const handleLinkCustomer = async () => {
+    if (!linkVendorId.trim()) {
+      toast.error('Please enter a Vendor ID');
+      return;
+    }
+
+    if (currentFee === null) {
+      toast.error('Please set a withdrawal fee first');
+      return;
+    }
+
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/withdrawal-fees/link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ vendor_id: linkVendorId.trim(), fee: currentFee })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        toast.success('Customer linked to withdrawal fee');
+        setLinkVendorId('');
+        loadLinkedCustomers();
+      } else {
+        toast.error(data.message || 'Failed to link customer');
+      }
+    } catch (error) {
+      console.error('Failed to link customer:', error);
+      toast.error('Failed to link customer');
+    }
+  };
+
+  const handleUnlinkCustomer = async (vendorId: string) => {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/withdrawal-fees/unlink`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ vendor_id: vendorId })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        toast.success('Customer unlinked from withdrawal fee');
+        loadLinkedCustomers();
+      } else {
+        toast.error(data.message || 'Failed to unlink customer');
+      }
+    } catch (error) {
+      console.error('Failed to unlink customer:', error);
+      toast.error('Failed to unlink customer');
+    }
+  };
+
   const handleApprove = async (id: number) => {
     try {
-      const result = await approveWithdrawalRequest(id);
+      const result = await approveWithdrawalRequest(id.toString());
       if (result.status === 'success') {
         toast.success('Withdrawal request approved');
         loadWithdrawals();
@@ -105,7 +251,7 @@ export function WithdrawalRequestsPanel() {
   const handleReject = async (id: number) => {
     const reason = prompt('Enter rejection reason (optional):');
     try {
-      const result = await rejectWithdrawalRequest(id, reason || undefined);
+      const result = await rejectWithdrawalRequest(id.toString(), reason || undefined);
       if (result.status === 'success') {
         toast.success('Withdrawal request rejected');
         loadWithdrawals();
@@ -120,8 +266,8 @@ export function WithdrawalRequestsPanel() {
 
   const getValidationColor = (value: string) => {
     if (!value) return 'border-[#2A3C63] dark:border-[#2A3C63]';
-    return value.length > 3 
-      ? 'border-[#C1EEFA] shadow-[0_0_8px_rgba(193,238,250,0.3)]' 
+    return value.length > 3
+      ? 'border-[#C1EEFA] shadow-[0_0_8px_rgba(193,238,250,0.3)]'
       : 'border-[#DE3544] shadow-[0_0_8px_rgba(222,53,68,0.3)]';
   };
 
@@ -137,12 +283,12 @@ export function WithdrawalRequestsPanel() {
   const filteredWithdrawals = (withdrawals || []).filter(withdrawal => {
     // Only show customer withdrawals per SRS
     if (withdrawal.type !== 'customer') return false;
-    
+
     // Search filter
     if (customerSearch) {
       const searchLower = customerSearch.toLowerCase();
       const searchType = detectSearchType(customerSearch);
-      
+
       let matchesSearch = false;
       if (searchType === 'id') {
         matchesSearch = withdrawal.customerId?.toLowerCase().includes(searchLower) || false;
@@ -153,16 +299,13 @@ export function WithdrawalRequestsPanel() {
       }
       if (!matchesSearch) return false;
     }
-    
+
     // Date range filter
     if (dateFrom && withdrawal.date < dateFrom) return false;
     if (dateTo && withdrawal.date > dateTo) return false;
-    
+
     return true;
   });
-
-  const totalWalletAmount = filteredWithdrawals.reduce((sum, w) => sum + w.walletAmount, 0);
-  const totalWithdrawalAmount = filteredWithdrawals.reduce((sum, w) => sum + w.withdrawalAmount, 0);
 
   // Calculate total withdrawal amount for non-confirmed (Pending) requests for each customer
   const getTotalPendingWithdrawal = (withdrawal: WithdrawalRequest) => {
@@ -180,34 +323,29 @@ export function WithdrawalRequestsPanel() {
           <h1 className="text-heading text-3xl mb-2">Withdrawal Requests</h1>
           <p className="text-subheading">Review and manage customer withdrawal requests</p>
         </div>
-        <button
-          onClick={loadWithdrawals}
-          disabled={isLoading}
-          className="flex items-center gap-2 px-6 py-3 bg-card border border-border rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#223560] transition-all text-heading dark:text-[#C1EEFA] disabled:opacity-50"
-        >
-          <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
-        
-        {/* Summary Widget */}
-        <div className="flex gap-4">
-          <div className="bg-gradient-to-br from-[#3B82F6]/10 dark:from-[#C1EEFA]/10 to-[#DE3544]/10 rounded-xl border border-[#3B82F6]/30 dark:border-[#C1EEFA]/30 p-6 min-w-[240px]">
-            <p className="text-subheading text-sm mb-1">Total Wallet Amount</p>
-            <p className="text-heading text-3xl mb-1">${totalWalletAmount.toFixed(2)}</p>
-            <p className="text-[#DE3544] text-xs">Customer Requests</p>
-          </div>
-          <div className="bg-gradient-to-br from-[#DE3544]/10 dark:from-[#DE3544]/10 to-[#3B82F6]/10 rounded-xl border border-[#DE3544]/30 dark:border-[#DE3544]/30 p-6 min-w-[240px]">
-            <p className="text-subheading text-sm mb-1">Total Withdrawal Amount</p>
-            <p className="text-heading text-3xl mb-1">${totalWithdrawalAmount.toFixed(2)}</p>
-            <p className="text-[#DE3544] text-xs">Customer Requests</p>
-          </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowFeesModal(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-[#10B981]/10 border border-[#10B981]/30 rounded-xl hover:bg-[#10B981]/20 transition-all text-[#10B981]"
+          >
+            <DollarSign className="w-5 h-5" />
+            Withdrawal Fees
+          </button>
+          <button
+            onClick={loadWithdrawals}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-6 py-3 bg-card border border-border rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#223560] transition-all text-heading dark:text-[#C1EEFA] disabled:opacity-50"
+          >
+            <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
       </div>
 
       {/* Customer Search Filters */}
       <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
         <h3 className="text-foreground mb-4">Search Customer Requests</h3>
-        
+
         <div className="mb-4">
           <label className="block text-heading text-sm mb-2">Search by Customer ID, Name, or Phone Number</label>
           <div className="relative">
@@ -295,27 +433,26 @@ export function WithdrawalRequestsPanel() {
                   <td className="px-6 py-4 text-heading">${withdrawal.walletAmount.toFixed(2)}</td>
                   <td className="px-6 py-4 text-subheading text-sm">{withdrawal.date}</td>
                   <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-lg text-xs ${
-                      withdrawal.status === 'Pending' 
-                        ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' 
-                        : withdrawal.status === 'Approved'
+                    <span className={`px-3 py-1 rounded-lg text-xs ${withdrawal.status === 'Pending'
+                      ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                      : withdrawal.status === 'Approved'
                         ? 'bg-green-500/20 text-green-400 border border-green-500/30'
                         : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                    }`}>
+                      }`}>
                       {withdrawal.status}
                     </span>
                   </td>
                   <td className="px-6 py-4">
                     {withdrawal.status === 'Pending' && (
                       <div className="flex gap-2">
-                        <button 
+                        <button
                           onClick={() => handleApprove(withdrawal.id)}
                           className="p-2 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-lg hover:bg-[#C1EEFA]/20 transition-all group"
                           title="Approve"
                         >
                           <Check className="w-4 h-4 text-[#C1EEFA] group-hover:scale-110 transition-transform" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleReject(withdrawal.id)}
                           className="p-2 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-lg hover:bg-[#DE3544]/20 transition-all group"
                           title="Reject"
@@ -331,6 +468,150 @@ export function WithdrawalRequestsPanel() {
           </table>
         </div>
       </div>
+
+      {/* Withdrawal Fees Modal */}
+      {showFeesModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden shadow-2xl">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-[#10B981]" />
+                </div>
+                <div>
+                  <h2 className="text-heading text-xl font-semibold">Withdrawal Fees</h2>
+                  <p className="text-muted-light text-sm">Set fees and manage linked customers</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowFeesModal(false)}
+                className="p-2 hover:bg-muted/20 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-muted-light" />
+              </button>
+            </div>
+
+            {/* Fee Setting Section */}
+            <div className="p-6 border-b border-border">
+              <label className="block text-heading text-sm mb-2">Fixed Withdrawal Fee</label>
+              <div className="flex gap-3">
+                <div className="relative flex-1">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#10B981]" />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={withdrawalFee}
+                    onChange={(e) => setWithdrawalFee(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-3 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#10B981] transition-all"
+                  />
+                </div>
+                <button
+                  onClick={handleSetFee}
+                  className="px-6 py-3 bg-[#10B981] text-white rounded-xl hover:bg-[#10B981]/90 transition-all font-medium"
+                >
+                  Set
+                </button>
+              </div>
+              {currentFee !== null && (
+                <p className="text-xs text-muted-light mt-2">
+                  Current fee: <span className="text-[#10B981] font-medium">${currentFee.toFixed(2)}</span> — applied to {linkedCustomers.length} customer(s)
+                </p>
+              )}
+            </div>
+
+            {/* Tabs */}
+            <div className="p-4 border-b border-border flex gap-2">
+              <button
+                onClick={() => setFeesTab('link')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${feesTab === 'link'
+                  ? 'bg-[#10B981] text-white'
+                  : 'text-muted-light hover:bg-muted/20'
+                  }`}
+              >
+                <Link className="w-4 h-4" />
+                Link Customers
+              </button>
+              <button
+                onClick={() => setFeesTab('unlink')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${feesTab === 'unlink'
+                  ? 'bg-[#DE3544] text-white'
+                  : 'text-muted-light hover:bg-muted/20'
+                  }`}
+              >
+                <Unlink className="w-4 h-4" />
+                Unlink Customers ({linkedCustomers.length})
+              </button>
+            </div>
+
+            {/* Tab Content */}
+            <div className="p-6 max-h-[300px] overflow-y-auto">
+              {feesTab === 'link' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-heading text-sm mb-2">Link Customer by Vendor ID</label>
+                    <div className="flex gap-3">
+                      <input
+                        type="text"
+                        value={linkVendorId}
+                        onChange={(e) => setLinkVendorId(e.target.value)}
+                        placeholder="Enter Vendor ID (e.g., 12345)"
+                        className="flex-1 bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#5B7894] focus:outline-none focus:border-[#10B981] transition-all"
+                      />
+                      <button
+                        onClick={handleLinkCustomer}
+                        disabled={!linkVendorId.trim() || currentFee === null}
+                        className="px-6 py-3 bg-[#10B981] text-white rounded-xl hover:bg-[#10B981]/90 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Link
+                      </button>
+                    </div>
+                    {currentFee === null && (
+                      <p className="text-xs text-[#DE3544] mt-2">⚠️ Set a withdrawal fee first before linking customers</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {feesTab === 'unlink' && (
+                <div className="space-y-2">
+                  {isLoadingFees ? (
+                    <div className="text-center text-muted-light py-8">Loading linked customers...</div>
+                  ) : linkedCustomers.length === 0 ? (
+                    <div className="text-center text-muted-light py-8">
+                      <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                      <p>No customers linked to withdrawal fees</p>
+                    </div>
+                  ) : (
+                    linkedCustomers.map((customer) => (
+                      <div
+                        key={customer.vendorId}
+                        className="flex items-center justify-between p-4 bg-muted/10 rounded-xl border border-border"
+                      >
+                        <div>
+                          <p className="text-heading font-medium">{customer.name}</p>
+                          <p className="text-muted-light text-sm">
+                            Vendor ID: {customer.vendorId} • Fee: ${customer.withdrawFees?.toFixed(2) || '0.00'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleUnlinkCustomer(customer.vendorId)}
+                          className="flex items-center gap-2 px-4 py-2 bg-[#DE3544]/10 text-[#DE3544] rounded-lg hover:bg-[#DE3544]/20 transition-colors"
+                        >
+                          <Unlink className="w-4 h-4" />
+                          Unlink
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
