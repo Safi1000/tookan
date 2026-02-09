@@ -471,33 +471,34 @@ export function WithdrawalRequestsPanel() {
 
       {/* Withdrawal Fees Modal */}
       {showFeesModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" style={{ padding: '16px' }}>
+          <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-2xl" style={{ width: '100%', maxWidth: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             {/* Modal Header */}
-            <div className="p-6 border-b border-border flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center">
+            <div className="border-b border-border flex items-center justify-between" style={{ padding: '16px', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div className="rounded-xl bg-[#10B981]/10 flex items-center justify-center" style={{ width: '40px', height: '40px', minWidth: '40px' }}>
                   <DollarSign className="w-5 h-5 text-[#10B981]" />
                 </div>
                 <div>
-                  <h2 className="text-heading text-xl font-semibold">Withdrawal Fees</h2>
-                  <p className="text-muted-light text-sm">Set fees and manage linked customers</p>
+                  <h2 className="text-heading font-semibold" style={{ fontSize: '18px' }}>Withdrawal Fees</h2>
+                  <p className="text-muted-light" style={{ fontSize: '13px' }}>Set fees and manage linked customers</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowFeesModal(false)}
-                className="p-2 hover:bg-muted/20 rounded-lg transition-colors"
+                className="hover:bg-muted/20 rounded-lg transition-colors"
+                style={{ padding: '8px' }}
               >
                 <X className="w-5 h-5 text-muted-light" />
               </button>
             </div>
 
             {/* Fee Setting Section */}
-            <div className="p-6 border-b border-border">
-              <label className="block text-heading text-sm mb-2">Fixed Withdrawal Fee</label>
-              <div className="flex gap-3">
-                <div className="relative flex-1">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#10B981]" />
+            <div className="border-b border-border" style={{ padding: '16px', flexShrink: 0 }}>
+              <label className="block text-heading" style={{ fontSize: '14px', marginBottom: '8px' }}>Fixed Withdrawal Fee</label>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flex: '1 1 200px', minWidth: '150px' }}>
+                  <DollarSign className="text-[#10B981]" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px' }} />
                   <input
                     type="number"
                     step="0.01"
@@ -505,102 +506,108 @@ export function WithdrawalRequestsPanel() {
                     value={withdrawalFee}
                     onChange={(e) => setWithdrawalFee(e.target.value)}
                     placeholder="0.00"
-                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-3 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#10B981] transition-all"
+                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#10B981] transition-all"
+                    style={{ paddingLeft: '40px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px' }}
                   />
                 </div>
                 <button
                   onClick={handleSetFee}
-                  className="px-6 py-3 bg-[#10B981] text-white rounded-xl hover:bg-[#10B981]/90 transition-all font-medium"
+                  className="bg-[#10B981] text-white rounded-xl hover:bg-[#10B981]/90 transition-all font-medium"
+                  style={{ padding: '12px 24px', whiteSpace: 'nowrap' }}
                 >
                   Set
                 </button>
               </div>
               {currentFee !== null && (
-                <p className="text-xs text-muted-light mt-2">
+                <p className="text-muted-light" style={{ fontSize: '12px', marginTop: '8px' }}>
                   Current fee: <span className="text-[#10B981] font-medium">${currentFee.toFixed(2)}</span> — applied to {linkedCustomers.length} customer(s)
                 </p>
               )}
             </div>
 
             {/* Tabs */}
-            <div className="p-4 border-b border-border flex gap-2">
+            <div className="border-b border-border" style={{ padding: '12px 16px', display: 'flex', gap: '8px', flexWrap: 'wrap', flexShrink: 0 }}>
               <button
                 onClick={() => setFeesTab('link')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${feesTab === 'link'
+                className={`flex items-center rounded-lg font-medium transition-all ${feesTab === 'link'
                   ? 'bg-[#10B981] text-white'
                   : 'text-muted-light hover:bg-muted/20'
                   }`}
+                style={{ padding: '8px 16px', gap: '8px', fontSize: '14px' }}
               >
-                <Link className="w-4 h-4" />
-                Link Customers
+                <Link style={{ width: '16px', height: '16px' }} />
+                <span>Link</span>
               </button>
               <button
                 onClick={() => setFeesTab('unlink')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${feesTab === 'unlink'
+                className={`flex items-center rounded-lg font-medium transition-all ${feesTab === 'unlink'
                   ? 'bg-[#DE3544] text-white'
                   : 'text-muted-light hover:bg-muted/20'
                   }`}
+                style={{ padding: '8px 16px', gap: '8px', fontSize: '14px' }}
               >
-                <Unlink className="w-4 h-4" />
-                Unlink Customers ({linkedCustomers.length})
+                <Unlink style={{ width: '16px', height: '16px' }} />
+                <span>Unlink ({linkedCustomers.length})</span>
               </button>
             </div>
 
             {/* Tab Content */}
-            <div className="p-6 max-h-[300px] overflow-y-auto">
+            <div style={{ padding: '16px', overflowY: 'auto', flex: '1 1 auto', minHeight: '150px' }}>
               {feesTab === 'link' && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-heading text-sm mb-2">Link Customer by Vendor ID</label>
-                    <div className="flex gap-3">
-                      <input
-                        type="text"
-                        value={linkVendorId}
-                        onChange={(e) => setLinkVendorId(e.target.value)}
-                        placeholder="Enter Vendor ID (e.g., 12345)"
-                        className="flex-1 bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#5B7894] focus:outline-none focus:border-[#10B981] transition-all"
-                      />
-                      <button
-                        onClick={handleLinkCustomer}
-                        disabled={!linkVendorId.trim() || currentFee === null}
-                        className="px-6 py-3 bg-[#10B981] text-white rounded-xl hover:bg-[#10B981]/90 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Link
-                      </button>
-                    </div>
-                    {currentFee === null && (
-                      <p className="text-xs text-[#DE3544] mt-2">⚠️ Set a withdrawal fee first before linking customers</p>
-                    )}
+                <div>
+                  <label className="block text-heading" style={{ fontSize: '14px', marginBottom: '8px' }}>Link Customer by Vendor ID</label>
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    <input
+                      type="text"
+                      value={linkVendorId}
+                      onChange={(e) => setLinkVendorId(e.target.value)}
+                      placeholder="Enter Vendor ID (e.g., 12345)"
+                      className="bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl text-heading dark:text-[#C1EEFA] placeholder-[#5B7894] focus:outline-none focus:border-[#10B981] transition-all"
+                      style={{ flex: '1 1 200px', minWidth: '150px', padding: '12px 16px' }}
+                    />
+                    <button
+                      onClick={handleLinkCustomer}
+                      disabled={!linkVendorId.trim() || currentFee === null}
+                      className="bg-[#10B981] text-white rounded-xl hover:bg-[#10B981]/90 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ padding: '12px 24px', whiteSpace: 'nowrap' }}
+                    >
+                      Link
+                    </button>
                   </div>
+                  {currentFee === null && (
+                    <p className="text-[#DE3544]" style={{ fontSize: '12px', marginTop: '8px' }}>⚠️ Set a withdrawal fee first before linking customers</p>
+                  )}
                 </div>
               )}
 
               {feesTab === 'unlink' && (
-                <div className="space-y-2">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {isLoadingFees ? (
-                    <div className="text-center text-muted-light py-8">Loading linked customers...</div>
+                    <div className="text-muted-light" style={{ textAlign: 'center', padding: '32px 0' }}>Loading linked customers...</div>
                   ) : linkedCustomers.length === 0 ? (
-                    <div className="text-center text-muted-light py-8">
-                      <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <div className="text-muted-light" style={{ textAlign: 'center', padding: '32px 0' }}>
+                      <Users style={{ width: '48px', height: '48px', margin: '0 auto 8px', opacity: 0.5 }} />
                       <p>No customers linked to withdrawal fees</p>
                     </div>
                   ) : (
                     linkedCustomers.map((customer) => (
                       <div
                         key={customer.vendorId}
-                        className="flex items-center justify-between p-4 bg-muted/10 rounded-xl border border-border"
+                        className="bg-muted/10 rounded-xl border border-border"
+                        style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', gap: '12px' }}
                       >
-                        <div>
-                          <p className="text-heading font-medium">{customer.name}</p>
-                          <p className="text-muted-light text-sm">
-                            Vendor ID: {customer.vendorId} • Fee: ${customer.withdrawFees?.toFixed(2) || '0.00'}
+                        <div style={{ flex: '1 1 200px', minWidth: '0' }}>
+                          <p className="text-heading font-medium" style={{ fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{customer.name}</p>
+                          <p className="text-muted-light" style={{ fontSize: '12px' }}>
+                            ID: {customer.vendorId} • ${customer.withdrawFees?.toFixed(2) || '0.00'}
                           </p>
                         </div>
                         <button
                           onClick={() => handleUnlinkCustomer(customer.vendorId)}
-                          className="flex items-center gap-2 px-4 py-2 bg-[#DE3544]/10 text-[#DE3544] rounded-lg hover:bg-[#DE3544]/20 transition-colors"
+                          className="flex items-center bg-[#DE3544]/10 text-[#DE3544] rounded-lg hover:bg-[#DE3544]/20 transition-colors"
+                          style={{ padding: '8px 12px', gap: '6px', fontSize: '13px', whiteSpace: 'nowrap' }}
                         >
-                          <Unlink className="w-4 h-4" />
+                          <Unlink style={{ width: '14px', height: '14px' }} />
                           Unlink
                         </button>
                       </div>
