@@ -273,7 +273,7 @@ export function MerchantPlansPanel() {
   const getFeeRuleSummary = (plan: Plan) => {
     switch (plan.feeType) {
       case 'fixed':
-        return `$${(plan.feeAmount || 0).toFixed(2)} per order`;
+        return `BHD ${(plan.feeAmount || 0).toFixed(2)} per order`;
       case 'percentage':
         return `${plan.feePercentage}% of order value`;
 
@@ -819,8 +819,8 @@ export function MerchantPlansPanel() {
             <button
               onClick={() => setActiveTab('plans')}
               className={`px-4 py-2 rounded-lg font-medium transition-all ${activeTab === 'plans'
-                  ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53]'
-                  : 'text-muted-light dark:text-[#99BFD1] hover:bg-muted/20'
+                ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53]'
+                : 'text-muted-light dark:text-[#99BFD1] hover:bg-muted/20'
                 }`}
             >
               Plan Overview
@@ -828,8 +828,8 @@ export function MerchantPlansPanel() {
             <button
               onClick={() => setActiveTab('customers')}
               className={`px-4 py-2 rounded-lg font-medium transition-all ${activeTab === 'customers'
-                  ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53]'
-                  : 'text-muted-light dark:text-[#99BFD1] hover:bg-muted/20'
+                ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53]'
+                : 'text-muted-light dark:text-[#99BFD1] hover:bg-muted/20'
                 }`}
             >
               Assigned Customers ({totalAssigned})
