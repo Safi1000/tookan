@@ -2575,7 +2575,8 @@ function getApp() {
           }
         }
 
-        // If user not found in Tookan, fall back to Supabase Auth (for admin users)
+        // If user not found in Tookan, fall back to Supabase Auth (for admin/staff users)
+        let supabaseAuthError = null;
         if (!tookanUser && isSupabaseConfigured && supabaseAnon) {
           try {
             const { data, error } = await supabaseAnon.auth.signInWithPassword({
@@ -2648,8 +2649,12 @@ function getApp() {
                   }
                 }
               });
+            } else if (error) {
+              supabaseAuthError = error.message;
+              console.log('Supabase auth error:', error.message);
             }
           } catch (supabaseError) {
+            supabaseAuthError = supabaseError.message;
             console.log('Supabase auth failed:', supabaseError.message);
           }
         }
@@ -2811,10 +2816,12 @@ function getApp() {
           });
         }
 
-        // User not found
+        // User not found in any system
         return res.status(401).json({
           status: 'error',
-          message: 'Invalid email or password. User not found in Tookan system.',
+          message: supabaseAuthError
+            ? `Login failed: ${supabaseAuthError}`
+            : 'Invalid email or password. User not found.',
           data: {}
         });
 
@@ -2931,10 +2938,11 @@ function getApp() {
           return res.status(400).json({ status: 'error', message: 'Email and password required' });
         }
 
-        // Create user in Supabase Auth
-        const { data: authData, error: authError } = await supabaseAnon.auth.signUp({
+        // Create user in Supabase Auth using admin API (auto-confirms email)
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
           email,
-          password
+          password,
+          email_confirm: true
         });
 
         if (authError) {
@@ -5878,10 +5886,11 @@ function getApp() {
           return res.status(400).json({ status: 'error', message: 'User already exists' });
         }
 
-        // Create user in Supabase Auth (handles password storage)
-        const { data: authData, error: authError } = await supabaseAnon.auth.signUp({
+        // Create user in Supabase Auth using admin API (auto-confirms email)
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
           email,
-          password
+          password,
+          email_confirm: true
         });
 
         if (authError) {
