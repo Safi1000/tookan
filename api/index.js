@@ -257,29 +257,45 @@ function getApp() {
         if (userData.email !== undefined) updateData.email = userData.email;
         if (userData.role !== undefined) updateData.role = userData.role;
         if (userData.permissions !== undefined) updateData.permissions = userData.permissions;
-        const { data, error } = await supabase.from('users').update(updateData).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        // Try users table first
+        const { data, error } = await supabase.from('users').update(updateData).eq('id', id).select();
+        if (!error && data && data.length > 0) return data[0];
+        // Fallback to tookan_users
+        const { data: tData, error: tErr } = await supabase.from('tookan_users').update(updateData).eq('id', id).select();
+        if (!tErr && tData && tData.length > 0) return tData[0];
+        throw new Error('User not found in any table');
       },
       updateUserPermissions: async (id, permissions) => {
         if (!isSupabaseConfigured || !supabase) throw new Error('DB not configured');
-        const { data, error } = await supabase.from('users').update({ permissions: permissions || {}, updated_at: new Date().toISOString() }).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        // Try users table first
+        const { data, error } = await supabase.from('users').update({ permissions: permissions || {}, updated_at: new Date().toISOString() }).eq('id', id).select();
+        if (!error && data && data.length > 0) return data[0];
+        // Fallback to tookan_users
+        const { data: tData, error: tErr } = await supabase.from('tookan_users').update({ permissions: permissions || {}, updated_at: new Date().toISOString() }).eq('id', id).select();
+        if (!tErr && tData && tData.length > 0) return tData[0];
+        throw new Error('User not found in any table');
       },
       updateUserRole: async (id, role) => {
         if (!isSupabaseConfigured || !supabase) throw new Error('DB not configured');
-        const { data, error } = await supabase.from('users').update({ role, updated_at: new Date().toISOString() }).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        // Try users table first
+        const { data, error } = await supabase.from('users').update({ role, updated_at: new Date().toISOString() }).eq('id', id).select();
+        if (!error && data && data.length > 0) return data[0];
+        // Fallback to tookan_users
+        const { data: tData, error: tErr } = await supabase.from('tookan_users').update({ role, updated_at: new Date().toISOString() }).eq('id', id).select();
+        if (!tErr && tData && tData.length > 0) return tData[0];
+        throw new Error('User not found in any table');
       },
       updateUserStatus: async (id, status) => {
         if (!isSupabaseConfigured || !supabase) throw new Error('DB not configured');
         const validStatuses = ['active', 'disabled', 'banned'];
         if (!validStatuses.includes(status.toLowerCase())) throw new Error(`Invalid status`);
-        const { data, error } = await supabase.from('users').update({ status: status.toLowerCase(), updated_at: new Date().toISOString() }).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        // Try users table first
+        const { data, error } = await supabase.from('users').update({ status: status.toLowerCase(), updated_at: new Date().toISOString() }).eq('id', id).select();
+        if (!error && data && data.length > 0) return data[0];
+        // Fallback to tookan_users
+        const { data: tData, error: tErr } = await supabase.from('tookan_users').update({ status: status.toLowerCase(), updated_at: new Date().toISOString() }).eq('id', id).select();
+        if (!tErr && tData && tData.length > 0) return tData[0];
+        throw new Error('User not found in any table');
       }
     };
 
@@ -2972,28 +2988,15 @@ function getApp() {
         const { userId } = req.params;
         const { permissions } = req.body;
 
-        // Try updating in users table first
+        // Try updating in users table first (without .single() to avoid error on 0 rows)
         const { data: userData, error: userError } = await supabase
           .from('users')
           .update({ permissions, updated_at: new Date().toISOString() })
           .eq('id', userId)
-          .select()
-          .single();
+          .select();
 
-        if (userError && userError.code !== 'PGRST116') {
-          // If not in users table, try tookan_users
-          const { data: tookanData, error: tookanError } = await supabase
-            .from('tookan_users')
-            .update({ permissions, updated_at: new Date().toISOString() })
-            .eq('id', userId)
-            .select()
-            .single();
-
-          if (tookanError) {
-            return res.status(404).json({ status: 'error', message: 'User not found' });
-          }
-
-          // Log the action
+        if (!userError && userData && userData.length > 0) {
+          // Found and updated in users table
           await supabase.from('audit_logs').insert({
             user_id: req.user.id,
             action: 'UPDATE',
@@ -3003,7 +3006,18 @@ function getApp() {
             notes: `Permissions updated for user ${userId}`
           });
 
-          return res.json({ status: 'success', data: { user: tookanData } });
+          return res.json({ status: 'success', data: { user: userData[0] } });
+        }
+
+        // Not found in users table, try tookan_users
+        const { data: tookanData, error: tookanError } = await supabase
+          .from('tookan_users')
+          .update({ permissions, updated_at: new Date().toISOString() })
+          .eq('id', userId)
+          .select();
+
+        if (tookanError || !tookanData || tookanData.length === 0) {
+          return res.status(404).json({ status: 'error', message: 'User not found' });
         }
 
         // Log the action
@@ -3016,7 +3030,7 @@ function getApp() {
           notes: `Permissions updated for user ${userId}`
         });
 
-        res.json({ status: 'success', data: { user: userData } });
+        return res.json({ status: 'success', data: { user: tookanData[0] } });
       } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
       }
