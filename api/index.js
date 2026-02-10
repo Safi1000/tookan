@@ -6262,7 +6262,7 @@ function getApp() {
         }
 
         // Use Supabase Auth to update password (not the users table)
-        const { error: updateError } = await supabaseAnon.auth.admin.updateUserById(id, { password: newPassword });
+        const { error: updateError } = await supabase.auth.admin.updateUserById(id, { password: newPassword });
         if (updateError) {
           // If Supabase Auth fails (user might be a Tookan user), try updating tookan_users table
           const hashedPassword = await bcrypt.hash(newPassword, 10);
