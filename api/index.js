@@ -63,9 +63,160 @@ function getApp() {
     // For Vercel, we'll include the essential routes inline
     // Note: merchantPlans legacy model removed in favor of plansModel
     const plansModel = require('../server/db/models/plans');
-    const userModel = require('../server/db/models/users');
-    const { authenticate, requireSuperadmin } = require('../server/middleware/auth');
-    const auditLogger = require('../server/middleware/auditLogger');
+
+    // ===== INLINE USER MANAGEMENT HELPERS (avoid module import conflicts on Vercel) =====
+
+    const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL || 'ahmedhassan123.ah83@gmail.com';
+
+    // Inline authenticate middleware
+    const authenticate = async (req, res, next) => {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        return res.status(401).json({ status: 'error', message: 'Authentication required.', data: {} });
+      }
+      const token = authHeader.split(' ').length === 2 ? authHeader.split(' ')[1] : authHeader.split(' ')[0];
+
+      if (!isSupabaseConfigured || !supabaseAnon) {
+        req.user = { id: 'local-dev', email: 'local@dev', role: 'admin', permissions: {}, source: 'local' };
+        req.userId = 'local-dev';
+        return next();
+      }
+
+      // Try Supabase JWT
+      let user = null;
+      try {
+        const { data: { user: supaUser }, error } = await supabaseAnon.auth.getUser(token);
+        if (!error && supaUser) user = supaUser;
+      } catch (e) { /* not a supabase token */ }
+
+      // Try Tookan session token
+      if (!user) {
+        try {
+          const decoded = Buffer.from(token, 'base64').toString('utf-8');
+          const parts = decoded.split(':');
+          if (parts.length >= 3) {
+            const userId = parts[0];
+            const timestamp = parseInt(parts[1]);
+            const email = parts.slice(2).join(':');
+            if (Date.now() < timestamp + (24 * 60 * 60 * 1000)) {
+              user = { id: userId, email, source: 'tookan' };
+            }
+          }
+        } catch (e) { /* not a tookan token */ }
+      }
+
+      if (!user) {
+        return res.status(401).json({ status: 'error', message: 'Invalid or expired token.', data: {} });
+      }
+
+      // Get full profile from DB for Supabase users
+      if (user.source !== 'tookan' && isSupabaseConfigured && supabase) {
+        try {
+          const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single();
+          if (profile) {
+            req.user = { ...user, role: profile.role, permissions: profile.permissions || {} };
+          } else {
+            req.user = user;
+          }
+        } catch (e) {
+          req.user = user;
+        }
+      } else {
+        req.user = { ...user, role: user.role || 'user', permissions: user.permissions || {} };
+      }
+
+      req.userId = user.id;
+      next();
+    };
+
+    // Inline requireSuperadmin middleware
+    const requireSuperadmin = () => {
+      return async (req, res, next) => {
+        if (!req.user || !req.userId) {
+          return res.status(401).json({ status: 'error', message: 'Authentication required', data: {} });
+        }
+        if (req.user.email !== SUPERADMIN_EMAIL) {
+          return res.status(403).json({ status: 'error', message: 'Access denied. Only the superadmin can perform this action.', data: {} });
+        }
+        next();
+      };
+    };
+
+    // Inline userModel helpers
+    const userModel = {
+      getUserById: async (id) => {
+        if (!isSupabaseConfigured || !supabase) throw new Error('DB not configured');
+        const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
+        if (error && error.code !== 'PGRST116') throw error;
+        return data || null;
+      },
+      getAllUsers: async (filters = {}) => {
+        if (!isSupabaseConfigured || !supabase) throw new Error('DB not configured');
+        let query = supabase.from('users').select('*');
+        if (filters.role) query = query.eq('role', filters.role);
+        if (filters.search) {
+          const s = `%${filters.search}%`;
+          query = query.or(`email.ilike.${s},name.ilike.${s}`);
+        }
+        query = query.order('created_at', { ascending: false });
+        const { data, error } = await query;
+        if (error) throw error;
+        return data || [];
+      },
+      updateUser: async (id, userData) => {
+        if (!isSupabaseConfigured || !supabase) throw new Error('DB not configured');
+        const updateData = { updated_at: new Date().toISOString() };
+        if (userData.name !== undefined) updateData.name = userData.name;
+        if (userData.email !== undefined) updateData.email = userData.email;
+        if (userData.role !== undefined) updateData.role = userData.role;
+        if (userData.permissions !== undefined) updateData.permissions = userData.permissions;
+        const { data, error } = await supabase.from('users').update(updateData).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+      },
+      updateUserPermissions: async (id, permissions) => {
+        if (!isSupabaseConfigured || !supabase) throw new Error('DB not configured');
+        const { data, error } = await supabase.from('users').update({ permissions: permissions || {}, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+      },
+      updateUserRole: async (id, role) => {
+        if (!isSupabaseConfigured || !supabase) throw new Error('DB not configured');
+        const { data, error } = await supabase.from('users').update({ role, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+      },
+      updateUserStatus: async (id, status) => {
+        if (!isSupabaseConfigured || !supabase) throw new Error('DB not configured');
+        const validStatuses = ['active', 'disabled', 'banned'];
+        if (!validStatuses.includes(status.toLowerCase())) throw new Error(`Invalid status`);
+        const { data, error } = await supabase.from('users').update({ status: status.toLowerCase(), updated_at: new Date().toISOString() }).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+      }
+    };
+
+    // Inline auditLogger (non-blocking)
+    const auditLogger = {
+      createAuditLog: async (req, action, entityType, entityId, oldValue = null, newValue = null) => {
+        if (!isSupabaseConfigured || !supabase) return null;
+        try {
+          const logData = {
+            user_id: req.userId || req.user?.id || null,
+            action, entity_type: entityType,
+            entity_id: entityId ? String(entityId) : null,
+            old_value: oldValue ? (typeof oldValue === 'object' ? oldValue : { value: oldValue }) : null,
+            new_value: newValue ? (typeof newValue === 'object' ? newValue : { value: newValue }) : null,
+            ip_address: req.ip || req.headers['x-forwarded-for']?.split(',')[0] || null,
+            user_agent: req.headers['user-agent'] || null
+          };
+          await supabase.from('audit_logs').insert(logData);
+        } catch (e) {
+          console.error('Audit log error:', e);
+        }
+        return null;
+      }
+    };
 
     const getApiKey = () => {
       const apiKey = process.env.TOOKAN_API_KEY;
@@ -152,83 +303,8 @@ function getApp() {
       MANAGE_USERS: 'manage_users' // Superadmin only
     };
 
-    // Superadmin email - the only user who can manage other users
-    const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL || 'ahmedhassan123.ah83@gmail.com';
 
-    // Check if user is superadmin
-    const isSuperadmin = (user) => {
-      if (!user) return false;
-      return user.email === SUPERADMIN_EMAIL;
-    };
 
-    // Superadmin middleware
-    const requireSuperadmin = () => {
-      return (req, res, next) => {
-        if (!req.user) {
-          return res.status(401).json({ status: 'error', message: 'Authentication required' });
-        }
-        if (!isSuperadmin(req.user)) {
-          return res.status(403).json({ status: 'error', message: 'Access denied. Only the superadmin can perform this action.' });
-        }
-        next();
-      };
-    };
-
-    // Authentication middleware
-    const authenticate = async (req, res, next) => {
-      try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({ status: 'error', message: 'No authorization token provided' });
-        }
-
-        const token = authHeader.split(' ')[1];
-
-        // For now, decode the token (in production, verify JWT signature)
-        // The token contains user info from login
-        try {
-          const tokenData = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-          req.user = {
-            id: tokenData.sub || tokenData.user_id || tokenData.id,
-            email: tokenData.email,
-            role: tokenData.role || 'user',
-            permissions: tokenData.permissions || {}
-          };
-
-          // If user has admin role, grant all permissions
-          if (req.user.role === 'admin') {
-            req.user.permissions = Object.values(PERMISSIONS).reduce((acc, perm) => {
-              acc[perm] = true;
-              return acc;
-            }, {});
-          }
-
-          next();
-        } catch (e) {
-          // If token parsing fails, try to look up user in database
-          if (isSupabaseConfigured && supabase) {
-            const { data: userData, error } = await supabase
-              .from('tookan_users')
-              .select('*')
-              .or(`id.eq.${token},tookan_id.eq.${token}`)
-              .single();
-
-            if (userData) {
-              req.user = {
-                id: userData.id,
-                email: userData.email,
-                role: userData.role || 'user',
-                permissions: userData.permissions || {}
-              };
-              return next();
-            }
-          }
-          return res.status(401).json({ status: 'error', message: 'Invalid authorization token' });
-        }
-      } catch (error) {
-        return res.status(401).json({ status: 'error', message: 'Authentication failed' });
-      }
-    };
 
     // Permission check middleware
     const requirePermission = (...requiredPermissions) => {
