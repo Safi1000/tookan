@@ -82,14 +82,27 @@ function getApp() {
         return next();
       }
 
-      // Try Supabase JWT
+      // Try Supabase JWT via getUser API
       let user = null;
       try {
         const { data: { user: supaUser }, error } = await supabaseAnon.auth.getUser(token);
         if (!error && supaUser) user = supaUser;
       } catch (e) { /* not a supabase token */ }
 
-      // Try Tookan session token
+      // Try direct JWT payload decoding (works for Supabase JWTs and custom JWTs)
+      if (!user) {
+        try {
+          const tokenData = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+          user = {
+            id: tokenData.sub || tokenData.user_id || tokenData.id,
+            email: tokenData.email,
+            role: tokenData.role || 'user',
+            permissions: tokenData.permissions || {}
+          };
+        } catch (e) { /* not a JWT */ }
+      }
+
+      // Try Tookan session token (base64 encoded userId:timestamp:email)
       if (!user) {
         try {
           const decoded = Buffer.from(token, 'base64').toString('utf-8');
@@ -109,7 +122,7 @@ function getApp() {
         return res.status(401).json({ status: 'error', message: 'Invalid or expired token.', data: {} });
       }
 
-      // Get full profile from DB for Supabase users
+      // Get full profile from DB for non-tookan users
       if (user.source !== 'tookan' && isSupabaseConfigured && supabase) {
         try {
           const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single();
