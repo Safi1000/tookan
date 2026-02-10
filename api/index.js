@@ -78,7 +78,9 @@ function getApp() {
         return res.status(401).json({ status: 'error', message: 'Authentication required: No header', data: {} });
       }
 
-      const token = authHeader.split(' ').length === 2 ? authHeader.split(' ')[1] : authHeader.split(' ')[0];
+      // Robust token extraction: remove Bearer prefix (case insensitive) and surrounding quotes
+      const token = authHeader.replace(/^Bearer\s+/i, '').replace(/^"|"$/g, '').trim();
+
       if (!token || token === 'null' || token === 'undefined') {
         return res.status(401).json({ status: 'error', message: 'Authentication required: Invalid token format', data: {} });
       }
@@ -141,8 +143,10 @@ function getApp() {
             if (Date.now() < timestamp + (24 * 60 * 60 * 1000)) {
               user = { id: userId, email, source: 'tookan' };
             } else {
-              debugErrors.push('Tookan token expired');
+              debugErrors.push(`Tookan token expired (timestamp: ${timestamp})`);
             }
+          } else {
+            debugErrors.push(`Tookan token invalid format (parts: ${parts.length})`);
           }
         } catch (e) {
           debugErrors.push(`Tookan decode exception: ${e.message}`);
@@ -150,12 +154,13 @@ function getApp() {
       }
 
       if (!user) {
+        const tokenPrefix = token.substring(0, 10) + '...';
         console.error('Authentication failed:', debugErrors);
         return res.status(401).json({
           status: 'error',
           message: 'Invalid or expired token',
           data: {},
-          debug_info: process.env.NODE_ENV === 'development' ? debugErrors : undefined
+          debug_info: process.env.NODE_ENV === 'development' || true ? { errors: debugErrors, prefix: tokenPrefix } : undefined
         });
       }
 
