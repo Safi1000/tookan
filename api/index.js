@@ -5862,10 +5862,10 @@ function getApp() {
     // ============================================
 
     // POST Register User
-    app.post('/api/auth/register', async (req, res) => {
+    app.post('/api/auth/register', authenticate, requireSuperadmin(), async (req, res) => {
       try {
         console.log('\n=== REGISTER USER (Vercel) ===');
-        const { email, password, name, role } = req.body;
+        const { email, password, name, role, permissions } = req.body;
         if (!email || !password) {
           return res.status(400).json({ status: 'error', message: 'Email and password required' });
         }
@@ -5873,22 +5873,37 @@ function getApp() {
           return res.status(500).json({ status: 'error', message: 'Database not configured' });
         }
         // Check if user exists
-        const { data: existing } = await supabase.from('users').select('id').eq('email', email).single();
-        if (existing) {
+        const { data: existing } = await supabase.from('users').select('id').eq('email', email);
+        if (existing && existing.length > 0) {
           return res.status(400).json({ status: 'error', message: 'User already exists' });
         }
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
-        // Create user
-        const { data: newUser, error } = await supabase.from('users').insert({
+
+        // Create user in Supabase Auth (handles password storage)
+        const { data: authData, error: authError } = await supabaseAnon.auth.signUp({
           email,
-          password_hash: hashedPassword,
+          password
+        });
+
+        if (authError) {
+          return res.status(400).json({ status: 'error', message: authError.message });
+        }
+
+        // Create user profile in users table (no password_hash column needed)
+        const { data: newUser, error } = await supabase.from('users').insert({
+          id: authData.user?.id || undefined,
+          email,
           name: name || email.split('@')[0],
-          role: role || 'viewer',
-          status: 'active'
-        }).select().single();
-        if (error) throw error;
-        res.json({ status: 'success', message: 'User registered', data: { id: newUser.id, email: newUser.email } });
+          role: role || 'staff',
+          permissions: permissions || {}
+        }).select();
+
+        if (error) {
+          console.error('Error creating user profile:', error.message);
+          // Still return success since auth user was created
+          return res.json({ status: 'success', message: 'User registered (auth only)', data: { id: authData.user?.id, email } });
+        }
+
+        res.json({ status: 'success', message: 'User registered', data: { user: newUser[0] || { id: authData.user?.id, email } } });
       } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
       }
