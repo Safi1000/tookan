@@ -68,13 +68,20 @@ function getApp() {
 
     const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL || 'ahmedhassan123.ah83@gmail.com';
 
+    // Verify Buffer availability
+    const { Buffer } = require('buffer');
+
     // Inline authenticate middleware
     const authenticate = async (req, res, next) => {
       const authHeader = req.headers.authorization;
       if (!authHeader) {
-        return res.status(401).json({ status: 'error', message: 'Authentication required.', data: {} });
+        return res.status(401).json({ status: 'error', message: 'Authentication required: No header', data: {} });
       }
+
       const token = authHeader.split(' ').length === 2 ? authHeader.split(' ')[1] : authHeader.split(' ')[0];
+      if (!token || token === 'null' || token === 'undefined') {
+        return res.status(401).json({ status: 'error', message: 'Authentication required: Invalid token format', data: {} });
+      }
 
       if (!isSupabaseConfigured || !supabaseAnon) {
         req.user = { id: 'local-dev', email: 'local@dev', role: 'admin', permissions: {}, source: 'local' };
@@ -82,27 +89,47 @@ function getApp() {
         return next();
       }
 
-      // Try Supabase JWT via getUser API
       let user = null;
+      let debugErrors = [];
+
+      // Method 1: Try Supabase JWT via getUser API
       try {
         const { data: { user: supaUser }, error } = await supabaseAnon.auth.getUser(token);
-        if (!error && supaUser) user = supaUser;
-      } catch (e) { /* not a supabase token */ }
-
-      // Try direct JWT payload decoding (works for Supabase JWTs and custom JWTs)
-      if (!user) {
-        try {
-          const tokenData = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-          user = {
-            id: tokenData.sub || tokenData.user_id || tokenData.id,
-            email: tokenData.email,
-            role: tokenData.role || 'user',
-            permissions: tokenData.permissions || {}
-          };
-        } catch (e) { /* not a JWT */ }
+        if (!error && supaUser) {
+          user = supaUser;
+        } else if (error) {
+          debugErrors.push(`Supabase getUser error: ${error.message}`);
+        }
+      } catch (e) {
+        debugErrors.push(`Supabase getUser exception: ${e.message}`);
       }
 
-      // Try Tookan session token (base64 encoded userId:timestamp:email)
+      // Method 2: Try direct JWT payload decoding (works for any standard JWT)
+      if (!user) {
+        try {
+          // Check if it looks like a JWT (x.y.z)
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            const payload = parts[1];
+            // Fix base64 padding if needed
+            const padded = payload.padEnd(payload.length + (4 - payload.length % 4) % 4, '=');
+            const tokenData = JSON.parse(Buffer.from(padded, 'base64').toString('utf-8'));
+
+            user = {
+              id: tokenData.sub || tokenData.user_id || tokenData.id,
+              email: tokenData.email,
+              role: tokenData.role || tokenData.app_metadata?.role || 'user',
+              permissions: tokenData.permissions || {}
+            };
+          } else {
+            debugErrors.push('Token does not look like a JWT (not 3 parts)');
+          }
+        } catch (e) {
+          debugErrors.push(`JWT decode exception: ${e.message}`);
+        }
+      }
+
+      // Method 3: Try Tookan session token (base64 encoded userId:timestamp:email)
       if (!user) {
         try {
           const decoded = Buffer.from(token, 'base64').toString('utf-8');
@@ -113,13 +140,23 @@ function getApp() {
             const email = parts.slice(2).join(':');
             if (Date.now() < timestamp + (24 * 60 * 60 * 1000)) {
               user = { id: userId, email, source: 'tookan' };
+            } else {
+              debugErrors.push('Tookan token expired');
             }
           }
-        } catch (e) { /* not a tookan token */ }
+        } catch (e) {
+          debugErrors.push(`Tookan decode exception: ${e.message}`);
+        }
       }
 
       if (!user) {
-        return res.status(401).json({ status: 'error', message: 'Invalid or expired token.', data: {} });
+        console.error('Authentication failed:', debugErrors);
+        return res.status(401).json({
+          status: 'error',
+          message: 'Invalid or expired token',
+          data: {},
+          debug_info: process.env.NODE_ENV === 'development' ? debugErrors : undefined
+        });
       }
 
       // Get full profile from DB for non-tookan users
