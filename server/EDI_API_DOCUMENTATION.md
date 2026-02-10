@@ -139,20 +139,20 @@ Retrieve the current status of an order using the external reference or Tookan J
 
 
 
-## 5. Status Codes Map
+## 4. Status Codes Map
 
-| Code | Status |
-| :--- | :--- |
-| 0 | Unassigned |
-| 1 | Assigned |
-| 2 | Accepted |
-| 3 | Started |
-| 4 | In Progress |
-| 5 | Successful |
-| 6 | Failed |
-| 7 | Cancelled |
-| 8 | Declined |
-| 9 | Timeout |
+| Value | Status | Description |
+| :--- | :--- | :--- |
+| **0** | Assigned | The task has been assigned to an agent. |
+| **1** | Started | The task has been started and the agent is on the way. |
+| **2** | Successful | The task has been completed successfully. |
+| **3** | Failed | The task has been completed unsuccessfully. |
+| **4** | InProgress/Arrived | The task is being performed and the agent has reached the destination. |
+| **6** | Unassigned | The task has not been assigned to any agent. |
+| **7** | Accepted/Acknowledged | The task has been accepted by the agent. |
+| **8** | Decline | The task has been declined by the agent. |
+| **9** | Cancel | The task has been cancelled. |
+| **10** | Deleted | The task is deleted from the Dashboard. |
 
 ## 5. Error Handling
 

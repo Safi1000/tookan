@@ -6,17 +6,16 @@ const TOOKAN_API_KEY = process.env.TOOKAN_API_KEY;
 
 // Map internal status codes to human readable strings
 const STATUS_MAP = {
-    0: 'Unassigned',
-    1: 'Assigned',
-    2: 'Accepted',
-    3: 'Started',
-    4: 'In Progress',
-    5: 'Successful',
-    6: 'Failed',
-    7: 'Cancelled',
-    8: 'Declined',
-    9: 'Timeout',
-    10: 'Acknowledged' // Custom mapping if needed
+    0: 'Assigned',
+    1: 'Started',
+    2: 'Successful',
+    3: 'Failed',
+    4: 'InProgress/Arrived',
+    6: 'Unassigned',
+    7: 'Accepted/Acknowledged',
+    8: 'Decline',
+    9: 'Cancel',
+    10: 'Deleted'
 };
 
 /**
