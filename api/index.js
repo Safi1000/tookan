@@ -63,6 +63,9 @@ function getApp() {
     // For Vercel, we'll include the essential routes inline
     // Note: merchantPlans legacy model removed in favor of plansModel
     const plansModel = require('../server/db/models/plans');
+    const userModel = require('../server/db/models/users');
+    const { authenticate, requireSuperadmin } = require('../server/middleware/auth');
+    const auditLogger = require('../server/middleware/auditLogger');
 
     const getApiKey = () => {
       const apiKey = process.env.TOOKAN_API_KEY;
@@ -6406,6 +6409,257 @@ function getApp() {
           status: 'error',
           message: error.message || 'Failed to update task payment'
         });
+      }
+    });
+
+    // ========== USER MANAGEMENT ENDPOINTS ==========
+
+    // GET all users (Superadmin only)
+    app.get('/api/users', authenticate, requireSuperadmin(), async (req, res) => {
+      try {
+        const { role, search } = req.query;
+        const filters = {};
+        if (role) filters.role = role;
+        if (search) filters.search = search;
+
+        const users = await userModel.getAllUsers(filters);
+
+        const transformedUsers = users.map(user => {
+          const rawStatus = (user.status || 'active').toString().toLowerCase();
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name || user.email,
+            role: user.role || 'user',
+            permissions: user.permissions || {},
+            status: rawStatus,
+            lastLogin: user.last_login || null,
+            createdAt: user.created_at,
+            updatedAt: user.updated_at
+          };
+        });
+
+        res.json({
+          status: 'success',
+          message: 'Users fetched successfully',
+          data: { users: transformedUsers, total: transformedUsers.length }
+        });
+      } catch (error) {
+        console.error('Get users error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to fetch users', data: {} });
+      }
+    });
+
+    // PUT Update User (Superadmin only)
+    app.put('/api/users/:id', authenticate, requireSuperadmin(), async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { name, email, role, permissions } = req.body;
+
+        const oldUser = await userModel.getUserById(id);
+
+        const updateData = {};
+        if (name !== undefined) updateData.name = name;
+        if (email !== undefined) updateData.email = email;
+        if (role !== undefined) updateData.role = role;
+        if (permissions !== undefined) updateData.permissions = permissions;
+
+        const updatedUser = await userModel.updateUser(id, updateData);
+
+        await auditLogger.createAuditLog(
+          req, 'user_update', 'user', id,
+          oldUser ? { name: oldUser.name, email: oldUser.email, role: oldUser.role, permissions: oldUser.permissions } : null,
+          { name: updatedUser.name, email: updatedUser.email, role: updatedUser.role, permissions: updatedUser.permissions }
+        );
+
+        res.json({
+          status: 'success',
+          message: 'User updated successfully',
+          data: { user: { id: updatedUser.id, email: updatedUser.email, name: updatedUser.name, role: updatedUser.role, permissions: updatedUser.permissions || {} } }
+        });
+      } catch (error) {
+        console.error('Update user error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to update user', data: {} });
+      }
+    });
+
+    // PUT Update User Permissions (Superadmin only)
+    app.put('/api/users/:id/permissions', authenticate, requireSuperadmin(), async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { permissions } = req.body;
+
+        if (!permissions || typeof permissions !== 'object') {
+          return res.status(400).json({ status: 'error', message: 'Permissions object is required', data: {} });
+        }
+
+        const oldUser = await userModel.getUserById(id);
+        const updatedUser = await userModel.updateUserPermissions(id, permissions);
+
+        await auditLogger.createAuditLog(
+          req, 'user_permissions_update', 'user', id,
+          oldUser ? { permissions: oldUser.permissions || {} } : null,
+          { permissions: updatedUser.permissions || {} }
+        );
+
+        res.json({
+          status: 'success',
+          message: 'User permissions updated successfully',
+          data: { user: { id: updatedUser.id, email: updatedUser.email, permissions: updatedUser.permissions || {} } }
+        });
+      } catch (error) {
+        console.error('Update permissions error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to update permissions', data: {} });
+      }
+    });
+
+    // PUT Update User Role (Superadmin only)
+    app.put('/api/users/:id/role', authenticate, requireSuperadmin(), async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { role } = req.body;
+
+        if (!role) {
+          return res.status(400).json({ status: 'error', message: 'Role is required', data: {} });
+        }
+
+        const validRoles = ['admin', 'user', 'finance', 'staff'];
+        if (!validRoles.includes(role)) {
+          return res.status(400).json({ status: 'error', message: `Invalid role. Must be one of: ${validRoles.join(', ')}`, data: {} });
+        }
+
+        const oldUser = await userModel.getUserById(id);
+        const updatedUser = await userModel.updateUserRole(id, role);
+
+        await auditLogger.createAuditLog(
+          req, 'user_role_update', 'user', id,
+          oldUser ? { role: oldUser.role } : null,
+          { role: updatedUser.role }
+        );
+
+        res.json({
+          status: 'success',
+          message: 'User role updated successfully',
+          data: { user: { id: updatedUser.id, email: updatedUser.email, role: updatedUser.role } }
+        });
+      } catch (error) {
+        console.error('Update role error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to update role', data: {} });
+      }
+    });
+
+    // PUT Update User Status (Superadmin only)
+    app.put('/api/users/:id/status', authenticate, requireSuperadmin(), async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!status) {
+          return res.status(400).json({ status: 'error', message: 'Status is required. Valid values: active, disabled, banned', data: {} });
+        }
+
+        if (req.userId === id) {
+          return res.status(400).json({ status: 'error', message: 'You cannot change your own status', data: {} });
+        }
+
+        const user = await userModel.getUserById(id);
+        if (!user) {
+          return res.status(404).json({ status: 'error', message: 'User not found', data: {} });
+        }
+
+        const updatedUser = await userModel.updateUserStatus(id, status);
+
+        await auditLogger.createAuditLog(
+          req, 'user_status_update', 'user', id,
+          { status: user.status || 'active' },
+          { status: status }
+        );
+
+        res.json({
+          status: 'success',
+          action: 'update_user_status',
+          entity: 'user',
+          message: `User ${status === 'active' ? 'enabled' : status === 'banned' ? 'banned' : 'disabled'} successfully`,
+          data: { id: updatedUser.id, email: updatedUser.email, status: updatedUser.status }
+        });
+      } catch (error) {
+        console.error('Update user status error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to update user status', data: {} });
+      }
+    });
+
+    // PUT Update User Password (Superadmin or self)
+    app.put('/api/users/:id/password', authenticate, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { newPassword } = req.body;
+
+        if (!newPassword || newPassword.length < 6) {
+          return res.status(400).json({ status: 'error', message: 'Password is required and must be at least 6 characters', data: {} });
+        }
+
+        const currentUser = await userModel.getUserById(req.userId);
+        if (!currentUser) {
+          return res.status(401).json({ status: 'error', message: 'Unauthorized', data: {} });
+        }
+
+        if (currentUser.role !== 'admin' && id !== req.userId) {
+          return res.status(403).json({ status: 'error', message: 'You can only change your own password, unless you are an admin', data: {} });
+        }
+
+        if (!isSupabaseConfigured || !supabaseAnon) {
+          return res.status(503).json({ status: 'error', message: 'Database not configured', data: {} });
+        }
+
+        const { error: updateError } = await supabaseAnon.auth.admin.updateUserById(id, { password: newPassword });
+
+        if (updateError) {
+          return res.status(500).json({ status: 'error', message: updateError.message || 'Failed to update password', data: {} });
+        }
+
+        await auditLogger.createAuditLog(req, 'user_password_change', 'user', id, null, { changed: true });
+
+        res.json({ status: 'success', message: 'Password updated successfully', data: { userId: id } });
+      } catch (error) {
+        console.error('Update password error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to update password', data: {} });
+      }
+    });
+
+    // DELETE User (Superadmin only)
+    app.delete('/api/users/:id', authenticate, requireSuperadmin(), async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        if (id === req.userId) {
+          return res.status(400).json({ status: 'error', message: 'You cannot delete your own account', data: {} });
+        }
+
+        const user = await userModel.getUserById(id);
+        if (!user) {
+          return res.status(404).json({ status: 'error', message: 'User not found', data: {} });
+        }
+
+        if (user.role === 'admin') {
+          return res.status(400).json({ status: 'error', message: 'Admin users cannot be deleted', data: {} });
+        }
+
+        if (!isSupabaseConfigured || !supabaseAnon) {
+          return res.status(503).json({ status: 'error', message: 'Database not configured', data: {} });
+        }
+
+        const { error: deleteError } = await supabaseAnon.auth.admin.deleteUser(id);
+
+        if (deleteError) {
+          return res.status(500).json({ status: 'error', message: deleteError.message || 'Failed to delete user', data: {} });
+        }
+
+        await auditLogger.createAuditLog(req, 'user_delete', 'user', id, { email: user.email, name: user.name, role: user.role }, null);
+
+        res.json({ status: 'success', message: 'User deleted successfully', data: { deletedUserId: id } });
+      } catch (error) {
+        console.error('Delete user error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to delete user', data: {} });
       }
     });
 
