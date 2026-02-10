@@ -23,6 +23,9 @@ const agentSyncService = require('./services/agentSyncService');
 const customerSyncService = require('./services/customerSyncService');
 const agentModel = require('./db/models/agents');
 const customerModel = require('./db/models/customers');
+const adminTokenRoutes = require('./routes/adminTokenRoutes');
+const ediRoutes = require('./routes/ediRoutes');
+
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -30,6 +33,13 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Mount EDI Routes (Self-authenticated via tokens)
+app.use('/api/edi', ediRoutes);
+
+
+// Mount Admin Token Management Routes (Protected by existing auth)
+app.use('/api/admin/tokens', authenticate, adminTokenRoutes);
 
 // Merchant Plans APIs
 app.get('/api/merchant-plans', authenticate, async (req, res) => {
