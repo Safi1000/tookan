@@ -6257,12 +6257,26 @@ function getApp() {
         if (!newPassword || newPassword.length < 6) {
           return res.status(400).json({ status: 'error', message: 'Password must be at least 6 characters' });
         }
-        if (!isSupabaseConfigured || !supabase) {
+        if (!isSupabaseConfigured || !supabaseAnon) {
           return res.status(500).json({ status: 'error', message: 'Database not configured' });
         }
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        const { error } = await supabase.from('users').update({ password_hash: hashedPassword }).eq('id', id);
-        if (error) throw error;
+
+        // Use Supabase Auth to update password (not the users table)
+        const { error: updateError } = await supabaseAnon.auth.admin.updateUserById(id, { password: newPassword });
+        if (updateError) {
+          // If Supabase Auth fails (user might be a Tookan user), try updating tookan_users table
+          const hashedPassword = await bcrypt.hash(newPassword, 10);
+          const { data: tData, error: tErr } = await supabase
+            .from('tookan_users')
+            .update({ password_hash: hashedPassword, updated_at: new Date().toISOString() })
+            .eq('id', id)
+            .select();
+
+          if (tErr || !tData || tData.length === 0) {
+            return res.status(500).json({ status: 'error', message: updateError.message || 'Failed to update password' });
+          }
+        }
+
         res.json({ status: 'success', message: 'Password updated' });
       } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
