@@ -1,11 +1,11 @@
 name: Sync Tookan Orders
 
 on:
-  # Trigger via API call (repository_dispatch)
+  # Trigger via API call
   repository_dispatch:
     types: [sync-orders]
   
-  # Also allow manual trigger from GitHub UI
+  # Manual trigger
   workflow_dispatch:
     inputs:
       date_from:
@@ -17,7 +17,7 @@ on:
         required: false
         default: ''
   
-  # Optional: Run on schedule (every 6 hours)
+  # Schedule every 6 hours
   schedule:
     - cron: '0 */6 * * *'
 
@@ -41,7 +41,6 @@ jobs:
       - name: Determine date range
         id: dates
         run: |
-          # Use input dates if provided, otherwise use today
           if [ -n "${{ github.event.inputs.date_from }}" ]; then
             echo "DATE_FROM=${{ github.event.inputs.date_from }}" >> $GITHUB_OUTPUT
           elif [ -n "${{ github.event.client_payload.date_from }}" ]; then
@@ -64,8 +63,13 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          echo "🔄 Syncing orders from ${{ steps.dates.outputs.DATE_FROM }} to ${{ steps.dates.outputs.DATE_TO }}"
-          node sync-tookan-orders.js --dateFrom=${{ steps.dates.outputs.DATE_FROM }} --dateTo=${{ steps.dates.outputs.DATE_TO }} --force
+          FORCE_FLAG=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            FORCE_FLAG="--force"
+          fi
+
+          echo "🔄 Syncing orders from ${{ steps.dates.outputs.DATE_FROM }} to ${{ steps.dates.outputs.DATE_TO }} $FORCE_FLAG"
+          node sync-tookan-orders.js --dateFrom=${{ steps.dates.outputs.DATE_FROM }} --dateTo=${{ steps.dates.outputs.DATE_TO }} $FORCE_FLAG
       
       - name: Run COD Sync
         env:
@@ -73,8 +77,13 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          echo "💰 Syncing COD amounts from ${{ steps.dates.outputs.DATE_FROM }} to ${{ steps.dates.outputs.DATE_TO }}"
-          node sync-cod-amounts.js --from=${{ steps.dates.outputs.DATE_FROM }} --to=${{ steps.dates.outputs.DATE_TO }} --force
+          FORCE_FLAG=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            FORCE_FLAG="--force"
+          fi
+
+          echo "💰 Syncing COD amounts from ${{ steps.dates.outputs.DATE_FROM }} to ${{ steps.dates.outputs.DATE_TO }} $FORCE_FLAG"
+          node sync-cod-amounts.js --from=${{ steps.dates.outputs.DATE_FROM }} --to=${{ steps.dates.outputs.DATE_TO }} $FORCE_FLAG
       
       - name: Summary
         run: |
