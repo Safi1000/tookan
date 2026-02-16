@@ -8,6 +8,7 @@
 // Import the Express app from server
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
 // Load environment variables
@@ -6875,6 +6876,123 @@ function getApp() {
       } catch (error) {
         console.error('Delete user error:', error);
         res.status(500).json({ status: 'error', message: error.message || 'Failed to delete user', data: {} });
+      }
+    });
+
+    // ============================================
+    // API TOKEN MANAGEMENT (EDI)
+    // ============================================
+
+    // POST Create API Token - Superadmin only
+    app.post('/api/tokens/create', authenticate, requireSuperadmin(), async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { name, merchant_id, description } = req.body;
+        if (!name || !merchant_id) {
+          return res.status(400).json({ status: 'error', message: 'Missing required fields: name, merchant_id' });
+        }
+
+        // Generate secure token
+        const rawToken = 'edi_' + crypto.randomBytes(32).toString('hex');
+        const prefix = rawToken.substring(0, 8);
+        const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+        const { data, error } = await supabase
+          .from('api_tokens')
+          .insert({
+            merchant_id,
+            name,
+            description: description || null,
+            token_hash: tokenHash,
+            prefix,
+            created_by: req.user?.email || req.user?.id || null,
+            is_active: true
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        res.json({
+          status: 'success',
+          data: {
+            id: data.id,
+            name: data.name,
+            description: data.description,
+            token: rawToken, // Only returned ONCE
+            prefix: data.prefix,
+            created_at: data.created_at
+          }
+        });
+      } catch (error) {
+        console.error('Error creating token:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to create token' });
+      }
+    });
+
+    // GET List API Tokens - Superadmin only
+    app.get('/api/tokens/list', authenticate, requireSuperadmin(), async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { data, error } = await supabase
+          .from('api_tokens')
+          .select('id, name, description, prefix, is_active, created_by, created_at, last_used_at, revoked_at, merchant_id')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        res.json({ status: 'success', data: data || [] });
+      } catch (error) {
+        console.error('Error listing tokens:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to list tokens' });
+      }
+    });
+
+    // POST Revoke API Token - Superadmin only
+    app.post('/api/tokens/revoke', authenticate, requireSuperadmin(), async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { token_id } = req.body;
+        if (!token_id) {
+          return res.status(400).json({ status: 'error', message: 'Missing token_id' });
+        }
+
+        const { data, error } = await supabase
+          .from('api_tokens')
+          .update({ is_active: false, revoked_at: new Date().toISOString() })
+          .eq('id', token_id)
+          .select();
+
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          return res.status(404).json({ status: 'error', message: 'Token not found' });
+        }
+
+        // Audit log
+        try {
+          await supabase.from('audit_logs').insert({
+            user_id: req.user?.id || null,
+            user_email: req.user?.email || null,
+            action: 'REVOKE',
+            entity_type: 'api_token',
+            entity_id: token_id,
+            notes: `Revoked API token: ${data[0]?.name || token_id}`
+          });
+        } catch (auditErr) { /* non-blocking */ }
+
+        res.json({ status: 'success', message: 'Token revoked successfully' });
+      } catch (error) {
+        console.error('Error revoking token:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to revoke token' });
       }
     });
 
