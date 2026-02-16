@@ -198,11 +198,13 @@ export function SettingsPanel() {
                             </button>
                             <button
                                 onClick={() => setShowCreateModal(true)}
+                                style={{ border: "2px solid white", borderRadius: "12px" }}
                                 className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold shadow-md flex-1 sm:flex-none"
                             >
                                 <Plus className="w-4 h-4" />
                                 Create Token
                             </button>
+
                         </div>
                     </div>
 
@@ -500,18 +502,7 @@ export function SettingsPanel() {
                                 <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center shadow-sm">
                                     <AlertTriangle className="w-5 h-5 text-destructive" />
                                 </div>
-                                <h3
-                                    style={{
-                                        border: "2px solid white",
-                                        borderRadius: "10px",
-                                        padding: "6px 12px",
-                                        display: "inline-block"
-                                    }}
-                                    className="text-heading dark:text-[#C1EEFA] text-lg font-semibold"
-                                >
-                                    Revoke Token
-                                </h3>
-
+                                <h3 className="text-heading dark:text-[#C1EEFA] text-lg font-semibold">Revoke Token</h3>
                             </div>
 
                             <div className="p-6">
@@ -532,6 +523,7 @@ export function SettingsPanel() {
                                 <button
                                     onClick={() => handleRevokeToken(showRevokeConfirm)}
                                     disabled={isRevoking}
+                                    style={{ border: "2px solid white", borderRadius: "12px" }}
                                     className="flex items-center justify-center gap-2 px-5 py-2.5 bg-destructive text-white rounded-xl hover:bg-red-700 hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold disabled:opacity-50 disabled:transform-none shadow-md w-full sm:w-auto"
                                 >
                                     {isRevoking ? (
@@ -541,6 +533,7 @@ export function SettingsPanel() {
                                     )}
                                     {isRevoking ? "Revoking..." : "Revoke Token"}
                                 </button>
+
                             </div>
                         </div>
                     </div>
