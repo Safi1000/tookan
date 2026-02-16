@@ -302,6 +302,35 @@ export async function deleteTask(jobId: string): Promise<TookanApiResponse> {
 }
 
 /**
+ * Update task status (Successful=2, Failed=3, Deleted=9)
+ * Also updates the connected pickup/delivery task
+ */
+export async function updateTaskStatus(jobId: string, status: number): Promise<TookanApiResponse> {
+  const headers = getAuthHeaders();
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/tookan/update-task-status`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ jobId, status }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to update task status: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.error('Update task status error:', error);
+    return {
+      status: 'error',
+      message: error.message || 'Network error occurred',
+      data: {}
+    };
+  }
+}
+
+/**
  * Fetch analytics data
  */
 export async function fetchAnalytics(

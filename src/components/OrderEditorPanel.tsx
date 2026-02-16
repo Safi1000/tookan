@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, RefreshCw, RotateCcw, CornerDownLeft, Save, X, Plus, Trash2 } from 'lucide-react';
+import { Search, RefreshCw, RotateCcw, CornerDownLeft, Save, X, Plus, Trash2, AlertTriangle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   fetchCachedOrders,
@@ -9,6 +9,7 @@ import {
   fetchAllDrivers,
   fetchRelatedDeliveryAddress,
   deleteTask,
+  updateTaskStatus,
 } from '../services/tookanApi';
 
 type OrderDetails = {
@@ -66,6 +67,11 @@ export function OrderEditorPanel() {
   const [returnDriver, setReturnDriver] = useState<string>('');
   const [returnNotes, setReturnNotes] = useState('');
   const [isCreatingReturn, setIsCreatingReturn] = useState(false);
+
+  // Status update state
+  const [editStatus, setEditStatus] = useState<string>('');
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [showStatusConfirm, setShowStatusConfirm] = useState(false);
 
   // Load agents from Tookan API (live data)
   const loadAgentsFromTookan = async () => {
@@ -167,6 +173,9 @@ export function OrderEditorPanel() {
       setEditCod((first.codAmount || 0).toString());
       setEditFees((first.orderFees || 0).toString());
       setEditNotes(first.notes || '');
+      // Initialize status: use current status value or empty
+      const currentStatus = typeof first.status === 'number' ? first.status : (typeof first.status === 'string' ? parseInt(first.status, 10) : null);
+      setEditStatus(currentStatus !== null ? String(currentStatus) : '');
     } catch (err) {
       console.error('Search failed', err);
       toast.error('Failed to fetch order');
@@ -299,6 +308,35 @@ export function OrderEditorPanel() {
       toast.error('Failed to create return order');
     } finally {
       setIsCreatingReturn(false);
+    }
+  };
+
+  // Status update handler
+  const handleStatusUpdate = async () => {
+    if (!order || !editStatus) return;
+    const newStatus = parseInt(editStatus);
+    setIsUpdatingStatus(true);
+    try {
+      const result = await updateTaskStatus(order.jobId, newStatus);
+      if (result.status === 'success') {
+        const statusLabels: Record<number, string> = { 2: 'Successful', 3: 'Failed', 9: 'Deleted' };
+        toast.success(`Status updated to ${statusLabels[newStatus]}`);
+        setShowStatusConfirm(false);
+        if (newStatus === 9) {
+          // Clear order if deleted
+          setOrder(null);
+          setSearch('');
+        } else {
+          setOrder(prev => prev ? ({ ...prev, status: newStatus }) : prev);
+        }
+      } else {
+        toast.error(result.message || 'Failed to update status');
+      }
+    } catch (err) {
+      console.error('Status update error', err);
+      toast.error('Failed to update status');
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -496,6 +534,41 @@ export function OrderEditorPanel() {
             </div>
           </div>
 
+          {/* Status Update Section */}
+          <div className="space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-subheading text-xs uppercase mb-1">Change Status</p>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  className={editableInputClass + ' py-2'}
+                >
+                  <option value="" disabled>Select new status</option>
+                  <option value="2">✅ Successful</option>
+                  <option value="3">❌ Failed</option>
+                  <option value="9">🗑️ Deleted</option>
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Current: <span className="font-semibold">
+                    {order.status === 0 ? 'Assigned' : order.status === 1 ? 'Started' : order.status === 2 ? 'Successful' : order.status === 3 ? 'Failed' : order.status === 9 || order.status === 10 ? 'Deleted' : `Unknown (${order.status})`}
+                  </span>
+                  {order.connectedTaskId && <span className="text-orange-500 dark:text-orange-400 ml-2">• Connected task {order.connectedTaskId} will also be updated</span>}
+                </p>
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={() => setShowStatusConfirm(true)}
+                  disabled={!editStatus || parseInt(editStatus) === order.status}
+                  className="px-5 py-2.5 bg-amber-500 text-white rounded-lg flex items-center gap-2 hover:bg-amber-600 hover:shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Update Status
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="flex justify-end">
             <button
               onClick={handleSave}
@@ -545,6 +618,74 @@ export function OrderEditorPanel() {
             </button>
           </div>
 
+        </div>
+      )}
+
+      {/* Status Update Confirmation Modal */}
+      {showStatusConfirm && order && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-card dark:bg-[#1A2C53] rounded-2xl border border-border dark:border-[#2A3C63] w-[90vw] max-w-[380px] mx-auto shadow-2xl p-5 sm:p-6 space-y-4 sm:space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className={`p-3 rounded-full shrink-0 ${editStatus === '9' ? 'bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                  : editStatus === '3' ? 'bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400'
+                    : 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                }`}>
+                {editStatus === '9' ? <Trash2 className="w-5 h-5 sm:w-6 sm:h-6" />
+                  : editStatus === '3' ? <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6" />
+                    : <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6" />}
+              </div>
+              <h2 className="text-lg font-bold text-heading">
+                {editStatus === '2' ? 'Mark as Successful?' : editStatus === '3' ? 'Mark as Failed?' : 'Delete Task?'}
+              </h2>
+            </div>
+
+            <div className="text-sm text-muted-foreground space-y-3">
+              <p>Are you sure you want to change the status of this task? This will update both Tookan and the database.</p>
+              <div className="bg-muted/30 p-3 rounded-lg border border-border/50 text-xs font-mono space-y-1.5 break-all" style={{ margin: 15 }}>
+                <p>
+                  <span className="font-semibold text-heading">Task ID:</span> {order.jobId}
+                </p>
+                <p>
+                  <span className="font-semibold text-heading">New Status:</span>{' '}
+                  <span className={editStatus === '2' ? 'text-green-600 dark:text-green-400' : editStatus === '3' ? 'text-orange-600 dark:text-orange-400' : 'text-red-600 dark:text-red-400'}>
+                    {editStatus === '2' ? 'Successful' : editStatus === '3' ? 'Failed' : 'Deleted'}
+                  </span>
+                </p>
+                {order.connectedTaskId && (
+                  <p>
+                    <span className="font-semibold text-heading">Connected Task:</span>{' '}
+                    <span className="text-orange-600 dark:text-orange-400">{order.connectedTaskId} (will also be updated)</span>
+                  </p>
+                )}
+              </div>
+              {editStatus === '9' && (
+                <div className="flex gap-2 items-start text-red-500/90 dark:text-red-400/90 text-xs bg-red-50 dark:bg-red-900/10 p-2.5 rounded-md" style={{ margin: 15 }}>
+                  <p>Warning: Deleting a task is permanent and cannot be undone.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
+              <button
+                onClick={() => setShowStatusConfirm(false)}
+                disabled={isUpdatingStatus}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-medium text-heading bg-muted dark:bg-[#2A3C63] rounded-lg hover:bg-muted/80 transition order-1 sm:order-none"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleStatusUpdate}
+                disabled={isUpdatingStatus}
+                className={`w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-white rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm ${editStatus === '9' ? 'bg-red-600 hover:bg-red-700'
+                    : editStatus === '3' ? 'bg-orange-500 hover:bg-orange-600'
+                      : 'bg-green-600 hover:bg-green-700'
+                  }`}
+              >
+                {isUpdatingStatus ? <RefreshCw className="w-4 h-4 animate-spin" /> : editStatus === '9' ? <Trash2 className="w-4 h-4" /> : editStatus === '3' ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                {isUpdatingStatus ? 'Updating...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

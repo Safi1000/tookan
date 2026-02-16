@@ -6169,6 +6169,112 @@ function getApp() {
     // USER PASSWORD ENDPOINT
     // ============================================
 
+    // UPDATE Task Status (Successful=2, Failed=3, Deleted=9) — also updates connected task
+    app.post('/api/tookan/update-task-status', authenticate, requirePermission('perform_reorder'), async (req, res) => {
+      try {
+        console.log('\n=== UPDATE TASK STATUS REQUEST ===');
+        const { jobId, status } = req.body;
+
+        if (!jobId) {
+          return res.status(400).json({ status: 'error', message: 'Job ID is required' });
+        }
+        const numericStatus = parseInt(status);
+        if (![2, 3, 9].includes(numericStatus)) {
+          return res.status(400).json({ status: 'error', message: 'Status must be 2 (Successful), 3 (Failed), or 9 (Deleted)' });
+        }
+
+        const statusLabels = { 2: 'Successful', 3: 'Failed', 9: 'Deleted' };
+        console.log(`Updating task ${jobId} to status: ${numericStatus} (${statusLabels[numericStatus]})`);
+
+        // 1. Fetch task details from DB to find connected task
+        const { data: task, error: fetchError } = await supabase
+          .from('tasks')
+          .select('job_id, raw_data')
+          .eq('job_id', jobId)
+          .single();
+
+        if (fetchError || !task) {
+          console.error('Failed to find task in DB:', jobId);
+          return res.status(404).json({ status: 'error', message: 'Task not found in database' });
+        }
+
+        // 2. Identify connected tasks via pickup_delivery_relationship
+        const relationshipId = task.raw_data?.pickup_delivery_relationship;
+        let connectedJobIds = [jobId];
+
+        if (relationshipId) {
+          const { data: relatedTasks } = await supabase
+            .from('tasks')
+            .select('job_id')
+            .eq('raw_data->>pickup_delivery_relationship', relationshipId);
+
+          if (relatedTasks) {
+            connectedJobIds = relatedTasks.map(t => t.job_id);
+          }
+        }
+
+        connectedJobIds = [...new Set(connectedJobIds)];
+        console.log(`📋 Updating status for tasks: ${connectedJobIds.join(', ')}`);
+
+        const apiKey = getApiKey();
+        const results = [];
+
+        // 3. Call Tookan API for each connected task
+        for (const id of connectedJobIds) {
+          let tookanResponse;
+
+          if (numericStatus === 9) {
+            // Deleted — use delete_task endpoint
+            tookanResponse = await fetch('https://api.tookanapp.com/v2/delete_task', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ api_key: apiKey, job_id: String(id) })
+            });
+          } else {
+            // Successful (2) or Failed (3) — use update_task_status endpoint
+            tookanResponse = await fetch('https://api.tookanapp.com/v2/update_task_status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                api_key: apiKey,
+                job_id: String(id),
+                job_status: numericStatus
+              })
+            });
+          }
+
+          const data = await tookanResponse.json();
+          results.push({ id, tookanStatus: data.status, message: data.message });
+          console.log(`  Task ${id}: Tookan response status=${data.status}, message=${data.message}`);
+        }
+
+        // 4. Update status in Supabase for all connected tasks
+        const dbStatus = numericStatus === 9 ? 10 : numericStatus; // Use 10 for deleted in DB (matches existing pattern)
+        const { error: updateError } = await supabase
+          .from('tasks')
+          .update({ status: dbStatus, last_synced_at: new Date().toISOString() })
+          .in('job_id', connectedJobIds);
+
+        if (updateError) {
+          console.error('Failed to update status in Supabase:', updateError);
+        } else {
+          console.log(`✅ Status set to ${dbStatus} (${statusLabels[numericStatus]}) for tasks: ${connectedJobIds.join(', ')}`);
+        }
+
+        console.log('=== END REQUEST (SUCCESS) ===\n');
+
+        res.json({
+          status: 'success',
+          message: `Tasks updated to ${statusLabels[numericStatus]} successfully`,
+          data: { updatedIds: connectedJobIds, newStatus: numericStatus, results }
+        });
+
+      } catch (error) {
+        console.error('Update task status error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
     // DELETE Task (and connected task)
     app.post('/api/tookan/delete-task', authenticate, requirePermission('perform_reorder'), async (req, res) => {
       try {
