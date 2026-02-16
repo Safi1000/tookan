@@ -480,10 +480,12 @@ export function SettingsPanel() {
                                     setShowToken(false)
                                     setTokenCopied(false)
                                 }}
+                                style={{ border: "2px solid white" }}
                                 className="px-6 py-2.5 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg active:scale-95 transition-all text-sm font-semibold shadow-md w-full sm:w-auto"
                             >
-                                I've Copied the Token
+                                I have copied the token
                             </button>
+
                         </div>
                     </div>
                 </div>
@@ -498,7 +500,18 @@ export function SettingsPanel() {
                                 <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center shadow-sm">
                                     <AlertTriangle className="w-5 h-5 text-destructive" />
                                 </div>
-                                <h3 className="text-heading dark:text-[#C1EEFA] text-lg font-semibold">Revoke Token</h3>
+                                <h3
+                                    style={{
+                                        border: "2px solid white",
+                                        borderRadius: "10px",
+                                        padding: "6px 12px",
+                                        display: "inline-block"
+                                    }}
+                                    className="text-heading dark:text-[#C1EEFA] text-lg font-semibold"
+                                >
+                                    Revoke Token
+                                </h3>
+
                             </div>
 
                             <div className="p-6">
