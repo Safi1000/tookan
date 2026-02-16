@@ -182,23 +182,23 @@ export function SettingsPanel() {
                 {/* Tokens Card */}
                 <div className="bg-card rounded-2xl border border-border shadow-sm">
                     {/* Card Header */}
-                    <div className="p-6 border-b border-border flex items-center justify-between">
+                    <div className="p-6 border-b border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
                             <Shield className="w-5 h-5 text-primary dark:text-[#C1EEFA]" />
                             <h2 className="text-heading dark:text-[#C1EEFA] text-lg font-semibold">API Tokens</h2>
                         </div>
-                        <div className="flex gap-3">
+                        <div className="flex gap-3 w-full sm:w-auto">
                             <button
                                 onClick={loadTokens}
                                 disabled={isLoading}
-                                className="flex items-center gap-2 px-4 py-2 border border-border rounded-xl text-heading dark:text-[#C1EEFA] hover:bg-muted/50 transition-all text-sm font-medium"
+                                className="flex items-center justify-center gap-2 px-4 py-2 border border-border rounded-xl text-heading dark:text-[#C1EEFA] hover:bg-muted/50 active:bg-muted/70 active:scale-95 transition-all text-sm font-medium shadow-sm flex-1 sm:flex-none"
                             >
                                 <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
                                 Refresh
                             </button>
                             <button
                                 onClick={() => setShowCreateModal(true)}
-                                className="flex items-center gap-2 px-5 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg transition-all text-sm font-semibold"
+                                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold shadow-md flex-1 sm:flex-none"
                             >
                                 <Plus className="w-4 h-4" />
                                 Create Token
@@ -296,7 +296,7 @@ export function SettingsPanel() {
                                                 {token.is_active ? (
                                                     <button
                                                         onClick={() => setShowRevokeConfirm(token.id)}
-                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/20 transition-all text-xs font-medium"
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/20 active:bg-destructive/30 active:scale-95 transition-all text-xs font-medium shadow-sm"
                                                     >
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                         Revoke
@@ -330,18 +330,18 @@ export function SettingsPanel() {
 
             {/* Create Token Modal */}
             {showCreateModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border w-full max-w-lg shadow-2xl">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all duration-200">
+                    <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border w-full max-w-lg shadow-2xl transform transition-all scale-100">
                         <div className="p-6 border-b border-border flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center">
+                                <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center shadow-sm">
                                     <Plus className="w-5 h-5 text-[#10B981]" />
                                 </div>
                                 <h3 className="text-heading dark:text-[#C1EEFA] text-lg font-semibold">Create API Token</h3>
                             </div>
                             <button
                                 onClick={() => setShowCreateModal(false)}
-                                className="p-2 hover:bg-muted rounded-lg transition-colors"
+                                className="p-2 hover:bg-muted rounded-lg transition-colors active:scale-95"
                             >
                                 <X className="w-5 h-5 text-muted-light dark:text-[#99BFD1]" />
                             </button>
@@ -357,7 +357,7 @@ export function SettingsPanel() {
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                     placeholder="e.g., Production EDI Token"
-                                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] transition-all"
+                                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] focus:ring-2 focus:ring-primary/20 transition-all shadow-sm"
                                 />
                             </div>
 
@@ -370,7 +370,7 @@ export function SettingsPanel() {
                                     value={formData.merchantId}
                                     onChange={(e) => setFormData({ ...formData, merchantId: e.target.value })}
                                     placeholder="e.g., merchant_123"
-                                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] transition-all"
+                                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] focus:ring-2 focus:ring-primary/20 transition-all shadow-sm"
                                 />
                             </div>
 
@@ -383,22 +383,22 @@ export function SettingsPanel() {
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                                     placeholder="Optional description for this token..."
                                     rows={3}
-                                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] transition-all resize-none"
+                                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] focus:ring-2 focus:ring-primary/20 transition-all resize-none shadow-sm"
                                 />
                             </div>
                         </div>
 
-                        <div className="p-6 border-t border-border flex justify-end gap-3">
+                        <div className="p-6 border-t border-border flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
                             <button
                                 onClick={() => setShowCreateModal(false)}
-                                className="px-5 py-2.5 border border-border rounded-xl text-heading dark:text-[#C1EEFA] hover:bg-muted/50 transition-all text-sm font-medium"
+                                className="px-5 py-2.5 border border-border rounded-xl text-heading dark:text-[#C1EEFA] hover:bg-muted/50 active:bg-muted/70 active:scale-95 transition-all text-sm font-medium shadow-sm w-full sm:w-auto"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleCreateToken}
                                 disabled={isCreating || !formData.name.trim() || !formData.merchantId.trim()}
-                                className="flex items-center gap-2 px-5 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-md w-full sm:w-auto"
                             >
                                 {isCreating ? (
                                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -461,8 +461,8 @@ export function SettingsPanel() {
                                         <button
                                             onClick={() => copyToClipboard(newlyCreatedToken.token)}
                                             className={`p-1.5 rounded-lg transition-colors ${tokenCopied
-                                                    ? "bg-[#10B981]/20 text-[#10B981]"
-                                                    : "bg-[#2A3C63] text-[#99BFD1] hover:bg-[#3A4C73]"
+                                                ? "bg-[#10B981]/20 text-[#10B981]"
+                                                : "bg-[#2A3C63] text-[#99BFD1] hover:bg-[#3A4C73]"
                                                 }`}
                                             title="Copy to clipboard"
                                         >
@@ -480,7 +480,7 @@ export function SettingsPanel() {
                                     setShowToken(false)
                                     setTokenCopied(false)
                                 }}
-                                className="px-6 py-2.5 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all text-sm font-semibold"
+                                className="px-6 py-2.5 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg active:scale-95 transition-all text-sm font-semibold shadow-md w-full sm:w-auto"
                             >
                                 I've Copied the Token
                             </button>
@@ -490,47 +490,49 @@ export function SettingsPanel() {
             )}
 
             {/* Revoke Confirmation Modal */}
-            {showRevokeConfirm && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border w-full max-w-md shadow-2xl">
-                        <div className="p-6 border-b border-border flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center">
-                                <AlertTriangle className="w-5 h-5 text-destructive" />
+            {
+                showRevokeConfirm && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all duration-200">
+                        <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border w-full max-w-md shadow-2xl transform transition-all scale-100">
+                            <div className="p-6 border-b border-border flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center shadow-sm">
+                                    <AlertTriangle className="w-5 h-5 text-destructive" />
+                                </div>
+                                <h3 className="text-heading dark:text-[#C1EEFA] text-lg font-semibold">Revoke Token</h3>
                             </div>
-                            <h3 className="text-heading dark:text-[#C1EEFA] text-lg font-semibold">Revoke Token</h3>
-                        </div>
 
-                        <div className="p-6">
-                            <p className="text-muted-light dark:text-[#99BFD1] text-sm leading-relaxed">
-                                Are you sure you want to revoke this token? This action cannot be undone. Any integrations
-                                using this token will immediately stop working.
-                            </p>
-                        </div>
+                            <div className="p-6">
+                                <p className="text-muted-light dark:text-[#99BFD1] text-sm leading-relaxed">
+                                    Are you sure you want to revoke this token? This action cannot be undone. Any integrations
+                                    using this token will immediately stop working.
+                                </p>
+                            </div>
 
-                        <div className="p-6 border-t border-border flex justify-end gap-3">
-                            <button
-                                onClick={() => setShowRevokeConfirm(null)}
-                                disabled={isRevoking}
-                                className="px-5 py-2.5 border border-border rounded-xl text-heading dark:text-[#C1EEFA] hover:bg-muted/50 transition-all text-sm font-medium"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={() => handleRevokeToken(showRevokeConfirm)}
-                                disabled={isRevoking}
-                                className="flex items-center gap-2 px-5 py-2.5 bg-destructive text-white rounded-xl hover:bg-red-700 hover:shadow-lg transition-all text-sm font-semibold disabled:opacity-50"
-                            >
-                                {isRevoking ? (
-                                    <RefreshCw className="w-4 h-4 animate-spin" />
-                                ) : (
-                                    <Trash2 className="w-4 h-4" />
-                                )}
-                                {isRevoking ? "Revoking..." : "Revoke Token"}
-                            </button>
+                            <div className="p-6 border-t border-border flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+                                <button
+                                    onClick={() => setShowRevokeConfirm(null)}
+                                    disabled={isRevoking}
+                                    className="px-5 py-2.5 border border-border rounded-xl text-heading dark:text-[#C1EEFA] hover:bg-muted/50 active:bg-muted/70 active:scale-95 transition-all text-sm font-medium shadow-sm w-full sm:w-auto"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => handleRevokeToken(showRevokeConfirm)}
+                                    disabled={isRevoking}
+                                    className="flex items-center justify-center gap-2 px-5 py-2.5 bg-destructive text-white rounded-xl hover:bg-red-700 hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold disabled:opacity-50 disabled:transform-none shadow-md w-full sm:w-auto"
+                                >
+                                    {isRevoking ? (
+                                        <RefreshCw className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Trash2 className="w-4 h-4" />
+                                    )}
+                                    {isRevoking ? "Revoking..." : "Revoke Token"}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     )
 }
