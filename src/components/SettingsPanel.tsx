@@ -400,6 +400,7 @@ export function SettingsPanel() {
                             <button
                                 onClick={handleCreateToken}
                                 disabled={isCreating || !formData.name.trim() || !formData.merchantId.trim()}
+                                style={{ border: "2px solid white", borderRadius: "12px" }}
                                 className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-md w-full sm:w-auto"
                             >
                                 {isCreating ? (
@@ -409,6 +410,7 @@ export function SettingsPanel() {
                                 )}
                                 {isCreating ? "Creating..." : "Create Token"}
                             </button>
+
                         </div>
                     </div>
                 </div>
