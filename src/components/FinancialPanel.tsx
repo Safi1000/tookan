@@ -98,8 +98,8 @@ export function FinancialPanel() {
   const availableTabs: Array<'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets'> = [
     'reconciliation',
     // ...(showCODSection ? (['cod'] as const) : []), // COD tab hidden
-    'driver-wallets',
-    'merchant-wallets'
+    // 'driver-wallets', // Hidden from UI
+    // 'merchant-wallets' // Hidden from UI
   ];
 
   // Ensure activeTab is valid, default to reconciliation if current tab is hidden
@@ -1121,8 +1121,8 @@ export function FinancialPanel() {
             COD Confirmation
           </button>
         )} */}
-        {/* Driver and Merchant Wallets Tabs */}
-        <button
+        {/* Driver and Merchant Wallets Tabs — Hidden from UI */}
+        {/* <button
           onClick={() => handleTabChange('driver-wallets')}
           className={`px-6 py-3 rounded-t-xl transition-all ${activeTab === 'driver-wallets'
             ? 'bg-hover-bg-light dark:bg-[#223560] text-[#DE3544] dark:text-[#C1EEFA] border-b-2 border-[#DE3544]'
@@ -1139,7 +1139,7 @@ export function FinancialPanel() {
             }`}
         >
           Customer Wallet
-        </button>
+        </button> */}
       </div>
 
       {/* Reconciliation Tab */}
