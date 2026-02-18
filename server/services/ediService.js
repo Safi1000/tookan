@@ -57,6 +57,8 @@ async function createOrder(orderData, merchantId) {
         // Task configuration
         has_pickup: '1',
         has_delivery: '1',
+        layout_type: 0,
+        timezone: '-180',
         custom_field_template: 'Same_day',
 
         // Meta data (merchant identity, source, COD)
