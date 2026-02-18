@@ -14,10 +14,10 @@ router.post('/orders/create', async (req, res) => {
         const orderData = req.body;
 
         // Basic validation
-        if (!orderData.pickup_address || !orderData.order_reference) {
+        if (!orderData.pickup_address || !orderData.delivery_address || !orderData.order_reference) {
             return res.status(400).json({
                 status: 'error',
-                message: 'Missing required fields: pickup_address, order_reference'
+                message: 'Missing required fields: pickup_address, delivery_address, order_reference'
             });
         }
 
@@ -50,23 +50,25 @@ router.post('/orders/create', async (req, res) => {
 });
 
 /**
- * Retrieve order status
+ * Retrieve order status by job_id
  */
-router.get('/orders/status/:referenceId', async (req, res) => {
+router.get('/orders/status/:jobId', async (req, res) => {
     try {
-        const { referenceId } = req.params;
-        const isJobId = req.query.type === 'job_id'; // Optional query param to specify type
+        const { jobId } = req.params;
 
-        const statusData = await ediService.getOrderStatus(referenceId, isJobId);
+        const statusData = await ediService.getOrderStatus(jobId);
 
         if (statusData.success) {
             res.json({
                 status: 'success',
                 data: {
                     status: statusData.status,
-                    status_code: statusData.status_code,
+                    fleet_id: statusData.fleet_id,
+                    fleet_name: statusData.fleet_name,
+                    job_status: statusData.job_status,
                     job_id: statusData.job_id,
-                    tracking_link: statusData.tracking_link
+                    job_delivery_datetime: statusData.job_delivery_datetime,
+                    job_type: statusData.job_type
                 }
             });
         } else {

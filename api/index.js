@@ -7102,6 +7102,203 @@ function getApp() {
       }
     });
 
+    // ==========================================
+    // EDI API Routes (Token-authenticated)
+    // ==========================================
+
+    // EDI Token validation middleware (Bearer token from api_tokens table)
+    const validateEdiToken = async (req, res, next) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) {
+          return res.status(401).json({ status: 'error', message: 'Missing Authorization header' });
+        }
+
+        const token = authHeader.replace('Bearer ', '');
+        if (!token || !token.startsWith('edi_')) {
+          return res.status(401).json({ status: 'error', message: 'Invalid token format' });
+        }
+
+        const hash = crypto.createHash('sha256').update(token).digest('hex');
+        const { data, error } = await supabase
+          .from('api_tokens')
+          .select('*')
+          .eq('token_hash', hash)
+          .eq('is_active', true)
+          .single();
+
+        if (error || !data) {
+          return res.status(401).json({ status: 'error', message: 'Invalid or revoked API token' });
+        }
+
+        // Update last used timestamp (fire and forget)
+        supabase
+          .from('api_tokens')
+          .update({ last_used_at: new Date().toISOString() })
+          .eq('id', data.id)
+          .then(() => { });
+
+        // Attach merchant info to request
+        req.merchant = {
+          id: data.merchant_id,
+          token_name: data.name
+        };
+
+        next();
+      } catch (error) {
+        console.error('EDI Token validation error:', error);
+        res.status(500).json({ status: 'error', message: 'Internal server error during authentication' });
+      }
+    };
+
+    // POST /api/edi/orders/create - Create a task via EDI
+    app.post('/api/edi/orders/create', validateEdiToken, async (req, res) => {
+      try {
+        const orderData = req.body;
+
+        // Basic validation
+        if (!orderData.pickup_address || !orderData.delivery_address || !orderData.order_reference) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Missing required fields: pickup_address, delivery_address, order_reference'
+          });
+        }
+
+        const TOOKAN_API_KEY = getApiKey();
+        const merchantId = req.merchant.id;
+
+        // Build meta_data
+        const metaData = [
+          { label: 'Merchant_ID', data: String(merchantId) },
+          { label: 'Source', data: 'EDI' },
+        ];
+        if (orderData.cod_amount) {
+          metaData.push({ label: 'COD Amount', data: String(orderData.cod_amount) });
+        }
+
+        // Build Tookan payload
+        const payload = {
+          api_key: TOOKAN_API_KEY,
+          order_id: orderData.order_reference,
+          job_description: orderData.delivery_instructions || '',
+
+          // Pickup
+          job_pickup_name: orderData.pickup_name || '',
+          job_pickup_phone: orderData.pickup_phone || '',
+          job_pickup_address: orderData.pickup_address,
+          job_pickup_datetime: orderData.pickup_datetime || '',
+
+          // Delivery (customer = delivery recipient = merchant)
+          customer_username: orderData.delivery_name || '',
+          customer_phone: orderData.delivery_phone || '',
+          customer_email: orderData.delivery_email || '',
+          customer_address: orderData.delivery_address,
+          job_delivery_datetime: orderData.delivery_datetime || '',
+
+          // Task config
+          has_pickup: '1',
+          has_delivery: '1',
+          custom_field_template: 'Same day',
+
+          // Meta data
+          meta_data: metaData,
+        };
+
+        console.log('EDI Create Task payload:', JSON.stringify(payload, null, 2));
+
+        const response = await fetch('https://api.tookanapp.com/v2/create_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (data.status === 200) {
+          res.json({
+            status: 'success',
+            data: {
+              job_id: data.data.job_id,
+              tracking_link: data.data.tracking_link,
+              pickup_tracking_link: data.data.pickup_tracking_link,
+              message: 'Order created successfully'
+            }
+          });
+        } else {
+          console.error('Tookan API Error:', data.message, JSON.stringify(data));
+          res.status(400).json({
+            status: 'error',
+            message: data.message || 'Failed to create order in Tookan'
+          });
+        }
+      } catch (error) {
+        console.error('EDI Create Order Error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: 'Internal server error processing EDI order'
+        });
+      }
+    });
+
+    // GET /api/edi/orders/status/:jobId - Get task status via EDI
+    app.get('/api/edi/orders/status/:jobId', validateEdiToken, async (req, res) => {
+      try {
+        const { jobId } = req.params;
+
+        const TOOKAN_API_KEY = getApiKey();
+
+        // Status code to human-readable string
+        const STATUS_MAP = {
+          0: 'Assigned', 1: 'Started', 2: 'Successful', 3: 'Failed',
+          4: 'InProgress/Arrived', 6: 'Unassigned', 7: 'Accepted/Acknowledged',
+          8: 'Decline', 9: 'Cancel', 10: 'Deleted'
+        };
+
+        const payload = {
+          api_key: TOOKAN_API_KEY,
+          job_ids: [jobId],
+          include_task_history: 0,
+          job_additional_info: 1,
+          include_job_report: 0
+        };
+
+        const response = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (data.status === 200 && data.data && data.data.length > 0) {
+          const job = data.data[0];
+          res.json({
+            status: 'success',
+            data: {
+              status: STATUS_MAP[job.job_status] || 'Unknown',
+              fleet_id: job.fleet_id,
+              fleet_name: job.fleet_name,
+              job_status: job.job_status,
+              job_id: job.job_id,
+              job_delivery_datetime: job.job_delivery_datetime,
+              job_type: job.job_type
+            }
+          });
+        } else {
+          res.status(404).json({
+            status: 'error',
+            message: data.message || 'Order not found'
+          });
+        }
+      } catch (error) {
+        console.error('EDI Get Status Error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: 'Internal server error retrieving status'
+        });
+      }
+    });
+
     // Catch-all for other API routes
     app.all('/api/*', (req, res) => {
       res.status(404).json({

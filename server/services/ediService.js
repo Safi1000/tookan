@@ -24,39 +24,44 @@ const STATUS_MAP = {
  * @param {string} merchantId - The merchant ID from the token
  */
 async function createOrder(orderData, merchantId) {
-    // 1. Structure the payload for Tookan
-    // Adjust fields based on Tookan's actual API documentation for v2/create_task
+    // Build meta_data array with merchant identity + source + optional COD
+    const metaData = [
+        { label: 'Merchant_ID', data: String(merchantId) },
+        { label: 'Source', data: 'EDI' },
+    ];
+
+    // COD Amount via template meta_data (not direct cod/cod_amount)
+    if (orderData.cod_amount) {
+        metaData.push({ label: 'COD Amount', data: String(orderData.cod_amount) });
+    }
+
+    // Structure the payload for Tookan v2/create_task
     const payload = {
         api_key: TOOKAN_API_KEY,
         order_id: orderData.order_reference,
-        job_description: orderData.delivery_instructions,
-        customer_email: orderData.contact_email,
-        customer_username: orderData.contact_name,
-        customer_phone: orderData.contact_phone,
-        customer_address: orderData.dropoff_address,
+        job_description: orderData.delivery_instructions || '',
+
+        // Pickup fields
+        job_pickup_name: orderData.pickup_name || '',
+        job_pickup_phone: orderData.pickup_phone || '',
         job_pickup_address: orderData.pickup_address,
-        job_pickup_name: orderData.pickup_name,
-        job_pickup_phone: orderData.pickup_phone,
+        job_pickup_datetime: orderData.pickup_datetime || '',
 
-        // Custom fields or meta data
-        meta_data: [
-            { label: 'Merchant_ID', data: merchantId },
-            { label: 'Source', data: 'EDI' }
-        ],
+        // Delivery fields (Tookan's customer_* = delivery recipient)
+        customer_username: orderData.delivery_name || '',
+        customer_phone: orderData.delivery_phone || '',
+        customer_email: orderData.delivery_email || '',
+        customer_address: orderData.delivery_address,
+        job_delivery_datetime: orderData.delivery_datetime || '',
 
-        // Delivery time (if provided)
-        job_delivery_datetime: orderData.delivery_datetime,
-        job_pickup_datetime: orderData.pickup_datetime,
+        // Task configuration
+        has_pickup: '1',
+        has_delivery: '1',
+        custom_field_template: 'Same day',
 
-        // Layout/Template ID if specific to merchant
-        // layout_type: ... 
+        // Meta data (merchant identity, source, COD)
+        meta_data: metaData,
     };
-
-    // 2. Add COD if applicable
-    if (orderData.cod_amount) {
-        payload.cod = 1; // Enable COD
-        payload.cod_amount = orderData.cod_amount;
-    }
 
     // Log payload for debugging
     console.log('Sending payload to Tookan:', JSON.stringify(payload, null, 2));
@@ -93,22 +98,17 @@ async function createOrder(orderData, merchantId) {
 }
 
 /**
- * Get the status of an order using Tookan's job_id or order_id
- * Implementation note: Tookan allows searching by order_id or job_id.
+ * Get the status of an order using Tookan's get_job_details
+ * @param {string|number} jobId - The Tookan job_id
  */
-async function getOrderStatus(referenceId, isJobId = false) {
-    // Use get_job_details
+async function getOrderStatus(jobId) {
     const payload = {
         api_key: TOOKAN_API_KEY,
-        // If it's a job_id (numeric), pass job_ids array. If order_id, we might need a different search or filter.
-        // For simplicity, let's assume we pass job_ids if isJobId is true.
-        job_ids: isJobId ? [referenceId] : undefined,
-        include_task_history: 0
+        job_ids: [jobId],
+        include_task_history: 0,
+        job_additional_info: 1,
+        include_job_report: 0
     };
-
-    // If searching by custom order reference, Tookan might not strictly support it in get_job_details directly 
-    // without a different endpoint like get_all_tasks with filters.
-    // However, `get_job_details` works best with job_id.
 
     try {
         const response = await fetch(`${TOOKAN_API_BASE}/get_job_details`, {
@@ -123,15 +123,18 @@ async function getOrderStatus(referenceId, isJobId = false) {
             const job = data.data[0];
             return {
                 success: true,
-                status_code: job.job_status,
                 status: STATUS_MAP[job.job_status] || 'Unknown',
+                fleet_id: job.fleet_id,
+                fleet_name: job.fleet_name,
+                job_status: job.job_status,
                 job_id: job.job_id,
-                tracking_link: job.job_pickup_tracking_link || job.tracking_link // Fallback
+                job_delivery_datetime: job.job_delivery_datetime,
+                job_type: job.job_type
             };
         } else {
             return {
                 success: false,
-                message: 'Order not found'
+                message: data.message || 'Order not found'
             };
         }
     } catch (error) {
