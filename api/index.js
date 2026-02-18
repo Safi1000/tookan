@@ -7173,7 +7173,7 @@ function getApp() {
           { label: 'Source', data: 'EDI' },
         ];
         if (orderData.cod_amount) {
-          metaData.push({ label: 'COD Amount', data: String(orderData.cod_amount) });
+          metaData.push({ label: 'COD_Amount', data: String(orderData.cod_amount) });
         }
 
         // Build Tookan payload
@@ -7198,7 +7198,7 @@ function getApp() {
           // Task config
           has_pickup: '1',
           has_delivery: '1',
-          custom_field_template: 'Same day',
+          custom_field_template: 'Same_day',
 
           // Meta data
           meta_data: metaData,

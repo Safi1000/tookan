@@ -32,7 +32,7 @@ async function createOrder(orderData, merchantId) {
 
     // COD Amount via template meta_data (not direct cod/cod_amount)
     if (orderData.cod_amount) {
-        metaData.push({ label: 'COD Amount', data: String(orderData.cod_amount) });
+        metaData.push({ label: 'COD_Amount', data: String(orderData.cod_amount) });
     }
 
     // Structure the payload for Tookan v2/create_task
@@ -57,7 +57,7 @@ async function createOrder(orderData, merchantId) {
         // Task configuration
         has_pickup: '1',
         has_delivery: '1',
-        custom_field_template: 'Same day',
+        custom_field_template: 'Same_day',
 
         // Meta data (merchant identity, source, COD)
         meta_data: metaData,
