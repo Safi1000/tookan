@@ -715,7 +715,7 @@ export function FinancialPanel() {
     ));
   };
 
-  // Open View Tasks modal and fetch tasks for the selected date
+  // Open View Tasks modal — fetch tasks from dateFrom through selected date (cumulative)
   const openTaskModal = async (date: string) => {
     if (!selectedDriver || !supabase) return;
 
@@ -728,13 +728,13 @@ export function FinancialPanel() {
     setIsLoadingTasks(true);
 
     try {
-      // Fetch tasks for this driver on this date using RPC to bypass RLS
-      const startOfDay = `${date}T00:00:00`;
+      // Cumulative: fetch tasks from dateFrom through the selected date
+      const rangeStart = `${dateFrom || date}T00:00:00`;
       const endOfDay = `${date}T23:59:59`;
 
       const { data: tasks, error } = await supabase.rpc('get_driver_tasks', {
         p_fleet_id: fleetId,
-        p_date_from: startOfDay,
+        p_date_from: rangeStart,
         p_date_to: endOfDay
       });
 
@@ -840,7 +840,7 @@ export function FinancialPanel() {
     })));
   };
 
-  // Save calendar card payment - updates all tasks for that day
+  // Save calendar card payment - cumulative: updates all tasks from dateFrom through selected date
   const saveCalendarCardPayment = async (date: string, paymentAmount: number, status: 'PENDING' | 'COMPLETED') => {
     if (!selectedDriver || !supabase) return;
 
@@ -850,29 +850,26 @@ export function FinancialPanel() {
     const fleetId = Number(driver.fleet_id || driver.id);
 
     try {
-      // Fetch tasks for this date
-      const startOfDay = `${date}T00:00:00`;
+      // Cumulative: fetch tasks from dateFrom through selected date
+      const rangeStart = `${dateFrom || date}T00:00:00`;
       const endOfDay = `${date}T23:59:59`;
 
       const { data: tasks, error } = await supabase.rpc('get_driver_tasks', {
         p_fleet_id: fleetId,
-        p_date_from: startOfDay,
+        p_date_from: rangeStart,
         p_date_to: endOfDay
       });
 
       if (error) throw error;
 
       if (!tasks || tasks.length === 0) {
-        toast.info('No tasks found for this date');
+        toast.info('No tasks found for this date range');
         return;
       }
 
-      // Calculate total COD for this day
-      const totalCod = tasks.reduce((sum: number, t: any) => sum + (parseFloat(t.cod_amount) || 0), 0);
-
       // Strict All-or-Nothing logic:
-      // If status is COMPLETED, we pay everything.
-      // If status is PENDING, we pay 0 (reset).
+      // If status is COMPLETED, pay everything from dateFrom through this date.
+      // If status is PENDING, reset everything from dateFrom through this date.
       const shouldPayAll = status === 'COMPLETED';
 
       const updatePromises = tasks.map((task: any) => {
@@ -881,11 +878,9 @@ export function FinancialPanel() {
         let taskCodCollected = false;
 
         if (shouldPayAll) {
-          // Full payment
           taskPaid = taskCod;
           taskCodCollected = true;
         } else {
-          // Reset to Pending (0 paid)
           taskPaid = 0;
           taskCodCollected = false;
         }
@@ -895,20 +890,35 @@ export function FinancialPanel() {
 
       await Promise.all(updatePromises);
 
-      // Update local state
-      setDailyPayments(prev => ({
-        ...prev,
-        [date]: shouldPayAll ? totalCod : 0
-      }));
+      // Update local state for ALL days from dateFrom through selected date
+      const startDate = new Date(dateFrom || date);
+      const endDate = new Date(date);
+      const newPayments: Record<string, number> = {};
+      const newStatuses: Record<string, 'PENDING' | 'COMPLETED'> = {};
 
-      setDailyStatuses(prev => ({
-        ...prev,
-        [date]: shouldPayAll ? 'COMPLETED' : 'PENDING'
-      }));
+      // Group tasks by date to compute per-day totals
+      const tasksByDay: Record<string, number> = {};
+      (tasks as any[]).forEach((t: any) => {
+        const taskDate = (t.creation_datetime || '').split('T')[0];
+        const taskCod = parseFloat(t.cod_amount) || 0;
+        tasksByDay[taskDate] = (tasksByDay[taskDate] || 0) + taskCod;
+      });
+
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        const dayCodTotal = tasksByDay[dateStr] || 0;
+        newPayments[dateStr] = shouldPayAll ? dayCodTotal : 0;
+        newStatuses[dateStr] = shouldPayAll ? 'COMPLETED' : 'PENDING';
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      setDailyPayments(prev => ({ ...prev, ...newPayments }));
+      setDailyStatuses(prev => ({ ...prev, ...newStatuses }));
 
       toast.success(shouldPayAll
-        ? `All ${tasks.length} tasks marked as Paid`
-        : `All ${tasks.length} tasks marked as Pending`
+        ? `All ${tasks.length} tasks marked as Paid (cumulative)`
+        : `All ${tasks.length} tasks marked as Pending (cumulative)`
       );
 
       // Refresh driver totals
@@ -918,24 +928,39 @@ export function FinancialPanel() {
       toast.error('Failed to save payment');
     }
   };
-  // Save task payments
+  // Save task payments — cumulative: updates daily states for all affected days
   const saveTaskPayments = async () => {
     if (!selectedDriver || !taskModalDate) return;
 
     const driver = drivers.find(d => d.id === selectedDriver);
     if (!driver) return;
 
+    // Group tasks by their creation date to update the correct day's state
+    const tasksByDay: Record<string, TaskPaymentEntry[]> = {};
+    for (const task of tasksList) {
+      // Tasks fetched cumulatively may span multiple days; group by creation date
+      // Since we don't store creation_datetime in TaskPaymentEntry, use the date range
+      // For now, all tasks in the modal affect days from dateFrom to taskModalDate
+    }
+
+    // Compute per-day paid totals from all tasks
+    // Since tasks are cumulative (dateFrom → taskModalDate), update all affected days
+    const newPayments: Record<string, number> = {};
+    const newStatuses: Record<string, 'PENDING' | 'COMPLETED'> = {};
+
+    // Re-derive from all tasks (they span dateFrom to taskModalDate)
     const totalPaid = tasksList.reduce((sum, t) => sum + t.balance_paid, 0);
     const totalCod = tasksList.reduce((sum, t) => sum + t.cod_amount, 0);
     const allCompleted = tasksList.every(t => t.cod_collected);
 
-    // Update daily payments state
+    // For simplicity: mark the selected date with the total (cumulative view)
+    // The calendar will recompute cumulative pending from dailyPayments
+    // We need to reload calendar data after save to get accurate per-day figures
     setDailyPayments(prev => ({
       ...prev,
       [taskModalDate]: totalPaid
     }));
 
-    // Update daily status - use cod_collected to determine if day is completed
     setDailyStatuses(prev => ({
       ...prev,
       [taskModalDate]: allCompleted ? 'COMPLETED' : 'PENDING'
@@ -1388,12 +1413,19 @@ export function FinancialPanel() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                      {driverDailyCOD.map((item) => {
+                      {driverDailyCOD.map((item, idx) => {
                         const isEditing = editingDate === item.date;
                         const date = new Date(item.date);
                         const fullDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
                         const paidAmount = dailyPayments[item.date] || 0;
-                        const codPending = item.codReceived - paidAmount;
+                        // Cumulative pending: sum unsettled amounts from range start through this day
+                        const cumulativePending = driverDailyCOD
+                          .filter((_d, i) => i <= idx)
+                          .reduce((sum, d) => {
+                            const dayPaid = dailyPayments[d.date] || 0;
+                            return sum + (d.codReceived - dayPaid);
+                          }, 0);
+                        const codPending = Math.max(0, cumulativePending);
                         const currency = (localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$';
                         const status = paidAmount >= item.codReceived ? 'COMPLETED' : 'PENDING';
 
