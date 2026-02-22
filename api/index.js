@@ -987,6 +987,53 @@ function getApp() {
       return /^[A-Z0-9]{15,34}$/.test(cleanIban);
     };
 
+    // ── Tookan Fleet Wallet Transaction Proxy ──
+    app.post('/api/tookan/driver-wallet/transaction', async (req, res) => {
+      try {
+        const TOOKAN_API_KEY = process.env.TOOKAN_API_KEY;
+        if (!TOOKAN_API_KEY) {
+          console.error('[WALLET TX] Missing TOOKAN_API_KEY');
+          return res.status(500).json({ status: 'error', message: 'Server configuration error' });
+        }
+
+        const { fleet_id, amount, description } = req.body;
+
+        if (!fleet_id || amount === undefined || amount === null) {
+          return res.status(400).json({ status: 'error', message: 'Missing required fields: fleet_id, amount' });
+        }
+
+        const payload = {
+          api_key: TOOKAN_API_KEY,
+          fleet_id: Number(fleet_id),
+          amount: Number(amount),
+          transaction_type: 2,
+          wallet_type: 1,
+          description: description || 'COD Settlement'
+        };
+
+        console.log('[WALLET TX] Calling Tookan create_transaction:', { fleet_id, amount, description });
+
+        const response = await fetch('https://api.tookanapp.com/v2/fleet/wallet/create_transaction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (data.status === 200) {
+          console.log('[WALLET TX] Success:', data);
+          return res.json({ status: 'success', data: data.data });
+        } else {
+          console.error('[WALLET TX] Tookan error:', data.message);
+          return res.status(400).json({ status: 'error', message: data.message || 'Tookan wallet transaction failed' });
+        }
+      } catch (error) {
+        console.error('[WALLET TX] Unexpected error:', error);
+        return res.status(500).json({ status: 'error', message: 'Internal server error' });
+      }
+    });
+
     const validatePartnerApiKey = (req, res, next) => {
       const authHeader = req.headers['authorization'];
       const validApiKey = process.env.EXTERNAL_API_KEY;

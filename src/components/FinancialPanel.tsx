@@ -916,6 +916,34 @@ export function FinancialPanel() {
       setDailyPayments(prev => ({ ...prev, ...newPayments }));
       setDailyStatuses(prev => ({ ...prev, ...newStatuses }));
 
+      // Call Tookan wallet transaction API when settling
+      if (shouldPayAll) {
+        // Only charge the net-new amount (skip already-paid tasks)
+        const totalSettled = tasks.reduce((sum: number, t: any) => {
+          const taskCod = parseFloat(t.cod_amount) || 0;
+          const alreadyPaid = parseFloat(t.paid) || 0;
+          return sum + Math.max(0, taskCod - alreadyPaid);
+        }, 0);
+        if (totalSettled > 0) {
+          try {
+            const walletResult = await createFleetWalletTransaction(
+              fleetId,
+              totalSettled,
+              `COD Settlement ${dateFrom || date} to ${date}`
+            );
+            if (walletResult.status === 'success') {
+              console.log('[WALLET TX] Fleet wallet transaction created:', totalSettled);
+            } else {
+              console.warn('[WALLET TX] Fleet wallet transaction failed:', walletResult.message);
+              toast.error(`Wallet transaction failed: ${walletResult.message}`);
+            }
+          } catch (walletErr) {
+            console.error('[WALLET TX] Error:', walletErr);
+            toast.error('Failed to create wallet transaction');
+          }
+        }
+      }
+
       toast.success(shouldPayAll
         ? `All ${tasks.length} tasks marked as Paid (cumulative)`
         : `All ${tasks.length} tasks marked as Pending (cumulative)`
@@ -981,6 +1009,33 @@ export function FinancialPanel() {
         );
 
         await Promise.all(updatePromises);
+
+        // Calculate net newly-settled amount (any increase in paid amount)
+        const newlySettledAmount = changedTasks
+          .filter(t => t.balance_paid > t.db_paid)
+          .reduce((sum, t) => sum + (t.balance_paid - t.db_paid), 0);
+
+        // Call Tookan wallet transaction API for the newly settled amount
+        if (newlySettledAmount > 0) {
+          const fleetId = Number(driver.fleet_id || driver.id);
+          try {
+            const walletResult = await createFleetWalletTransaction(
+              fleetId,
+              newlySettledAmount,
+              `COD Settlement via View Tasks ${taskModalDate}`
+            );
+            if (walletResult.status === 'success') {
+              console.log('[WALLET TX] Fleet wallet transaction created:', newlySettledAmount);
+            } else {
+              console.warn('[WALLET TX] Fleet wallet transaction failed:', walletResult.message);
+              toast.error(`Wallet transaction failed: ${walletResult.message}`);
+            }
+          } catch (walletErr) {
+            console.error('[WALLET TX] Error:', walletErr);
+            toast.error('Failed to create wallet transaction');
+          }
+        }
+
         toast.success(`${changedTasks.length} task(s) saved successfully`);
       } else {
         toast.info('No changes to save');
