@@ -95,23 +95,24 @@ export function FinancialPanel() {
 
   // Determine available tabs
   // COD Confirmation tab is hidden but code remains
-  const availableTabs: Array<'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets'> = [
+  const availableTabs: Array<'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets' | 'logs'> = [
     'reconciliation',
+    'logs',
     // ...(showCODSection ? (['cod'] as const) : []), // COD tab hidden
     // 'driver-wallets', // Hidden from UI
     // 'merchant-wallets' // Hidden from UI
   ];
 
   // Ensure activeTab is valid, default to reconciliation if current tab is hidden
-  const getInitialTab = (): 'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets' => {
+  const getInitialTab = (): 'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets' | 'logs' => {
     const saved = localStorage.getItem('financialPanelActiveTab');
     if (saved && availableTabs.includes(saved as any)) {
-      return saved as 'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets';
+      return saved as 'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets' | 'logs';
     }
     return 'reconciliation';
   };
 
-  const [activeTab, setActiveTab] = useState<'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets'>(getInitialTab());
+  const [activeTab, setActiveTab] = useState<'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets' | 'logs'>(getInitialTab());
 
   // Update activeTab if current tab becomes hidden
   useEffect(() => {
@@ -122,7 +123,7 @@ export function FinancialPanel() {
   }, [showCODSection, showDriverWalletSection, showMerchantWalletSection, activeTab, availableTabs]);
 
   // Save active tab to localStorage when it changes
-  const handleTabChange = (tab: 'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets') => {
+  const handleTabChange = (tab: 'reconciliation' | 'cod' | 'driver-wallets' | 'merchant-wallets' | 'logs') => {
     setActiveTab(tab);
     localStorage.setItem('financialPanelActiveTab', tab);
   };
@@ -199,6 +200,29 @@ export function FinancialPanel() {
   const [taskModalDate, setTaskModalDate] = useState<string | null>(null);
   const [tasksList, setTasksList] = useState<TaskPaymentEntry[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+
+  // Settlement Logs state
+  interface SettlementLog {
+    id: string;
+    settled_by_email: string;
+    settled_by_name: string | null;
+    driver_name: string;
+    fleet_id: number;
+    amount: number;
+    settlement_type: 'calendar' | 'view_tasks';
+    settlement_date_from: string | null;
+    settlement_date_to: string | null;
+    task_count: number;
+    created_at: string;
+  }
+  const [settlementLogs, setSettlementLogs] = useState<SettlementLog[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [logsDateFrom, setLogsDateFrom] = useState('');
+  const [logsDateTo, setLogsDateTo] = useState('');
+  const [logsDriverSearch, setLogsDriverSearch] = useState('');
+  const [logsTotal, setLogsTotal] = useState(0);
+  const [logsPage, setLogsPage] = useState(0);
+  const LOGS_PER_PAGE = 20;
 
   // Fetch drivers on mount
   useEffect(() => {
@@ -942,6 +966,18 @@ export function FinancialPanel() {
             toast.error('Failed to create wallet transaction');
           }
         }
+
+        // Log settlement to audit trail
+        const driverForCalLog = drivers.find(d => d.id === selectedDriver);
+        logSettlement({
+          driverName: driverForCalLog?.name || `Fleet ${fleetId}`,
+          fleetId,
+          amount: totalSettled,
+          settlementType: 'calendar',
+          dateFrom: dateFrom || date,
+          dateTo: date,
+          taskCount: tasks.length
+        });
       }
 
       toast.success(shouldPayAll
@@ -1037,6 +1073,21 @@ export function FinancialPanel() {
         }
 
         toast.success(`${changedTasks.length} task(s) saved successfully`);
+
+        // Log settlement to audit trail
+        if (newlySettledAmount > 0) {
+          const driverForLog = drivers.find(d => d.id === selectedDriver);
+          const logFleetId = Number(driver.fleet_id || driver.id);
+          logSettlement({
+            driverName: driverForLog?.name || `Fleet ${logFleetId}`,
+            fleetId: logFleetId,
+            amount: newlySettledAmount,
+            settlementType: 'view_tasks',
+            dateFrom: dateFrom || taskModalDate || undefined,
+            dateTo: taskModalDate || undefined,
+            taskCount: changedTasks.filter(t => t.balance_paid > t.db_paid).length
+          });
+        }
       } else {
         toast.info('No changes to save');
       }
@@ -1169,6 +1220,81 @@ export function FinancialPanel() {
     document.body.removeChild(link);
   };
 
+  // --- Helper functions for settlement logs ---
+  async function logSettlement(params: {
+    driverName: string;
+    fleetId: number;
+    amount: number;
+    settlementType: 'calendar' | 'view_tasks';
+    dateFrom?: string;
+    dateTo?: string;
+    taskCount?: number;
+  }) {
+    try {
+      const storedUser = localStorage.getItem('user');
+      const userData = storedUser ? JSON.parse(storedUser) : {};
+      const response = await fetch('/api/settlement-logs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`
+        },
+        body: JSON.stringify({
+          settled_by_email: userData.email || 'unknown',
+          settled_by_name: userData.name || userData.email?.split('@')[0] || null,
+          driver_name: params.driverName,
+          fleet_id: params.fleetId,
+          amount: params.amount,
+          settlement_type: params.settlementType,
+          settlement_date_from: params.dateFrom || null,
+          settlement_date_to: params.dateTo || null,
+          task_count: params.taskCount || 0
+        })
+      });
+      const data = await response.json();
+      if (data.status !== 'success') {
+        console.warn('[SETTLEMENT LOG] Failed to create log:', data.message);
+      }
+    } catch (err) {
+      console.error('[SETTLEMENT LOG] Error:', err);
+    }
+  }
+
+  const fetchSettlementLogs = useCallback(async (page: number = 0) => {
+    setIsLoadingLogs(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('limit', String(LOGS_PER_PAGE));
+      params.set('offset', String(page * LOGS_PER_PAGE));
+      if (logsDateFrom) params.set('date_from', logsDateFrom);
+      if (logsDateTo) params.set('date_to', logsDateTo);
+      if (logsDriverSearch.trim()) params.set('driver', logsDriverSearch.trim());
+
+      const response = await fetch(`/api/settlement-logs?${params.toString()}`);
+      const result = await response.json();
+
+      if (result.status === 'success') {
+        setSettlementLogs(result.data || []);
+        setLogsTotal(result.total || 0);
+        setLogsPage(page);
+      } else {
+        toast.error('Failed to fetch logs');
+      }
+    } catch (err) {
+      console.error('Error fetching settlement logs:', err);
+      toast.error('Failed to fetch settlement logs');
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  }, [logsDateFrom, logsDateTo, logsDriverSearch]);
+
+  // Auto-fetch logs when switching to Logs tab
+  useEffect(() => {
+    if (activeTab === 'logs') {
+      fetchSettlementLogs(0);
+    }
+  }, [activeTab]);
+
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
@@ -1187,6 +1313,15 @@ export function FinancialPanel() {
             }`}
         >
           Reconciliation
+        </button>
+        <button
+          onClick={() => handleTabChange('logs')}
+          className={`px-6 py-3 rounded-t-xl transition-all ${activeTab === 'logs'
+            ? 'bg-hover-bg-light dark:bg-[#223560] text-[#DE3544] dark:text-[#C1EEFA] border-b-2 border-[#DE3544]'
+            : 'text-muted-light dark:text-[#99BFD1] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
+            }`}
+        >
+          Logs
         </button>
         {/* COD Confirmation Tab - Hidden from UI but code remains */}
         {/* {showCODSection && (
@@ -2882,6 +3017,161 @@ export function FinancialPanel() {
           </>
         )
       }
+
+      {/* Settlement Logs Tab */}
+      {activeTab === 'logs' && (
+        <div className="space-y-6">
+          {/* Filters */}
+          <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
+            <h3 className="text-heading mb-4">Settlement Logs</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className="block text-heading text-sm mb-2">From Date</label>
+                <input
+                  type="date"
+                  value={logsDateFrom}
+                  onChange={(e) => setLogsDateFrom(e.target.value)}
+                  className="w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 text-heading dark:text-[#C1EEFA] border border-input-border dark:border-[#2A3C63] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA]"
+                />
+              </div>
+              <div>
+                <label className="block text-heading text-sm mb-2">To Date</label>
+                <input
+                  type="date"
+                  value={logsDateTo}
+                  onChange={(e) => setLogsDateTo(e.target.value)}
+                  className="w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 text-heading dark:text-[#C1EEFA] border border-input-border dark:border-[#2A3C63] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA]"
+                />
+              </div>
+              <div>
+                <label className="block text-heading text-sm mb-2">Driver Search</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
+                  <input
+                    type="text"
+                    placeholder="Search by driver name..."
+                    value={logsDriverSearch}
+                    onChange={(e) => setLogsDriverSearch(e.target.value)}
+                    className="w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] border border-input-border dark:border-[#2A3C63] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA]"
+                  />
+                </div>
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={() => fetchSettlementLogs(0)}
+                  className="w-full px-6 py-2.5 bg-[#1A2C53] dark:bg-[#DE3544] text-white rounded-xl hover:opacity-90 transition-all font-medium"
+                >
+                  Search
+                </button>
+              </div>
+            </div>
+            <p className="text-sm text-muted-light dark:text-[#5B7894]">
+              {logsTotal} record{logsTotal !== 1 ? 's' : ''} found
+            </p>
+          </div>
+
+          {/* Logs Table */}
+          <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] overflow-hidden">
+            {isLoadingLogs ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-[#DE3544]" />
+                <span className="ml-3 text-muted-light dark:text-[#99BFD1]">Loading logs...</span>
+              </div>
+            ) : settlementLogs.length === 0 ? (
+              <div className="text-center py-16 text-muted-light dark:text-[#5B7894]">
+                <AlertCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No settlement logs found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border dark:border-[#2A3C63] bg-hover-bg-light dark:bg-[#1A2C53]">
+                      <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Date & Time</th>
+                      <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Settled By</th>
+                      <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Driver</th>
+                      <th className="text-right px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Amount</th>
+                      <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Type</th>
+                      <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Date Range</th>
+                      <th className="text-center px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Tasks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {settlementLogs.map((log) => (
+                      <tr key={log.id} className="border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53] transition-colors">
+                        <td className="px-4 py-3 text-sm text-heading dark:text-[#C1EEFA]">
+                          {new Date(log.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          <br />
+                          <span className="text-xs text-muted-light dark:text-[#5B7894]">
+                            {new Date(log.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <div className="text-heading dark:text-[#C1EEFA] font-medium">{log.settled_by_name || 'Unknown'}</div>
+                          <div className="text-xs text-muted-light dark:text-[#5B7894]">{log.settled_by_email}</div>
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <div className="text-heading dark:text-[#C1EEFA] font-medium">{log.driver_name}</div>
+                          <div className="text-xs text-muted-light dark:text-[#5B7894]">Fleet #{log.fleet_id}</div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right font-semibold text-green-600 dark:text-green-400">
+                          BHD {Number(log.amount).toFixed(3)}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${log.settlement_type === 'calendar'
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                            : 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
+                            }`}>
+                            {log.settlement_type === 'calendar' ? 'Calendar' : 'View Tasks'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-heading dark:text-[#C1EEFA]">
+                          {log.settlement_date_from && log.settlement_date_to ? (
+                            <>{log.settlement_date_from} → {log.settlement_date_to}</>
+                          ) : log.settlement_date_to ? (
+                            log.settlement_date_to
+                          ) : (
+                            <span className="text-muted-light dark:text-[#5B7894]">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-center text-heading dark:text-[#C1EEFA] font-medium">
+                          {log.task_count}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {logsTotal > LOGS_PER_PAGE && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border dark:border-[#2A3C63]">
+                <span className="text-sm text-muted-light dark:text-[#5B7894]">
+                  Showing {logsPage * LOGS_PER_PAGE + 1}–{Math.min((logsPage + 1) * LOGS_PER_PAGE, logsTotal)} of {logsTotal}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    disabled={logsPage === 0}
+                    onClick={() => fetchSettlementLogs(logsPage - 1)}
+                    className="px-4 py-1.5 rounded-lg text-sm border border-border dark:border-[#2A3C63] text-heading dark:text-[#C1EEFA] disabled:opacity-30 hover:bg-hover-bg-light dark:hover:bg-[#1A2C53] transition-all"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    disabled={(logsPage + 1) * LOGS_PER_PAGE >= logsTotal}
+                    onClick={() => fetchSettlementLogs(logsPage + 1)}
+                    className="px-4 py-1.5 rounded-lg text-sm border border-border dark:border-[#2A3C63] text-heading dark:text-[#C1EEFA] disabled:opacity-30 hover:bg-hover-bg-light dark:hover:bg-[#1A2C53] transition-all"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div >
   );
 }

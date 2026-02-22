@@ -60,6 +60,88 @@ function getApp() {
       }
     }));
 
+    // ── Settlement Logs ──
+    app.post('/api/settlement-logs', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { settled_by_email, settled_by_name, driver_name, fleet_id, amount, settlement_type, settlement_date_from, settlement_date_to, task_count } = req.body;
+
+        if (!settled_by_email || !driver_name || !fleet_id || amount === undefined) {
+          return res.status(400).json({ status: 'error', message: 'Missing required fields' });
+        }
+
+        const { data, error } = await supabase
+          .from('settlement_logs')
+          .insert({
+            settled_by_email,
+            settled_by_name: settled_by_name || null,
+            driver_name,
+            fleet_id: Number(fleet_id),
+            amount: Number(amount),
+            settlement_type: settlement_type || 'calendar',
+            settlement_date_from: settlement_date_from || null,
+            settlement_date_to: settlement_date_to || null,
+            task_count: Number(task_count) || 0
+          })
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error('[SETTLEMENT LOG] Insert error:', error);
+          return res.status(500).json({ status: 'error', message: error.message });
+        }
+
+        console.log(`[SETTLEMENT LOG] Created: ${data.id}`);
+        return res.json({ status: 'success', data: { id: data.id } });
+      } catch (error) {
+        console.error('[SETTLEMENT LOG] Error:', error);
+        return res.status(500).json({ status: 'error', message: 'Internal server error' });
+      }
+    });
+
+    app.get('/api/settlement-logs', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { date_from, date_to, driver, limit: queryLimit, offset: queryOffset } = req.query;
+        const pageLimit = Math.min(Number(queryLimit) || 50, 200);
+        const pageOffset = Number(queryOffset) || 0;
+
+        let query = supabase
+          .from('settlement_logs')
+          .select('*', { count: 'exact' })
+          .order('created_at', { ascending: false })
+          .range(pageOffset, pageOffset + pageLimit - 1);
+
+        if (date_from) {
+          query = query.gte('created_at', `${date_from}T00:00:00`);
+        }
+        if (date_to) {
+          query = query.lte('created_at', `${date_to}T23:59:59`);
+        }
+        if (driver) {
+          query = query.ilike('driver_name', `%${driver}%`);
+        }
+
+        const { data, error, count } = await query;
+
+        if (error) {
+          console.error('[SETTLEMENT LOG] Fetch error:', error);
+          return res.status(500).json({ status: 'error', message: error.message });
+        }
+
+        return res.json({ status: 'success', data: data || [], total: count || 0 });
+      } catch (error) {
+        console.error('[SETTLEMENT LOG] Error:', error);
+        return res.status(500).json({ status: 'error', message: 'Internal server error' });
+      }
+    });
+
     // Import all the route handlers from server/index.js
     // For Vercel, we'll include the essential routes inline
     // Note: merchantPlans legacy model removed in favor of plansModel
