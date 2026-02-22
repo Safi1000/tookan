@@ -3023,48 +3023,7 @@ export function FinancialPanel() {
         <div className="space-y-6">
           {/* Filters */}
           <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
-            <h3 className="text-heading mb-4">Settlement Logs</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-              <div>
-                <label className="block text-heading text-sm mb-2">From Date</label>
-                <input
-                  type="date"
-                  value={logsDateFrom}
-                  onChange={(e) => setLogsDateFrom(e.target.value)}
-                  className="w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 text-heading dark:text-[#C1EEFA] border border-input-border dark:border-[#2A3C63] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA]"
-                />
-              </div>
-              <div>
-                <label className="block text-heading text-sm mb-2">To Date</label>
-                <input
-                  type="date"
-                  value={logsDateTo}
-                  onChange={(e) => setLogsDateTo(e.target.value)}
-                  className="w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 text-heading dark:text-[#C1EEFA] border border-input-border dark:border-[#2A3C63] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA]"
-                />
-              </div>
-              <div>
-                <label className="block text-heading text-sm mb-2">Driver Search</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-                  <input
-                    type="text"
-                    placeholder="Search by driver name..."
-                    value={logsDriverSearch}
-                    onChange={(e) => setLogsDriverSearch(e.target.value)}
-                    className="w-full bg-input-bg dark:bg-[#1A2C53] rounded-xl px-4 py-2.5 pl-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] border border-input-border dark:border-[#2A3C63] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA]"
-                  />
-                </div>
-              </div>
-              <div className="flex items-end">
-                <button
-                  onClick={() => fetchSettlementLogs(0)}
-                  className="w-full px-6 py-2.5 bg-[#1A2C53] dark:bg-[#DE3544] text-white rounded-xl hover:opacity-90 transition-all font-medium"
-                >
-                  Search
-                </button>
-              </div>
-            </div>
+            <h3 className="text-heading mb-2">Settlement Logs</h3>
             <p className="text-sm text-muted-light dark:text-[#5B7894]">
               {logsTotal} record{logsTotal !== 1 ? 's' : ''} found
             </p>

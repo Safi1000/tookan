@@ -7350,6 +7350,9 @@ function getApp() {
             status: 'success',
             data: {
               job_id: data.data.job_id,
+              pickup_job_id: data.data.pickup_job_id,
+              job_hash: data.data.job_hash,
+              pickup_job_hash: data.data.pickup_job_hash,
               tracking_link: data.data.tracking_link,
               pickup_tracking_link: data.data.pickup_tracking_link,
               message: 'Order created successfully'
