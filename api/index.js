@@ -1216,11 +1216,22 @@ function getApp() {
     });
 
     // ========== WITHDRAWAL FEES ENDPOINTS ==========
+    // Simple global fee: applies to ALL customers. Set to 0 to remove.
     let globalWithdrawalFee = null;
 
     app.get('/api/withdrawal-fees/current', authenticate, async (req, res) => {
       try {
-        res.json({ status: 'success', data: { fee: globalWithdrawalFee } });
+        // Try to read fee from DB (first customer with a fee, or use in-memory)
+        if (isSupabaseConfigured && supabase && globalWithdrawalFee === null) {
+          const { data } = await supabase
+            .from('customers')
+            .select('withdraw_fees')
+            .not('withdraw_fees', 'is', null)
+            .limit(1)
+            .single();
+          if (data) globalWithdrawalFee = data.withdraw_fees;
+        }
+        res.json({ status: 'success', data: { fee: globalWithdrawalFee || 0 } });
       } catch (error) {
         res.status(500).json({ status: 'error', message: 'Failed to get current fee' });
       }
@@ -1233,59 +1244,18 @@ function getApp() {
           return res.status(400).json({ status: 'error', message: 'Invalid fee amount' });
         }
         globalWithdrawalFee = fee;
+        // Apply to ALL customers in the database
         if (isSupabaseConfigured && supabase) {
-          await supabase.from('customers').update({ withdraw_fees: fee }).not('withdraw_fees', 'is', null);
+          const feeValue = fee === 0 ? null : fee;
+          await supabase.from('customers').update({ withdraw_fees: feeValue }).not('vendor_id', 'is', null);
         }
-        res.json({ status: 'success', message: 'Withdrawal fee updated', data: { fee } });
+        res.json({
+          status: 'success',
+          message: fee === 0 ? 'Withdrawal fee removed for all customers' : `Withdrawal fee set to ${fee} for all customers`,
+          data: { fee }
+        });
       } catch (error) {
         res.status(500).json({ status: 'error', message: 'Failed to set fee' });
-      }
-    });
-
-    app.get('/api/withdrawal-fees/customers', authenticate, async (req, res) => {
-      try {
-        if (!isSupabaseConfigured || !supabase) {
-          return res.json({ status: 'success', data: { customers: [] } });
-        }
-        const { data: customers, error } = await supabase
-          .from('customers')
-          .select('vendor_id, customer_name, customer_phone, withdraw_fees')
-          .not('withdraw_fees', 'is', null);
-        if (error) return res.status(500).json({ status: 'error', message: error.message });
-        const result = (customers || []).map(c => ({
-          vendorId: c.vendor_id, name: c.customer_name || 'Unknown', phone: c.customer_phone || '', withdrawFees: c.withdraw_fees
-        }));
-        res.json({ status: 'success', data: { customers: result } });
-      } catch (error) {
-        res.status(500).json({ status: 'error', message: 'Failed to get linked customers' });
-      }
-    });
-
-    app.post('/api/withdrawal-fees/link', authenticate, async (req, res) => {
-      try {
-        const { vendor_id, fee } = req.body;
-        if (!vendor_id) return res.status(400).json({ status: 'error', message: 'Vendor ID is required' });
-        if (!isSupabaseConfigured || !supabase) return res.status(500).json({ status: 'error', message: 'Database not configured' });
-        const { data: existing } = await supabase.from('customers').select('vendor_id').eq('vendor_id', vendor_id.toString()).single();
-        if (!existing) return res.status(404).json({ status: 'error', message: 'Customer not found' });
-        const { error } = await supabase.from('customers').update({ withdraw_fees: fee }).eq('vendor_id', vendor_id.toString());
-        if (error) return res.status(500).json({ status: 'error', message: error.message });
-        res.json({ status: 'success', message: 'Customer linked to withdrawal fee' });
-      } catch (error) {
-        res.status(500).json({ status: 'error', message: 'Failed to link customer' });
-      }
-    });
-
-    app.post('/api/withdrawal-fees/unlink', authenticate, async (req, res) => {
-      try {
-        const { vendor_id } = req.body;
-        if (!vendor_id) return res.status(400).json({ status: 'error', message: 'Vendor ID is required' });
-        if (!isSupabaseConfigured || !supabase) return res.status(500).json({ status: 'error', message: 'Database not configured' });
-        const { error } = await supabase.from('customers').update({ withdraw_fees: null }).eq('vendor_id', vendor_id.toString());
-        if (error) return res.status(500).json({ status: 'error', message: error.message });
-        res.json({ status: 'success', message: 'Customer unlinked from withdrawal fee' });
-      } catch (error) {
-        res.status(500).json({ status: 'error', message: 'Failed to unlink customer' });
       }
     });
 
