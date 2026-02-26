@@ -998,7 +998,7 @@ function getApp() {
 
         const { data: customers, error } = await supabase
           .from('customers')
-          .select('vendor_id, customer_name, customer_phone')
+          .select('vendor_id, customer_name, customer_phone, withdraw_fees')
           .order('customer_name', { ascending: true });
 
         if (error) {
@@ -1009,10 +1009,10 @@ function getApp() {
           vendor_id: c.vendor_id,
           customer_name: c.customer_name,
           customer_phone: c.customer_phone,
-          withdraw_fees: globalWithdrawalFee
+          withdraw_fees: c.withdraw_fees
         }));
 
-        res.json({ status: 'success', count: result.length, global_fee: globalWithdrawalFee, data: result });
+        res.json({ status: 'success', count: result.length, data: result });
       } catch (error) {
         console.error('Get all customers with withdraw fees error:', error);
         res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
@@ -1035,7 +1035,7 @@ function getApp() {
 
         const { data: customer, error } = await supabase
           .from('customers')
-          .select('vendor_id, customer_name, customer_phone')
+          .select('vendor_id, customer_name, customer_phone, withdraw_fees')
           .eq('vendor_id', parseInt(vendor_id))
           .single();
 
@@ -1052,7 +1052,7 @@ function getApp() {
             vendor_id: customer.vendor_id,
             customer_name: customer.customer_name,
             customer_phone: customer.customer_phone,
-            withdraw_fees: globalWithdrawalFee
+            withdraw_fees: customer.withdraw_fees
           }
         });
 

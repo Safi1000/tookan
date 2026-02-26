@@ -462,7 +462,7 @@ app.get('/api/get_all_customers_with_withdraw_fees', validateApiKey, async (req,
     // Query ALL customers
     const { data: customers, error } = await supabase
       .from('customers')
-      .select('vendor_id, customer_name, customer_phone')
+      .select('vendor_id, customer_name, customer_phone, withdraw_fees')
       .order('customer_name', { ascending: true });
 
     if (error) {
@@ -477,13 +477,12 @@ app.get('/api/get_all_customers_with_withdraw_fees', validateApiKey, async (req,
       vendor_id: c.vendor_id,
       customer_name: c.customer_name,
       customer_phone: c.customer_phone,
-      withdraw_fees: globalWithdrawalFee
+      withdraw_fees: c.withdraw_fees
     }));
 
     res.json({
       status: 'success',
       count: result.length,
-      global_fee: globalWithdrawalFee,
       data: result
     });
 
@@ -512,7 +511,7 @@ app.get('/api/get_customer_withdraw_fees/:vendor_id', validateApiKey, async (req
 
     const { data: customer, error } = await supabase
       .from('customers')
-      .select('vendor_id, customer_name, customer_phone')
+      .select('vendor_id, customer_name, customer_phone, withdraw_fees')
       .eq('vendor_id', parseInt(vendor_id))
       .single();
 
@@ -529,7 +528,7 @@ app.get('/api/get_customer_withdraw_fees/:vendor_id', validateApiKey, async (req
         vendor_id: customer.vendor_id,
         customer_name: customer.customer_name,
         customer_phone: customer.customer_phone,
-        withdraw_fees: globalWithdrawalFee
+        withdraw_fees: customer.withdraw_fees
       }
     });
 
