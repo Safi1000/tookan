@@ -1221,7 +1221,21 @@ function getApp() {
 
     app.get('/api/withdrawal-fees/current', authenticate, async (req, res) => {
       try {
-        res.json({ status: 'success', data: { fee: globalWithdrawalFee } });
+        // Read fee from database (all customers share the same fee)
+        let fee = globalWithdrawalFee;
+        if (isSupabaseConfigured && supabase) {
+          const { data } = await supabase
+            .from('customers')
+            .select('withdraw_fees')
+            .not('withdraw_fees', 'is', null)
+            .limit(1)
+            .single();
+          if (data) {
+            fee = data.withdraw_fees;
+            globalWithdrawalFee = fee; // sync in-memory cache
+          }
+        }
+        res.json({ status: 'success', data: { fee } });
       } catch (error) {
         res.status(500).json({ status: 'error', message: 'Failed to get current fee' });
       }

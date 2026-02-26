@@ -673,12 +673,25 @@ app.post('/api/withdrawal/request', validatePartnerApiKey, async (req, res) => {
 // Global withdrawal fee storage (in production, use settings table)
 let globalWithdrawalFee = null;
 
-// Get current withdrawal fee
+// Get current withdrawal fee (reads from database for persistence)
 app.get('/api/withdrawal-fees/current', authenticate, async (req, res) => {
   try {
+    let fee = globalWithdrawalFee;
+    if (isConfigured()) {
+      const { data } = await supabase
+        .from('customers')
+        .select('withdraw_fees')
+        .not('withdraw_fees', 'is', null)
+        .limit(1)
+        .single();
+      if (data) {
+        fee = data.withdraw_fees;
+        globalWithdrawalFee = fee; // sync in-memory cache
+      }
+    }
     res.json({
       status: 'success',
-      data: { fee: globalWithdrawalFee }
+      data: { fee }
     });
   } catch (error) {
     console.error('Get current fee error:', error);
