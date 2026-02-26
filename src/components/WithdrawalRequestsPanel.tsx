@@ -62,11 +62,10 @@ export function WithdrawalRequestsPanel() {
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Withdrawal Fee State
+  // Withdrawal Fees Modal State
   const [showFeesModal, setShowFeesModal] = useState(false);
   const [withdrawalFee, setWithdrawalFee] = useState('');
-  const [currentFee, setCurrentFee] = useState<number>(0);
-  const [isSavingFee, setIsSavingFee] = useState(false);
+  const [currentFee, setCurrentFee] = useState<number | null>(null);
 
   // Load withdrawal requests
   useEffect(() => {
@@ -87,6 +86,7 @@ export function WithdrawalRequestsPanel() {
       if (result.status === 'success' && result.data) {
         setWithdrawals(result.data || []);
       } else {
+        // Fallback to mock data if API fails
         setWithdrawals(mockWithdrawals as WithdrawalRequest[]);
       }
     } catch (error) {
@@ -106,9 +106,8 @@ export function WithdrawalRequestsPanel() {
       });
       const data = await response.json();
       if (response.ok && data.status === 'success') {
-        const fee = data.data.fee || 0;
-        setCurrentFee(fee);
-        setWithdrawalFee(fee > 0 ? fee.toString() : '');
+        setCurrentFee(data.data.fee);
+        setWithdrawalFee(data.data.fee?.toString() || '');
       }
     } catch (error) {
       console.error('Failed to load current fee:', error);
@@ -122,7 +121,6 @@ export function WithdrawalRequestsPanel() {
       return;
     }
 
-    setIsSavingFee(true);
     try {
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
       const token = localStorage.getItem('auth_token');
@@ -137,10 +135,7 @@ export function WithdrawalRequestsPanel() {
 
       const data = await response.json();
       if (response.ok && data.status === 'success') {
-        toast.success(feeValue === 0
-          ? 'Withdrawal fee removed for all customers'
-          : `Withdrawal fee set to BHD ${feeValue.toFixed(3)} for all customers`
-        );
+        toast.success(`Global withdrawal fee set to $${feeValue.toFixed(2)} for all customers`);
         setCurrentFee(feeValue);
       } else {
         toast.error(data.message || 'Failed to set fee');
@@ -148,38 +143,6 @@ export function WithdrawalRequestsPanel() {
     } catch (error) {
       console.error('Failed to set fee:', error);
       toast.error('Failed to set withdrawal fee');
-    } finally {
-      setIsSavingFee(false);
-    }
-  };
-
-  const handleClearFee = async () => {
-    setIsSavingFee(true);
-    try {
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(`${API_BASE_URL}/api/withdrawal-fees/set`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ fee: 0 })
-      });
-
-      const data = await response.json();
-      if (response.ok && data.status === 'success') {
-        toast.success('Withdrawal fee removed for all customers');
-        setCurrentFee(0);
-        setWithdrawalFee('');
-      } else {
-        toast.error(data.message || 'Failed to remove fee');
-      }
-    } catch (error) {
-      console.error('Failed to clear fee:', error);
-      toast.error('Failed to remove withdrawal fee');
-    } finally {
-      setIsSavingFee(false);
     }
   };
 
@@ -212,6 +175,7 @@ export function WithdrawalRequestsPanel() {
     }
   };
 
+
   const getValidationColor = (value: string) => {
     if (!value) return 'border-[#2A3C63] dark:border-[#2A3C63]';
     return value.length > 3
@@ -229,8 +193,10 @@ export function WithdrawalRequestsPanel() {
 
   // Filter withdrawals based on search and date range (customers only per SRS)
   const filteredWithdrawals = (withdrawals || []).filter(withdrawal => {
+    // Only show customer withdrawals per SRS
     if (withdrawal.type !== 'customer') return false;
 
+    // Search filter
     if (customerSearch) {
       const searchLower = customerSearch.toLowerCase();
       const searchType = detectSearchType(customerSearch);
@@ -246,12 +212,14 @@ export function WithdrawalRequestsPanel() {
       if (!matchesSearch) return false;
     }
 
+    // Date range filter
     if (dateFrom && withdrawal.date < dateFrom) return false;
     if (dateTo && withdrawal.date > dateTo) return false;
 
     return true;
   });
 
+  // Calculate total withdrawal amount for non-confirmed (Pending) requests for each customer
   const getTotalPendingWithdrawal = (withdrawal: WithdrawalRequest) => {
     const identifier = withdrawal.customerId;
     return (withdrawals || [])
@@ -274,11 +242,6 @@ export function WithdrawalRequestsPanel() {
           >
             <DollarSign className="w-5 h-5" />
             Withdrawal Fees
-            {currentFee > 0 && (
-              <span className="ml-1 px-2 py-0.5 bg-[#10B981] text-white text-xs rounded-full font-medium">
-                BHD {currentFee.toFixed(3)}
-              </span>
-            )}
           </button>
           <button
             onClick={loadWithdrawals}
@@ -418,19 +381,19 @@ export function WithdrawalRequestsPanel() {
         </div>
       </div>
 
-      {/* Withdrawal Fee Modal */}
+      {/* Global Withdrawal Fee Modal */}
       {showFeesModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" style={{ padding: '16px' }}>
           <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-2xl" style={{ width: '100%', maxWidth: '480px' }}>
             {/* Modal Header */}
-            <div className="border-b border-border flex items-center justify-between" style={{ padding: '16px' }}>
+            <div className="border-b border-border flex items-center justify-between" style={{ padding: '16px', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div className="rounded-xl bg-[#10B981]/10 flex items-center justify-center" style={{ width: '40px', height: '40px', minWidth: '40px' }}>
                   <DollarSign className="w-5 h-5 text-[#10B981]" />
                 </div>
                 <div>
-                  <h2 className="text-heading font-semibold" style={{ fontSize: '18px' }}>Withdrawal Fee</h2>
-                  <p className="text-muted-light" style={{ fontSize: '13px' }}>Set a fee that applies to all customers</p>
+                  <h2 className="text-heading font-semibold" style={{ fontSize: '18px' }}>Global Withdrawal Fee</h2>
+                  <p className="text-muted-light" style={{ fontSize: '13px' }}>Set a fee applied to all customers</p>
                 </div>
               </div>
               <button
@@ -442,60 +405,40 @@ export function WithdrawalRequestsPanel() {
               </button>
             </div>
 
-            {/* Current Fee Display */}
-            <div style={{ padding: '20px 16px' }}>
-              <div className="bg-muted/10 rounded-xl border border-border" style={{ padding: '16px', marginBottom: '20px', textAlign: 'center' }}>
-                <p className="text-muted-light" style={{ fontSize: '13px', marginBottom: '4px' }}>Current Fee (All Customers)</p>
-                <p className="text-heading font-bold" style={{ fontSize: '28px' }}>
-                  {currentFee > 0 ? (
-                    <span className="text-[#10B981]">BHD {currentFee.toFixed(3)}</span>
-                  ) : (
-                    <span className="text-muted-light">No fee set</span>
-                  )}
-                </p>
-              </div>
-
-              {/* Set Fee Input */}
-              <label className="block text-heading" style={{ fontSize: '14px', marginBottom: '8px' }}>Set New Fee</label>
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-                <div style={{ position: 'relative', flex: '1' }}>
+            {/* Fee Setting Section */}
+            <div style={{ padding: '24px 16px' }}>
+              <label className="block text-heading" style={{ fontSize: '14px', marginBottom: '8px' }}>Fixed Withdrawal Fee</label>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flex: '1 1 200px', minWidth: '150px' }}>
                   <DollarSign className="text-[#10B981]" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px' }} />
                   <input
                     type="number"
-                    step="0.001"
+                    step="0.01"
                     min="0"
                     value={withdrawalFee}
                     onChange={(e) => setWithdrawalFee(e.target.value)}
-                    placeholder="0.000"
+                    placeholder="0.00"
                     className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#10B981] transition-all"
                     style={{ paddingLeft: '40px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px' }}
                   />
                 </div>
                 <button
                   onClick={handleSetFee}
-                  disabled={isSavingFee || !withdrawalFee}
-                  className="bg-[#10B981] text-white rounded-xl hover:bg-[#10B981]/90 transition-all font-medium disabled:opacity-50"
+                  className="bg-[#10B981] text-white rounded-xl hover:bg-[#10B981]/90 transition-all font-medium"
                   style={{ padding: '12px 24px', whiteSpace: 'nowrap' }}
                 >
-                  {isSavingFee ? 'Saving...' : 'Set Fee'}
+                  Set Fee
                 </button>
               </div>
-
-              {/* Clear Fee Button */}
-              {currentFee > 0 && (
-                <button
-                  onClick={handleClearFee}
-                  disabled={isSavingFee}
-                  className="w-full text-[#DE3544] border border-[#DE3544]/30 rounded-xl hover:bg-[#DE3544]/10 transition-all font-medium disabled:opacity-50"
-                  style={{ padding: '10px', fontSize: '14px' }}
-                >
-                  Remove Fee (Set to 0)
-                </button>
+              {currentFee !== null ? (
+                <p className="text-muted-light" style={{ fontSize: '12px', marginTop: '12px' }}>
+                  Current fee: <span className="text-[#10B981] font-semibold">${currentFee.toFixed(2)}</span> — applies to <span className="text-heading font-medium">all customers</span>
+                </p>
+              ) : (
+                <p className="text-muted-light" style={{ fontSize: '12px', marginTop: '12px' }}>
+                  No fee set yet. Enter a value and click "Set Fee" to apply globally.
+                </p>
               )}
-
-              <p className="text-muted-light" style={{ fontSize: '12px', marginTop: '12px' }}>
-                This fee will be applied to <strong>all customers</strong> when they make a withdrawal request.
-              </p>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Vercel Serverless API Entry Point
  * 
  * This file wraps the Express server for Vercel deployment.
@@ -989,6 +989,7 @@ function getApp() {
     });
 
     // GET all customers with withdraw fees (external API with API key auth)
+    // Returns ALL customers with the global withdrawal fee applied
     app.get('/api/get_all_customers_with_withdraw_fees', validateApiKey, async (req, res) => {
       try {
         if (!isSupabaseConfigured || !supabase) {
@@ -997,8 +998,7 @@ function getApp() {
 
         const { data: customers, error } = await supabase
           .from('customers')
-          .select('vendor_id, customer_name, customer_phone, withdraw_fees')
-          .not('withdraw_fees', 'is', null)
+          .select('vendor_id, customer_name, customer_phone')
           .order('customer_name', { ascending: true });
 
         if (error) {
@@ -1009,10 +1009,10 @@ function getApp() {
           vendor_id: c.vendor_id,
           customer_name: c.customer_name,
           customer_phone: c.customer_phone,
-          withdraw_fees: c.withdraw_fees
+          withdraw_fees: globalWithdrawalFee
         }));
 
-        res.json({ status: 'success', count: result.length, data: result });
+        res.json({ status: 'success', count: result.length, global_fee: globalWithdrawalFee, data: result });
       } catch (error) {
         console.error('Get all customers with withdraw fees error:', error);
         res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
@@ -1020,6 +1020,7 @@ function getApp() {
     });
 
     // GET single customer withdraw fees by vendor_id (external API with API key auth)
+    // Returns the global withdrawal fee for the specified customer
     app.get('/api/get_customer_withdraw_fees/:vendor_id', validateApiKey, async (req, res) => {
       try {
         if (!isSupabaseConfigured || !supabase) {
@@ -1034,7 +1035,7 @@ function getApp() {
 
         const { data: customer, error } = await supabase
           .from('customers')
-          .select('vendor_id, customer_name, customer_phone, withdraw_fees')
+          .select('vendor_id, customer_name, customer_phone')
           .eq('vendor_id', parseInt(vendor_id))
           .single();
 
@@ -1051,7 +1052,7 @@ function getApp() {
             vendor_id: customer.vendor_id,
             customer_name: customer.customer_name,
             customer_phone: customer.customer_phone,
-            withdraw_fees: customer.withdraw_fees
+            withdraw_fees: globalWithdrawalFee
           }
         });
 
@@ -1216,22 +1217,11 @@ function getApp() {
     });
 
     // ========== WITHDRAWAL FEES ENDPOINTS ==========
-    // Simple global fee: applies to ALL customers. Set to 0 to remove.
     let globalWithdrawalFee = null;
 
     app.get('/api/withdrawal-fees/current', authenticate, async (req, res) => {
       try {
-        // Try to read fee from DB (first customer with a fee, or use in-memory)
-        if (isSupabaseConfigured && supabase && globalWithdrawalFee === null) {
-          const { data } = await supabase
-            .from('customers')
-            .select('withdraw_fees')
-            .not('withdraw_fees', 'is', null)
-            .limit(1)
-            .single();
-          if (data) globalWithdrawalFee = data.withdraw_fees;
-        }
-        res.json({ status: 'success', data: { fee: globalWithdrawalFee || 0 } });
+        res.json({ status: 'success', data: { fee: globalWithdrawalFee } });
       } catch (error) {
         res.status(500).json({ status: 'error', message: 'Failed to get current fee' });
       }
@@ -1244,16 +1234,11 @@ function getApp() {
           return res.status(400).json({ status: 'error', message: 'Invalid fee amount' });
         }
         globalWithdrawalFee = fee;
-        // Apply to ALL customers in the database
+        // Update ALL customers with the global fee
         if (isSupabaseConfigured && supabase) {
-          const feeValue = fee === 0 ? null : fee;
-          await supabase.from('customers').update({ withdraw_fees: feeValue }).not('vendor_id', 'is', null);
+          await supabase.from('customers').update({ withdraw_fees: fee }).gte('vendor_id', '0');
         }
-        res.json({
-          status: 'success',
-          message: fee === 0 ? 'Withdrawal fee removed for all customers' : `Withdrawal fee set to ${fee} for all customers`,
-          data: { fee }
-        });
+        res.json({ status: 'success', message: 'Global withdrawal fee updated for all customers', data: { fee } });
       } catch (error) {
         res.status(500).json({ status: 'error', message: 'Failed to set fee' });
       }
