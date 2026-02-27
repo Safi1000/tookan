@@ -195,6 +195,7 @@ export function FinancialPanel() {
     db_balance: number;  // Existing balance from database
     cod_collected: boolean;  // true = completed, false = pending
     status: 'PENDING' | 'COMPLETED';
+    vendor_id: number | null;  // Merchant vendor_id for wallet crediting
   }
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [taskModalDate, setTaskModalDate] = useState<string | null>(null);
@@ -779,7 +780,8 @@ export function FinancialPanel() {
           db_paid: dbPaid,
           db_balance: dbBalance,
           cod_collected: codCollected,
-          status: codCollected ? 'COMPLETED' as const : 'PENDING' as const
+          status: codCollected ? 'COMPLETED' as const : 'PENDING' as const,
+          vendor_id: t.order_id ? Number(t.order_id) : null
         };
       });
 
@@ -965,6 +967,42 @@ export function FinancialPanel() {
             console.error('[WALLET TX] Error:', walletErr);
             toast.error('Failed to create wallet transaction');
           }
+
+          // Credit vendor/merchant wallets — group settled tasks by vendor_id
+          const vendorTotals: Record<number, number> = {};
+          tasks.forEach((t: any) => {
+            const vendorId = t.order_id ? Number(t.order_id) : null;
+            if (vendorId) {
+              const taskCod = parseFloat(t.cod_amount) || 0;
+              const alreadyPaid = parseFloat(t.paid) || 0;
+              const netNew = Math.max(0, taskCod - alreadyPaid);
+              if (netNew > 0) {
+                vendorTotals[vendorId] = (vendorTotals[vendorId] || 0) + netNew;
+              }
+            }
+          });
+
+          // Call addCustomerPaymentViaDashboard for each vendor
+          for (const [vendorId, vendorAmount] of Object.entries(vendorTotals)) {
+            try {
+              const vendorResult = await addCustomerWalletPayment(
+                Number(vendorId),
+                vendorAmount,
+                `COD Settlement ${dateFrom || date} to ${date}`
+              );
+              if (vendorResult.status === 'success') {
+                console.log(`[VENDOR WALLET TX] Vendor ${vendorId} credited: ${vendorAmount}`);
+              } else {
+                console.warn(`[VENDOR WALLET TX] Vendor ${vendorId} failed:`, vendorResult.message);
+              }
+            } catch (vendorErr) {
+              console.error(`[VENDOR WALLET TX] Error for vendor ${vendorId}:`, vendorErr);
+            }
+          }
+
+          if (Object.keys(vendorTotals).length > 0) {
+            console.log(`[VENDOR WALLET TX] Credited ${Object.keys(vendorTotals).length} vendor(s)`);
+          }
         }
 
         // Log settlement to audit trail
@@ -1069,6 +1107,37 @@ export function FinancialPanel() {
           } catch (walletErr) {
             console.error('[WALLET TX] Error:', walletErr);
             toast.error('Failed to create wallet transaction');
+          }
+
+          // Credit vendor/merchant wallets — group newly-settled tasks by vendor_id
+          const vendorTotals: Record<number, number> = {};
+          changedTasks
+            .filter(t => t.balance_paid > t.db_paid && t.vendor_id)
+            .forEach(t => {
+              const netNew = t.balance_paid - t.db_paid;
+              vendorTotals[t.vendor_id!] = (vendorTotals[t.vendor_id!] || 0) + netNew;
+            });
+
+          // Call addCustomerPaymentViaDashboard for each vendor
+          for (const [vendorId, vendorAmount] of Object.entries(vendorTotals)) {
+            try {
+              const vendorResult = await addCustomerWalletPayment(
+                Number(vendorId),
+                vendorAmount,
+                `COD Settlement via View Tasks ${taskModalDate}`
+              );
+              if (vendorResult.status === 'success') {
+                console.log(`[VENDOR WALLET TX] Vendor ${vendorId} credited: ${vendorAmount}`);
+              } else {
+                console.warn(`[VENDOR WALLET TX] Vendor ${vendorId} failed:`, vendorResult.message);
+              }
+            } catch (vendorErr) {
+              console.error(`[VENDOR WALLET TX] Error for vendor ${vendorId}:`, vendorErr);
+            }
+          }
+
+          if (Object.keys(vendorTotals).length > 0) {
+            console.log(`[VENDOR WALLET TX] Credited ${Object.keys(vendorTotals).length} vendor(s)`);
           }
         }
 

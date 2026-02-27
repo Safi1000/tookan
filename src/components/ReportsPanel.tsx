@@ -354,6 +354,7 @@ export function ReportsPanel() {
       if (filteredOrders.length > 0) {
         const ordersData = filteredOrders.map((order: any) => ({
           'Order ID': order.order_id || order.jobId || order.job_id || '',
+          'Merchant ID': order.order_id || '',
           'Date/Time Delivered': order.completed_datetime || '',
           'Driver Name': order.fleet_name || order.assignedDriverName || '',
           'Customer Name': order.customer_name || order.customerName || '',
@@ -860,6 +861,7 @@ export function ReportsPanel() {
                 <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
                   <tr>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order ID</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant ID</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date/Time Delivered</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Name</th>
@@ -941,6 +943,7 @@ export function ReportsPanel() {
                             <span>{taskId || orderId}</span>
                           </div>
                         </td>
+                        <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">{orderId || '-'}</td>
                         <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
                           {dateDelivered ? (
                             dateDelivered.replace('T', ' ').split(' ').map((part: string, i: number) => (

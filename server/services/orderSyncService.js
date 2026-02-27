@@ -10,8 +10,7 @@ const fetch = require('node-fetch');
 const { supabase, isConfigured } = require('../db/supabase');
 
 const TOOKAN_API_BASE = 'https://api.tookanapp.com/v2';
-const BATCH_SIZE = 200; // Records per API request
-const MAX_DAYS_PER_BATCH = 1; // 1 day per batch - Tookan ignores pagination, so we need tiny windows
+const MAX_DAYS_PER_BATCH = 1; // 1 day per batch for granular progress tracking
 const MAX_RETRIES = 5;
 const INITIAL_RETRY_DELAY = 1000; // 1 second
 const JOB_TYPES = [0, 1, 2, 3]; // Pickup, Delivery, Appointment, FOS
@@ -131,7 +130,7 @@ function generateDateBatches(customStartDate, customEndDate) {
 /**
  * Fetch tasks for a specific date range and job type
  */
-async function fetchTasksBatch(startDate, endDate, jobType, offset = 0) {
+async function fetchTasksBatch(startDate, endDate, jobType, page = 1) {
   const apiKey = getApiKey();
 
   const payload = {
@@ -141,8 +140,7 @@ async function fetchTasksBatch(startDate, endDate, jobType, offset = 0) {
     start_date: startDate,
     end_date: endDate,
     is_pagination: 1,
-    off_set: offset,
-    limit: BATCH_SIZE,
+    requested_page: page,
     custom_fields: 1
   };
 
@@ -159,16 +157,18 @@ async function fetchTasksBatch(startDate, endDate, jobType, offset = 0) {
     const data = JSON.parse(text);
 
     if (data.status === 200 || data.status === 1) {
-      return Array.isArray(data.data) ? data.data : [];
+      const tasks = Array.isArray(data.data) ? data.data : [];
+      const totalPages = parseInt(data.total_page_count) || 1;
+      return { tasks, totalPages };
     }
 
     // Some error statuses are expected (no data)
     if (data.message && data.message.includes('No task')) {
-      return [];
+      return { tasks: [], totalPages: 0 };
     }
 
     console.log(`⚠️  API response: ${data.message || 'Unknown status'}`);
-    return [];
+    return { tasks: [], totalPages: 0 };
   } catch (parseError) {
     console.error(`❌ Failed to parse response: ${text.substring(0, 200)}`);
     throw parseError;
@@ -271,52 +271,51 @@ async function fetchAllTasksForDateRange(startDate, endDate) {
 
   for (const jobType of JOB_TYPES) {
     const jobTypeName = ['Pickup', 'Delivery', 'Appointment', 'FOS'][jobType];
-    let offset = 0;
-    let hasMore = true;
-    let pageCount = 0;
+    let page = 1;
+    let totalPages = 1;
     let jobTypeTasks = 0;
 
-    while (hasMore) {
+    while (page <= totalPages) {
       try {
-        const tasks = await fetchTasksBatch(startDate, endDate, jobType, offset);
-        pageCount++;
+        const result = await fetchTasksBatch(startDate, endDate, jobType, page);
+        const tasks = result.tasks;
+
+        // On first page, learn how many pages exist
+        if (page === 1) {
+          totalPages = result.totalPages;
+        }
 
         if (tasks.length === 0) {
-          hasMore = false;
-        } else {
-          allTasks.push(...tasks);
-          jobTypeTasks += tasks.length;
-
-          // Log pagination progress for debugging
-          if (tasks.length === BATCH_SIZE) {
-            console.log(`      [${jobTypeName}] Page ${pageCount}: ${tasks.length} tasks (offset ${offset}), continuing...`);
-          }
-
-          offset += BATCH_SIZE; // Always increment by BATCH_SIZE, not tasks.length
-
-          // If we got less than BATCH_SIZE, we've reached the end
-          if (tasks.length < BATCH_SIZE) {
-            hasMore = false;
-          }
-
-          // Safety limit: don't fetch more than 50 pages per job type per date range
-          if (pageCount >= 50) {
-            console.log(`      [${jobTypeName}] Hit 50 page limit, moving on...`);
-            hasMore = false;
-          }
+          break;
         }
+
+        allTasks.push(...tasks);
+        jobTypeTasks += tasks.length;
+
+        // Log pagination progress for debugging
+        if (totalPages > 1) {
+          console.log(`      [${jobTypeName}] Page ${page}/${totalPages}: ${tasks.length} tasks`);
+        }
+
+        // Safety limit: don't fetch more than 50 pages per job type per date range
+        if (page >= 50) {
+          console.log(`      [${jobTypeName}] Hit 50 page limit, moving on...`);
+          break;
+        }
+
+        page++;
 
         // Small delay between requests to avoid rate limiting
         await sleep(150);
       } catch (error) {
-        console.error(`❌ Error fetching ${jobTypeName} tasks (offset ${offset}): ${error.message}`);
-        hasMore = false;
+        console.error(`❌ Error fetching ${jobTypeName} tasks (page ${page}): ${error.message}`);
+        break;
       }
     }
 
     // Log total for this job type if we fetched multiple pages
-    if (pageCount > 1) {
-      console.log(`      [${jobTypeName}] Total: ${jobTypeTasks} tasks in ${pageCount} pages`);
+    if (totalPages > 1) {
+      console.log(`      [${jobTypeName}] Total: ${jobTypeTasks} tasks in ${page - 1} pages`);
     }
   }
 

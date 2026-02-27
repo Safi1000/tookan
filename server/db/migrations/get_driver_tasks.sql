@@ -20,7 +20,9 @@ RETURNS TABLE (
   cod_collected BOOLEAN,
   pickup_address TEXT,
   delivery_address TEXT,
-  creation_datetime TIMESTAMP 
+  creation_datetime TIMESTAMP,
+  vendor_id BIGINT,
+  order_id TEXT
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -39,7 +41,9 @@ BEGIN
     COALESCE(t.cod_collected::BOOLEAN, false) as cod_collected,
     t.pickup_address::TEXT,
     t.delivery_address::TEXT,
-    t.creation_datetime::TIMESTAMP
+    t.creation_datetime::TIMESTAMP,
+    t.vendor_id::BIGINT,
+    t.order_id::TEXT
   FROM tasks t
   WHERE t.fleet_id = p_fleet_id
     AND t.status = 2 -- Completed

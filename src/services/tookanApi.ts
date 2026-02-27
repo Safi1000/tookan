@@ -597,7 +597,7 @@ export async function fetchFleetWalletBalance(fleetId: string | number): Promise
 }
 
 export async function addCustomerWalletPayment(
-  customerId: string | number,
+  vendorId: string | number,
   amount: number,
   description?: string
 ): Promise<TookanApiResponse<any>> {
@@ -606,7 +606,7 @@ export async function addCustomerWalletPayment(
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        customer_id: customerId,
+        vendor_id: vendorId,
         amount,
         description,
       }),
