@@ -210,11 +210,13 @@ export function FinancialPanel() {
     driver_name: string;
     fleet_id: number;
     amount: number;
-    settlement_type: 'calendar' | 'view_tasks';
+    settlement_type: 'calendar' | 'view_tasks' | 'merchant_calendar' | 'merchant_view_tasks';
     settlement_date_from: string | null;
     settlement_date_to: string | null;
     task_count: number;
     created_at: string;
+    merchant_name?: string;
+    vendor_id?: number;
   }
   const [settlementLogs, setSettlementLogs] = useState<SettlementLog[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
@@ -1002,6 +1004,24 @@ export function FinancialPanel() {
 
           if (Object.keys(vendorTotals).length > 0) {
             console.log(`[VENDOR WALLET TX] Credited ${Object.keys(vendorTotals).length} vendor(s)`);
+
+            // Log each merchant settlement
+            for (const [vendorId, vendorAmount] of Object.entries(vendorTotals)) {
+              logSettlement({
+                driverName: '',
+                fleetId: 0,
+                amount: vendorAmount,
+                settlementType: 'merchant_calendar',
+                dateFrom: dateFrom || date,
+                dateTo: date,
+                taskCount: tasks.filter((t: any) => {
+                  const vid = t.order_id ? Number(t.order_id) : null;
+                  return vid === Number(vendorId);
+                }).length,
+                merchantName: `Merchant ID ${vendorId}`,
+                vendorId: Number(vendorId)
+              });
+            }
           }
         }
 
@@ -1138,6 +1158,21 @@ export function FinancialPanel() {
 
           if (Object.keys(vendorTotals).length > 0) {
             console.log(`[VENDOR WALLET TX] Credited ${Object.keys(vendorTotals).length} vendor(s)`);
+
+            // Log each merchant settlement
+            for (const [vendorId, vendorAmount] of Object.entries(vendorTotals)) {
+              logSettlement({
+                driverName: '',
+                fleetId: 0,
+                amount: vendorAmount,
+                settlementType: 'merchant_view_tasks',
+                dateFrom: dateFrom || taskModalDate || undefined,
+                dateTo: taskModalDate || undefined,
+                taskCount: changedTasks.filter(t => t.vendor_id === Number(vendorId) && t.balance_paid > t.db_paid).length,
+                merchantName: `Merchant ID ${vendorId}`,
+                vendorId: Number(vendorId)
+              });
+            }
           }
         }
 
@@ -1294,31 +1329,37 @@ export function FinancialPanel() {
     driverName: string;
     fleetId: number;
     amount: number;
-    settlementType: 'calendar' | 'view_tasks';
+    settlementType: 'calendar' | 'view_tasks' | 'merchant_calendar' | 'merchant_view_tasks';
     dateFrom?: string;
     dateTo?: string;
     taskCount?: number;
+    merchantName?: string;
+    vendorId?: number;
   }) {
     try {
       const storedUser = localStorage.getItem('user');
       const userData = storedUser ? JSON.parse(storedUser) : {};
+      const body: any = {
+        settled_by_email: userData.email || 'unknown',
+        settled_by_name: userData.name || userData.email?.split('@')[0] || null,
+        driver_name: params.driverName || null,
+        fleet_id: params.fleetId || 0,
+        amount: params.amount,
+        settlement_type: params.settlementType,
+        settlement_date_from: params.dateFrom || null,
+        settlement_date_to: params.dateTo || null,
+        task_count: params.taskCount || 0
+      };
+      if (params.merchantName) body.merchant_name = params.merchantName;
+      if (params.vendorId) body.vendor_id = params.vendorId;
+
       const response = await fetch('/api/settlement-logs', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`
         },
-        body: JSON.stringify({
-          settled_by_email: userData.email || 'unknown',
-          settled_by_name: userData.name || userData.email?.split('@')[0] || null,
-          driver_name: params.driverName,
-          fleet_id: params.fleetId,
-          amount: params.amount,
-          settlement_type: params.settlementType,
-          settlement_date_from: params.dateFrom || null,
-          settlement_date_to: params.dateTo || null,
-          task_count: params.taskCount || 0
-        })
+        body: JSON.stringify(body)
       });
       const data = await response.json();
       if (data.status !== 'success') {
@@ -3117,7 +3158,7 @@ export function FinancialPanel() {
                     <tr className="border-b border-border dark:border-[#2A3C63] bg-hover-bg-light dark:bg-[#1A2C53]">
                       <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Date & Time</th>
                       <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Settled By</th>
-                      <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Driver</th>
+                      <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Target</th>
                       <th className="text-right px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Amount</th>
                       <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Type</th>
                       <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Date Range</th>
@@ -3125,48 +3166,69 @@ export function FinancialPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {settlementLogs.map((log) => (
-                      <tr key={log.id} className="border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53] transition-colors">
-                        <td className="px-4 py-3 text-sm text-heading dark:text-[#C1EEFA]">
-                          {new Date(log.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          <br />
-                          <span className="text-xs text-muted-light dark:text-[#5B7894]">
-                            {new Date(log.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <div className="text-heading dark:text-[#C1EEFA] font-medium">{log.settled_by_name || 'Unknown'}</div>
-                          <div className="text-xs text-muted-light dark:text-[#5B7894]">{log.settled_by_email}</div>
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <div className="text-heading dark:text-[#C1EEFA] font-medium">{log.driver_name}</div>
-                          <div className="text-xs text-muted-light dark:text-[#5B7894]">Fleet #{log.fleet_id}</div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right font-semibold text-green-600 dark:text-green-400">
-                          BHD {Number(log.amount).toFixed(3)}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${log.settlement_type === 'calendar'
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                            : 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
-                            }`}>
-                            {log.settlement_type === 'calendar' ? 'Calendar' : 'View Tasks'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-heading dark:text-[#C1EEFA]">
-                          {log.settlement_date_from && log.settlement_date_to ? (
-                            <>{log.settlement_date_from} → {log.settlement_date_to}</>
-                          ) : log.settlement_date_to ? (
-                            log.settlement_date_to
-                          ) : (
-                            <span className="text-muted-light dark:text-[#5B7894]">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-center text-heading dark:text-[#C1EEFA] font-medium">
-                          {log.task_count}
-                        </td>
-                      </tr>
-                    ))}
+                    {settlementLogs.map((log) => {
+                      const isMerchant = log.settlement_type?.startsWith('merchant_');
+                      return (
+                        <tr key={log.id} className="border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53] transition-colors">
+                          <td className="px-4 py-3 text-sm text-heading dark:text-[#C1EEFA]">
+                            {new Date(log.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            <br />
+                            <span className="text-xs text-muted-light dark:text-[#5B7894]">
+                              {new Date(log.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="text-heading dark:text-[#C1EEFA] font-medium">{log.settled_by_name || 'Unknown'}</div>
+                            <div className="text-xs text-muted-light dark:text-[#5B7894]">{log.settled_by_email}</div>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {isMerchant ? (
+                              <>
+                                <div className="text-heading dark:text-[#C1EEFA] font-medium">{log.merchant_name || 'Unknown Merchant'}</div>
+                                <div className="text-xs text-muted-light dark:text-[#5B7894]">
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 mr-1">Merchant</span>
+                                  Merchant ID: {log.vendor_id}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="text-heading dark:text-[#C1EEFA] font-medium">{log.driver_name}</div>
+                                <div className="text-xs text-muted-light dark:text-[#5B7894]">
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300 mr-1">Driver</span>
+                                  Fleet #{log.fleet_id}
+                                </div>
+                              </>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-green-600 dark:text-green-400">
+                            BHD {Number(log.amount).toFixed(3)}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${log.settlement_type === 'calendar' || log.settlement_type === 'merchant_calendar'
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                              : 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
+                              }`}>
+                              {log.settlement_type === 'calendar' ? 'Calendar' :
+                                log.settlement_type === 'view_tasks' ? 'View Tasks' :
+                                  log.settlement_type === 'merchant_calendar' ? 'Calendar' :
+                                    'View Tasks'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-heading dark:text-[#C1EEFA]">
+                            {log.settlement_date_from && log.settlement_date_to ? (
+                              <>{log.settlement_date_from} → {log.settlement_date_to}</>
+                            ) : log.settlement_date_to ? (
+                              log.settlement_date_to
+                            ) : (
+                              <span className="text-muted-light dark:text-[#5B7894]">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-center text-heading dark:text-[#C1EEFA] font-medium">
+                            {log.task_count}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

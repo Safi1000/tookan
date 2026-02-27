@@ -67,25 +67,31 @@ function getApp() {
           return res.status(500).json({ status: 'error', message: 'Database not configured' });
         }
 
-        const { settled_by_email, settled_by_name, driver_name, fleet_id, amount, settlement_type, settlement_date_from, settlement_date_to, task_count } = req.body;
+        const { settled_by_email, settled_by_name, driver_name, fleet_id, amount, settlement_type, settlement_date_from, settlement_date_to, task_count, merchant_name, vendor_id } = req.body;
 
-        if (!settled_by_email || !driver_name || !fleet_id || amount === undefined) {
+        if (!settled_by_email || amount === undefined) {
           return res.status(400).json({ status: 'error', message: 'Missing required fields' });
         }
 
+        const insertData = {
+          settled_by_email,
+          settled_by_name: settled_by_name || null,
+          driver_name: driver_name || null,
+          fleet_id: fleet_id ? Number(fleet_id) : 0,
+          amount: Number(amount),
+          settlement_type: settlement_type || 'calendar',
+          settlement_date_from: settlement_date_from || null,
+          settlement_date_to: settlement_date_to || null,
+          task_count: Number(task_count) || 0
+        };
+
+        // Add merchant fields if present
+        if (merchant_name) insertData.merchant_name = merchant_name;
+        if (vendor_id) insertData.vendor_id = Number(vendor_id);
+
         const { data, error } = await supabase
           .from('settlement_logs')
-          .insert({
-            settled_by_email,
-            settled_by_name: settled_by_name || null,
-            driver_name,
-            fleet_id: Number(fleet_id),
-            amount: Number(amount),
-            settlement_type: settlement_type || 'calendar',
-            settlement_date_from: settlement_date_from || null,
-            settlement_date_to: settlement_date_to || null,
-            task_count: Number(task_count) || 0
-          })
+          .insert(insertData)
           .select('id')
           .single();
 
@@ -126,6 +132,12 @@ function getApp() {
         }
         if (driver) {
           query = query.ilike('driver_name', `%${driver}%`);
+        }
+
+        // Also filter by merchant name if provided
+        const { merchant } = req.query;
+        if (merchant) {
+          query = query.ilike('merchant_name', `%${merchant}%`);
         }
 
         const { data, error, count } = await query;
