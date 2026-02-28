@@ -3814,24 +3814,32 @@ function getApp() {
         const updatedTaskData = (getData.data && Array.isArray(getData.data)) ? getData.data[0] : (getData.data || {});
 
         // Upsert to Supabase
+        // Use codAmount from the request body (trusted) instead of Tookan re-fetch
+        // which may return stale data due to propagation delay
         if (isSupabaseConfigured && updatedTaskData.job_id) {
-          await supabase.from('tasks').upsert({
+          const upsertData = {
             job_id: updatedTaskData.job_id,
             status: parseInt(updatedTaskData.job_status) || 0,
-            job_description: updatedTaskData.job_description,
+            job_description: notes !== undefined ? notes : updatedTaskData.job_description,
             customer_name: updatedTaskData.customer_username || updatedTaskData.customer_name || updatedTaskData.job_pickup_name,
             customer_phone: updatedTaskData.customer_phone || updatedTaskData.job_pickup_phone,
             customer_email: updatedTaskData.customer_email || updatedTaskData.job_pickup_email,
             pickup_address: updatedTaskData.job_pickup_address || updatedTaskData.pickup_address,
             delivery_address: updatedTaskData.customer_address || updatedTaskData.delivery_address,
-            cod_amount: parseFloat(updatedTaskData.cod || 0),
-            order_fees: parseFloat(updatedTaskData.order_payment || 0),
-            notes: updatedTaskData.customer_comments || updatedTaskData.job_description,
+            cod_amount: codAmount !== undefined ? parseFloat(codAmount) : parseFloat(updatedTaskData.cod || 0),
+            order_fees: orderFees !== undefined ? parseFloat(orderFees) : parseFloat(updatedTaskData.order_payment || 0),
+            notes: notes !== undefined ? notes : (updatedTaskData.customer_comments || updatedTaskData.job_description),
             fleet_id: updatedTaskData.fleet_id ? parseInt(updatedTaskData.fleet_id) : null,
             creation_datetime: updatedTaskData.creation_datetime,
             last_synced_at: new Date().toISOString(),
             raw_data: updatedTaskData
-          }, { onConflict: 'job_id' });
+          };
+          const { error: upsertError } = await supabase.from('tasks').upsert(upsertData, { onConflict: 'job_id' });
+          if (upsertError) {
+            console.error('Supabase upsert error:', upsertError.message);
+          } else {
+            console.log(`✅ Supabase upsert success for job ${updatedTaskData.job_id}, cod_amount=${upsertData.cod_amount}`);
+          }
         }
 
 
@@ -5633,185 +5641,8 @@ function getApp() {
     });
 
     // PUT Update Order (COD, Notes, Fees) - Called by OrderEditorPanel
-    app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
-      // DEBUG LOG COLLECTOR
-      const debutLogs = [];
-      const log = (msg, data) => {
-        const line = `${new Date().toISOString()} - ${msg} ${data ? JSON.stringify(data) : ''}`;
-        console.log(line);
-        debutLogs.push(line);
-      };
-
-      try {
-        log('=== UPDATE ORDER REQUEST (Vercel) ===');
-        const { orderId } = req.params;
-        const { codAmount, orderFees, notes } = req.body;
-        log('Order ID:', orderId);
-        log('Request body:', req.body);
-
-        if (!orderId) {
-          return res.status(400).json({
-            status: 'error',
-            message: 'Order ID is required',
-            data: { debug_logs: debutLogs }
-          });
-        }
-
-        let apiKey;
-        try {
-          apiKey = getApiKey();
-          log('API Key retrieved:', '***HIDDEN***');
-        } catch (e) {
-          log('API Key error:', e.message);
-          throw e;
-        }
-
-        const numericJobId = parseInt(orderId, 10);
-        if (isNaN(numericJobId)) {
-          return res.status(400).json({
-            status: 'error',
-            message: 'Invalid Order ID - must be a number',
-            data: { debug_logs: debutLogs }
-          });
-        }
-
-        // Build the meta_data array for COD custom field
-        const metaData = [];
-        if (codAmount !== undefined) {
-          metaData.push({
-            label: 'COD_Amount',
-            data: String(codAmount)
-          });
-        }
-
-        // Build Tookan payload with custom_field_template
-        const tookanPayload = {
-          api_key: apiKey,
-          job_id: numericJobId,
-          custom_field_template: 'Same_day'
-        };
-
-        // Add meta_data if we have COD to update
-        if (metaData.length > 0) {
-          tookanPayload.meta_data = metaData;
-        }
-
-        // Add job_description (notes) if provided
-        if (notes !== undefined) {
-          tookanPayload.job_description = notes;
-        }
-
-        log('Calling Tookan API: https://api.tookanapp.com/v2/edit_task');
-        log('Template:', tookanPayload.custom_field_template);
-        log('Meta Data:', metaData);
-
-        let response;
-        let textResponse;
-        try {
-          response = await fetch('https://api.tookanapp.com/v2/edit_task', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(tookanPayload),
-          });
-          textResponse = await response.text();
-          log('Tookan Response Status:', response.status);
-          log('Tookan Response Body:', textResponse.substring(0, 500));
-        } catch (fetchError) {
-          log('Tookan fetch error:', fetchError.message);
-          textResponse = JSON.stringify({ status: 0, message: fetchError.message });
-        }
-
-        let tookanData;
-        try {
-          tookanData = JSON.parse(textResponse);
-        } catch (parseError) {
-          log('Failed to parse Tookan response:', parseError.message);
-          tookanData = { status: 0, message: 'Non-JSON response: ' + textResponse.substring(0, 100) };
-        }
-
-        const tookanSuccess = response && response.ok && tookanData.status === 200;
-        if (tookanSuccess) {
-          log('✅ Tookan API update successful');
-        } else {
-          log('⚠️ Tookan update failed:', tookanData.message || textResponse);
-        }
-
-        // Update Supabase database
-        let dbUpdated = false;
-
-        // RE-CHECK SUPABASE CONFIGURATION AT RUNTIME
-        // In serverless, env vars might not be available at module load time
-        if (!supabase) {
-          const sbUrl = process.env.SUPABASE_URL;
-          const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-          log('Runtime Supabase Check - URL:', sbUrl ? 'Present' : 'Missing');
-          log('Runtime Supabase Check - Key:', sbKey ? 'Present' : 'Missing');
-
-          if (sbUrl && sbKey && sbUrl.startsWith('https://') && !sbUrl.includes('YOUR_')) {
-            log('Re-initializing Supabase client at runtime...');
-            try {
-              supabase = createClient(sbUrl, sbKey, {
-                auth: { autoRefreshToken: false, persistSession: false }
-              });
-            } catch (initError) {
-              log('Supabase runtime init failed:', initError.message);
-            }
-          }
-        }
-
-        log('Supabase client active:', !!supabase);
-
-        if (supabase) {
-          try {
-            const updateData = { updated_at: new Date().toISOString() };
-            if (codAmount !== undefined) updateData.cod_amount = parseFloat(codAmount);
-            if (orderFees !== undefined) updateData.order_fees = parseFloat(orderFees);
-            if (notes !== undefined) updateData.notes = notes;
-
-            log('Updating Supabase task:', numericJobId);
-            const { error } = await supabase
-              .from('tasks')
-              .update(updateData)
-              .eq('job_id', numericJobId);
-
-            if (error) {
-              throw error;
-            }
-            dbUpdated = true;
-            log('✅ Database updated');
-          } catch (dbError) {
-            log('⚠️ Database update failed:', dbError.message);
-          }
-        } else {
-          log('⚠️ Skipping database update: Client not available');
-        }
-
-        log('=== END REQUEST (SUCCESS) ===');
-
-        res.json({
-          status: 'success',
-          message: tookanSuccess
-            ? 'Order updated in Tookan and database'
-            : 'Order updated in database only. Tookan update may have failed.',
-          data: {
-            orderId,
-            tookan_synced: tookanSuccess,
-            database_synced: dbUpdated,
-            tookan_response: tookanData,
-            debug_logs: debutLogs // RETURN LOGS IN RESPONSE
-          }
-        });
-      } catch (error) {
-        console.error('❌ Update order error:', error);
-        res.status(500).json({
-          status: 'error',
-          message: error.message || 'Failed to update order',
-          data: {
-            debug_logs: (typeof debutLogs !== 'undefined' ? debutLogs : [error.message])
-          }
-        });
-      }
-    });
+    // NOTE: Duplicate PUT /api/tookan/order/:orderId route was removed.
+    // The primary route (above) handles both Tookan and Supabase updates.
 
     // GET Analytics (KPIs, Charts, Performance Data) - Vercel version
     app.get('/api/reports/analytics', authenticate, async (req, res) => {
