@@ -3804,49 +3804,47 @@ function getApp() {
           return res.status(500).json({ status: 'error', message: data.message || 'Failed to update order' });
         }
 
-        // Fetch updated data to sync FULL state
-        const getResponse = await fetch('https://api.tookanapp.com/v2/get_job_details', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_key: apiKey, job_ids: [numericOrderId], include_task_history: 0 })
-        });
-        const getData = await getResponse.json();
-        const updatedTaskData = (getData.data && Array.isArray(getData.data)) ? getData.data[0] : (getData.data || {});
+        // Directly update Supabase with the values from the request body
+        // This is independent of the get_job_details re-fetch which may return stale data
+        if (isSupabaseConfigured && supabase) {
+          const updateFields = { updated_at: new Date().toISOString() };
+          if (codAmount !== undefined) updateFields.cod_amount = parseFloat(codAmount);
+          if (orderFees !== undefined) updateFields.order_fees = parseFloat(orderFees);
+          if (notes !== undefined) updateFields.notes = notes;
+          if (assignedDriver) updateFields.fleet_id = parseInt(assignedDriver);
 
-        // Upsert to Supabase
-        // Use codAmount from the request body (trusted) instead of Tookan re-fetch
-        // which may return stale data due to propagation delay
-        if (isSupabaseConfigured && updatedTaskData.job_id) {
-          const upsertData = {
-            job_id: updatedTaskData.job_id,
-            status: parseInt(updatedTaskData.job_status) || 0,
-            job_description: notes !== undefined ? notes : updatedTaskData.job_description,
-            customer_name: updatedTaskData.customer_username || updatedTaskData.customer_name || updatedTaskData.job_pickup_name,
-            customer_phone: updatedTaskData.customer_phone || updatedTaskData.job_pickup_phone,
-            customer_email: updatedTaskData.customer_email || updatedTaskData.job_pickup_email,
-            pickup_address: updatedTaskData.job_pickup_address || updatedTaskData.pickup_address,
-            delivery_address: updatedTaskData.customer_address || updatedTaskData.delivery_address,
-            cod_amount: codAmount !== undefined ? parseFloat(codAmount) : parseFloat(updatedTaskData.cod || 0),
-            order_fees: orderFees !== undefined ? parseFloat(orderFees) : parseFloat(updatedTaskData.order_payment || 0),
-            notes: notes !== undefined ? notes : (updatedTaskData.customer_comments || updatedTaskData.job_description),
-            fleet_id: updatedTaskData.fleet_id ? parseInt(updatedTaskData.fleet_id) : null,
-            creation_datetime: updatedTaskData.creation_datetime,
-            last_synced_at: new Date().toISOString(),
-            raw_data: updatedTaskData
-          };
-          const { error: upsertError } = await supabase.from('tasks').upsert(upsertData, { onConflict: 'job_id' });
-          if (upsertError) {
-            console.error('Supabase upsert error:', upsertError.message);
+          console.log(`[ORDER UPDATE] Updating Supabase job_id=${numericOrderId} with:`, JSON.stringify(updateFields));
+          const { error: dbError, count } = await supabase
+            .from('tasks')
+            .update(updateFields)
+            .eq('job_id', numericOrderId);
+
+          if (dbError) {
+            console.error(`[ORDER UPDATE] Supabase update FAILED for job ${numericOrderId}:`, dbError.message);
           } else {
-            console.log(`✅ Supabase upsert success for job ${updatedTaskData.job_id}, cod_amount=${upsertData.cod_amount}`);
+            console.log(`[ORDER UPDATE] ✅ Supabase updated for job ${numericOrderId}, cod_amount=${updateFields.cod_amount}`);
           }
+        } else {
+          console.warn(`[ORDER UPDATE] ⚠️ Supabase not configured, skipping DB update for job ${numericOrderId}`);
         }
-
-
 
         // NOTE: We intentionally do NOT trigger syncTask/syncCodAmounts here.
         // Those re-fetch from Tookan which may still have stale data (propagation delay),
         // overwriting the correct cod_amount we just wrote from the request body.
+
+        // Optionally fetch updated task data for the response
+        let updatedTaskData = {};
+        try {
+          const getResponse = await fetch('https://api.tookanapp.com/v2/get_job_details', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKey, job_ids: [numericOrderId], include_task_history: 0 })
+          });
+          const getData = await getResponse.json();
+          updatedTaskData = (getData.data && Array.isArray(getData.data)) ? getData.data[0] : (getData.data || {});
+        } catch (fetchErr) {
+          console.warn(`[ORDER UPDATE] get_job_details fetch failed:`, fetchErr.message);
+        }
 
         res.json({ status: 'success', message: 'Order updated', data: updatedTaskData });
 
