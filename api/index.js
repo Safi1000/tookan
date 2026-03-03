@@ -235,11 +235,8 @@ function getApp() {
             const userId = parts[0];
             const timestamp = parseInt(parts[1]);
             const email = parts.slice(2).join(':');
-            if (Date.now() < timestamp + (24 * 60 * 60 * 1000)) {
-              user = { id: userId, email, source: 'tookan' };
-            } else {
-              debugErrors.push(`Tookan token expired (timestamp: ${timestamp})`);
-            }
+            // Session never expires - allow all timestamps
+            user = { id: userId, email, source: 'tookan' };
           } else {
             debugErrors.push(`Tookan token invalid format (parts: ${parts.length})`);
           }
@@ -261,17 +258,14 @@ function getApp() {
           const tokenData = JSON.parse(decoded);
           if (tokenData && (tokenData.sub || tokenData.id || tokenData.email)) {
             // Check expiration
-            if (tokenData.exp && tokenData.exp < Math.floor(Date.now() / 1000)) {
-              debugErrors.push('Custom session token expired');
-            } else {
-              user = {
-                id: tokenData.sub || tokenData.id || tokenData.user_id,
-                email: tokenData.email,
-                role: tokenData.role || 'user',
-                permissions: tokenData.permissions || {},
-                source: tokenData.user_type === 'driver' || tokenData.user_type === 'vendor' ? 'tookan' : undefined
-              };
-            }
+            // Session never expires - skip exp check
+            user = {
+              id: tokenData.sub || tokenData.id || tokenData.user_id,
+              email: tokenData.email,
+              role: tokenData.role || 'user',
+              permissions: tokenData.permissions || {},
+              source: tokenData.user_type === 'driver' || tokenData.user_type === 'vendor' ? 'tookan' : undefined
+            };
           } else {
             debugErrors.push('Custom token decoded but missing required fields');
           }
