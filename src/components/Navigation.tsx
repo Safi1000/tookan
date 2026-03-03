@@ -8,7 +8,7 @@ import {
   Package,
   Shield,
   Activity,
-  Settings,
+  Key,
   ChevronDown,
   LogOut,
   Sun,
@@ -44,14 +44,14 @@ function isSuperadmin(user?: UserData | null) {
 // All panels visible, access is controlled by permission-based system
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'reports', label: 'Reports Panel', icon: FileText },
-  { id: 'financial', label: 'Balance Panel', icon: Wallet },
-  { id: 'order-editor', label: 'Order Editor Panel', icon: Edit3 },
-  { id: 'withdrawals', label: 'Withdrawal Requests', icon: CreditCard },
-  { id: 'merchant-plans', label: 'Merchant Plans', icon: Package },
-  { id: 'permissions', label: 'User & Permissions', icon: Shield },
+  { id: 'reports', label: 'Reports Panel', icon: FileText, requiredPermission: 'panel_reports' },
+  { id: 'financial', label: 'Balance Panel', icon: Wallet, requiredPermission: 'panel_financial' },
+  { id: 'order-editor', label: 'Order Editor Panel', icon: Edit3, requiredPermission: 'panel_order_editor' },
+  { id: 'withdrawals', label: 'Withdrawal Requests', icon: CreditCard, requiredPermission: 'panel_withdrawals' },
+  { id: 'merchant-plans', label: 'Merchant Plans', icon: Package, requiredPermission: 'panel_merchant_plans' },
+  { id: 'permissions', label: 'User & Permissions', icon: Shield, superadminOnly: true },
   // { id: 'logs', label: 'System Logs', icon: Activity },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'settings', label: 'API Keys', icon: Key, superadminOnly: true },
 ];
 
 export function Navigation({ activeMenu, setActiveMenu, onLogout, user }: NavigationProps) {
@@ -68,12 +68,35 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout, user }: Naviga
     .toUpperCase()
     .slice(0, 2) || 'U';
 
+  // Check if current user is superadmin
+  const isCurrentUserSuperadmin = isSuperadmin(user);
+
+  // Filter menu items based on permissions
+  const visibleMenuItems = menuItems.filter(item => {
+    // Dashboard always visible
+    if (item.id === 'dashboard') return true;
+
+    // Superadmin-only items (permissions, settings/API Keys)
+    if ((item as any).superadminOnly) return isCurrentUserSuperadmin;
+
+    // Superadmin sees all panels
+    if (isCurrentUserSuperadmin) return true;
+
+    // Regular users: check if they have the panel permission
+    if ((item as any).requiredPermission) {
+      const perms = user?.permissions;
+      if (!perms) return false;
+      return perms[(item as any).requiredPermission] === true;
+    }
+
+    return true;
+  });
+
   return (
     <nav className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col h-screen transition-colors duration-300">
       {/* Logo */}
       <div className="p-6 border-b border-sidebar-border flex items-center justify-between">
         <div className="flex items-center gap-3">
-
           <div>
             <h1 className="text-heading">TD Admin</h1>
             <p className="text-xs text-muted-light dark:text-[#99BFD1]">Internal System</p>
@@ -94,44 +117,37 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout, user }: Naviga
         </button>
       </div>
 
-      {/* Menu Items - All visible, access controlled by permissions */}
+      {/* Menu Items - filtered by panel permissions */}
       <div className="flex-1 overflow-y-auto py-4 px-3">
-        {menuItems
-          .filter(item => {
-            // Restrict permissions and logs to superadmin only
-            if (['permissions', 'logs'].includes(item.id)) {
-              return isSuperadmin(user);
-            }
-            return true;
-          })
-          .map((item) => {
-            const Icon = item.icon;
-            const isActive = activeMenu === item.id;
+        {visibleMenuItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeMenu === item.id;
 
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveMenu(item.id)}
-                className={`
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveMenu(item.id)}
+              className={`
                   w-full flex items-center gap-3 px-4 py-3 rounded-xl mb-2 transition-all relative group
                   ${isActive
-                    ? 'bg-[#DE3544]/10 dark:bg-[#DE3544]/10 text-[#DE3544] dark:text-[#C1EEFA] border border-[#DE3544]/30 dark:border-[#DE3544]/30'
-                    : 'text-icon-default dark:text-[#99BFD1] hover:bg-hover-bg-light dark:hover:bg-[#223560] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
-                  }
+                  ? 'bg-[#DE3544]/10 dark:bg-[#DE3544]/10 text-[#DE3544] dark:text-[#C1EEFA] border border-[#DE3544]/30 dark:border-[#DE3544]/30'
+                  : 'text-icon-default dark:text-[#99BFD1] hover:bg-hover-bg-light dark:hover:bg-[#223560] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
+                }
                 `}
-              >
-                {isActive && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#DE3544] rounded-r-full shadow-[0_0_12px_rgba(222,53,68,0.6)]" />
-                )}
-                <Icon className={`w-5 h-5 ${isActive ? 'text-[#DE3544]' : 'icon-default dark:text-[#99BFD1]'}`} />
-                <span className="text-sm">{item.label}</span>
-              </button>
-            );
-          })}
-      </div>
+            >
+              {isActive && (
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#DE3544] rounded-r-full shadow-[0_0_12px_rgba(222,53,68,0.6)]" />
+              )}
+              <Icon className={`w-5 h-5 ${isActive ? 'text-[#DE3544]' : 'icon-default dark:text-[#99BFD1]'}`} />
+              <span className="text-sm">{item.label}</span>
+            </button>
+          );
+        })
+        }
+      </div >
 
       {/* User Profile */}
-      <div className="border-t border-sidebar-border dark:border-[#2A3C63] p-4">
+      < div className="border-t border-sidebar-border dark:border-[#2A3C63] p-4" >
         <div className="relative">
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
@@ -166,7 +182,7 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout, user }: Naviga
             </div>
           )}
         </div>
-      </div>
-    </nav>
+      </div >
+    </nav >
   );
 }

@@ -30,15 +30,13 @@ import {
   type UserAccount as ApiUserAccount,
 } from "../services/userApi"
 import { Listbox } from "@headlessui/react"
-// Available permissions
+// Available panel permissions - controls which panels users can see
 const availablePermissions = [
-  { id: "edit_order_financials", label: "Edit Order Financials", category: "Orders" },
-  { id: "manage_wallets", label: "Manage Wallets", category: "Financial" },
-  { id: "perform_reorder", label: "Perform Reorder", category: "Orders" },
-  { id: "perform_return", label: "Perform Return", category: "Orders" },
-  { id: "export_reports", label: "Export Reports", category: "Reports" },
-  { id: "add_cod", label: "Add COD", category: "Financial" },
-  { id: "confirm_cod_payments", label: "Confirm COD Payments", category: "Financial" },
+  { id: "panel_reports", label: "Reports Panel", category: "Panels" },
+  { id: "panel_financial", label: "Balance Panel", category: "Panels" },
+  { id: "panel_order_editor", label: "Order Editor", category: "Panels" },
+  { id: "panel_withdrawals", label: "Withdrawal Requests", category: "Panels" },
+  { id: "panel_merchant_plans", label: "Merchant Plans", category: "Panels" },
 ]
 
 interface UserAccount {

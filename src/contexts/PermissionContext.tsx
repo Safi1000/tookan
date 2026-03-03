@@ -1,16 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-// Permission constants (matching SRS and backend)
+// Permission constants - Panel-based visibility permissions
 export const PERMISSIONS = {
-  EDIT_ORDER_FINANCIALS: 'edit_order_financials',
-  MANAGE_WALLETS: 'manage_wallets',
-  PERFORM_REORDER: 'perform_reorder',
-  PERFORM_RETURN: 'perform_return',
-  DELETE_ONGOING_ORDERS: 'delete_ongoing_orders',
-  EXPORT_REPORTS: 'export_reports',
-  ADD_COD: 'add_cod',
-  CONFIRM_COD_PAYMENTS: 'confirm_cod_payments',
-  MANAGE_USERS: 'manage_users'
+  PANEL_REPORTS: 'panel_reports',
+  PANEL_FINANCIAL: 'panel_financial',
+  PANEL_ORDER_EDITOR: 'panel_order_editor',
+  PANEL_WITHDRAWALS: 'panel_withdrawals',
+  PANEL_MERCHANT_PLANS: 'panel_merchant_plans',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -76,7 +72,7 @@ export function PermissionProvider({ children }: { children: ReactNode }) {
   // Check if user has a specific permission
   const hasPermission = (permission: Permission | Permission[]): boolean => {
     if (!user) return false;
-    
+
     // Admin has all permissions per SRS
     if (isAdmin) return true;
 
@@ -130,31 +126,31 @@ export function withPermission<P extends object>(
 ) {
   return function PermissionGuardedComponent(props: P) {
     const { hasPermission } = usePermissions();
-    
+
     if (!hasPermission(requiredPermission)) {
       return <>{fallback}</>;
     }
-    
+
     return <Component {...props} />;
   };
 }
 
 // Component for conditionally rendering based on permission
-export function PermissionGate({ 
-  permission, 
-  children, 
-  fallback = null 
-}: { 
+export function PermissionGate({
+  permission,
+  children,
+  fallback = null
+}: {
   permission: Permission | Permission[];
   children: ReactNode;
   fallback?: ReactNode;
 }) {
   const { hasPermission } = usePermissions();
-  
+
   if (!hasPermission(permission)) {
     return <>{fallback}</>;
   }
-  
+
   return <>{children}</>;
 }
 
