@@ -3,6 +3,7 @@ import { Calendar, Search, Filter, Download, ArrowUpDown, ChevronDown, CheckCirc
 import { DatePicker } from './ui/date-picker';
 import { toast } from 'sonner';
 import { fetchAllOrders, fetchAllDrivers, fetchAllCustomers, fetchReportsSummary, fetchDriverPerformance, fetchCustomerPerformance, fetchTookanFeeRate, updateTookanFeeRate, type OrderFilters } from '../services/tookanApi';
+import { supabase } from '../lib/supabase';
 import * as XLSX from 'xlsx';
 
 const columnDefinitions = [
@@ -37,6 +38,7 @@ export function ReportsPanel() {
   const [customerPlanMap, setCustomerPlanMap] = useState<Record<string, { planName: string; planAmount: number }>>({});
   const [tookanFeeRate, setTookanFeeRate] = useState(0.05);
   const [showFeeSettings, setShowFeeSettings] = useState(false);
+  const [merchantInfoMap, setMerchantInfoMap] = useState<Record<string, { name: string; phone: string }>>({});
   const [feeRateInput, setFeeRateInput] = useState('0.05');
   // Delivery type fees
   const [sameDayFee, setSameDayFee] = useState(() => {
@@ -141,10 +143,40 @@ export function ReportsPanel() {
 
       if (ordersResult.status === 'success' && ordersResult.data) {
         console.log('📦 Orders received from API:', ordersResult.data.orders?.length || 0, ordersResult.data.orders);
-        setOrders(ordersResult.data.orders || []);
+        const fetchedOrders = ordersResult.data.orders || [];
+        setOrders(fetchedOrders);
         // @ts-ignore - total is returned by backend but not in error type
         // @ts-ignore
         setTotalOrders(ordersResult.data.total || 0);
+
+        // Batch-lookup merchant names/phones from merchants table using order_id = merchant_id
+        if (supabase && fetchedOrders.length > 0) {
+          const orderIds = [...new Set(
+            fetchedOrders
+              .map((o: any) => o.order_id)
+              .filter((id: any) => id !== null && id !== undefined && id !== '')
+          )];
+          if (orderIds.length > 0) {
+            try {
+              const { data: merchantRows } = await supabase
+                .from('merchants')
+                .select('merchant_id, customer_username, customer_phone')
+                .in('merchant_id', orderIds);
+              if (merchantRows && merchantRows.length > 0) {
+                const newMap: Record<string, { name: string; phone: string }> = {};
+                merchantRows.forEach((m: any) => {
+                  newMap[String(m.merchant_id)] = {
+                    name: m.customer_username || '',
+                    phone: m.customer_phone || ''
+                  };
+                });
+                setMerchantInfoMap(newMap);
+              }
+            } catch (merchantErr) {
+              console.warn('Could not fetch merchant info:', merchantErr);
+            }
+          }
+        }
       }
 
       // Fetch drivers
@@ -862,6 +894,8 @@ export function ReportsPanel() {
                   <tr>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Order ID</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant ID</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant Name</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant Phone</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date/Time Delivered</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Name</th>
@@ -944,6 +978,8 @@ export function ReportsPanel() {
                           </div>
                         </td>
                         <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm font-mono">{orderId || '-'}</td>
+                        <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm">{(orderId && merchantInfoMap[String(orderId)]?.name) || '-'}</td>
+                        <td className="px-4 py-4 text-muted-light dark:text-[#99BFD1] text-sm">{(orderId && merchantInfoMap[String(orderId)]?.phone) || '-'}</td>
                         <td className="px-4 py-4 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
                           {dateDelivered ? (
                             dateDelivered.replace('T', ' ').split(' ').map((part: string, i: number) => (

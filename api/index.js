@@ -7363,6 +7363,228 @@ function getApp() {
       }
     });
 
+    // ============================================================
+    // REPORTS ROUTES (Vercel)
+    // ============================================================
+
+    // GET Driver Performance statistics via RPC
+    app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
+      try {
+        const { search, dateFrom, dateTo, status } = req.query;
+        console.log('\n=== GET DRIVER PERFORMANCE (VERCEL) ===');
+        console.log('Search:', search, 'From:', dateFrom, 'To:', dateTo, 'Status:', status);
+
+        if (!supabase) {
+          return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+        }
+
+        if (!search) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        let driverIds = [];
+        const searchTerm = search.toString().trim();
+        const normalizedSearchName = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+        const normalizedSearchPhone = searchTerm.replace(/\D/g, '');
+
+        // Fetch all agents to perform robust matching
+        const { data: allAgents, error: agentsError } = await supabase
+          .from('agents')
+          .select('fleet_id, name, normalized_name, phone');
+
+        if (agentsError) throw agentsError;
+
+        if (allAgents && allAgents.length > 0) {
+          const matchedAgents = allAgents.filter(agent => {
+            const agentPhoneDigits = String(agent.phone || '').replace(/\D/g, '');
+            const agentNormalizedName = agent.normalized_name || String(agent.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+            const agentIdStr = String(agent.fleet_id);
+
+            const nameMatch = agentNormalizedName === normalizedSearchName;
+            const idMatch = agentIdStr === searchTerm;
+            const phoneMatch = normalizedSearchPhone && agentPhoneDigits === normalizedSearchPhone;
+
+            return nameMatch || idMatch || phoneMatch;
+          });
+
+          if (matchedAgents.length > 0) {
+            driverIds = matchedAgents.map(a => ({ id: a.fleet_id, name: a.name }));
+          } else if (/^\d+$/.test(searchTerm)) {
+            driverIds = [{ id: parseInt(searchTerm, 10), name: 'Driver #' + searchTerm }];
+          }
+        }
+
+        if (driverIds.length === 0) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        // Use RPC function for optimized stats calculation
+        const results = await Promise.all(driverIds.map(async (driver) => {
+          const { data, error } = await supabase.rpc('get_driver_statistics_v2', {
+            p_fleet_id: driver.id,
+            p_date_from: dateFrom || null,
+            p_date_to: dateTo || null,
+            p_status: status ? parseInt(status, 10) : null
+          });
+
+          if (error) {
+            console.error(`RPC error for driver ${driver.id}:`, error);
+            return {
+              fleet_id: driver.id,
+              name: driver.name,
+              total_orders: 0,
+              cod_total: 0,
+              order_fees: 0,
+              avg_delivery_time: 0
+            };
+          }
+
+          const stats = data && data[0] ? data[0] : { total_orders: 0, cod_total: 0, order_fees: 0, avg_delivery_time_minutes: 0 };
+          return {
+            fleet_id: driver.id,
+            name: driver.name,
+            total_orders: parseInt(stats.total_orders || 0),
+            cod_total: parseFloat(stats.cod_total || 0),
+            order_fees: parseFloat(stats.order_fees || 0),
+            avg_delivery_time: parseFloat(stats.avg_delivery_time_minutes || 0)
+          };
+        }));
+
+        res.json({ status: 'success', data: results });
+      } catch (error) {
+        console.error('Driver performance error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Customer Performance statistics via RPC
+    app.get('/api/reports/customer-performance', authenticate, async (req, res) => {
+      try {
+        const { search, dateFrom, dateTo, status } = req.query;
+        console.log('\n=== GET CUSTOMER PERFORMANCE (VERCEL) ===');
+
+        if (!supabase) {
+          return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+        }
+
+        if (!search) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        const searchTerm = search.toString().trim();
+        const isPhoneLike = /^[\d+\s-]+$/.test(searchTerm);
+        const isNumericOnly = /^\d+$/.test(searchTerm);
+        const numericValue = isNumericOnly ? parseInt(searchTerm, 10) : null;
+        const isValidVendorId = numericValue && numericValue <= 2147483647;
+
+        let p_customer_name = null;
+        let p_vendor_id = null;
+        let p_customer_phone = null;
+
+        if (isPhoneLike) {
+          const phoneDigits = searchTerm.replace(/\D/g, '');
+          p_customer_phone = phoneDigits;
+          if (isValidVendorId) {
+            p_vendor_id = numericValue;
+          }
+        } else {
+          p_customer_name = searchTerm;
+        }
+
+        const { data, error } = await supabase.rpc('get_customer_statistics', {
+          p_customer_name,
+          p_vendor_id,
+          p_customer_phone,
+          p_date_from: dateFrom || null,
+          p_date_to: dateTo || null,
+          p_status: status ? parseInt(status, 10) : null
+        });
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        const results = data.map(stats => ({
+          vendor_id: stats.vendor_id,
+          customer_name: stats.customer_name || `Customer #${stats.vendor_id}`,
+          total_orders: parseInt(stats.total_orders || 0),
+          cod_received: parseFloat(stats.cod_received || 0),
+          order_fees: parseFloat(stats.order_fees || 0),
+          revenue_distribution: parseFloat(stats.revenue_distribution || 0),
+        }));
+
+        res.json({ status: 'success', data: results });
+      } catch (error) {
+        console.error('Customer performance error:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // GET Reports Summary (totals)
+    app.get('/api/reports/summary', authenticate, async (req, res) => {
+      try {
+        console.log('\n=== GET REPORTS SUMMARY (VERCEL) ===');
+
+        if (!supabase) {
+          return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+        }
+
+        let rpcTotals = null;
+        try {
+          const { data: stats } = await supabase.rpc('get_order_stats');
+          if (stats && stats.length > 0) {
+            rpcTotals = stats[0];
+          }
+        } catch (e) {
+          console.log('RPC unavailable:', e.message);
+        }
+
+        // Get driver count from agents table
+        const { count: driverCount } = await supabase
+          .from('agents')
+          .select('*', { count: 'exact', head: true });
+
+        // Get customer/merchant count from merchants table
+        const { count: merchantCount } = await supabase
+          .from('merchants')
+          .select('*', { count: 'exact', head: true });
+
+        const totals = {
+          orders: rpcTotals?.total_orders || 0,
+          drivers: driverCount || 0,
+          customers: merchantCount || 0,
+          merchants: merchantCount || 0,
+          deliveries: rpcTotals?.completed_deliveries || 0
+        };
+
+        res.json({
+          status: 'success',
+          action: 'fetch_reports_summary',
+          entity: 'report',
+          message: 'Reports summary fetched successfully',
+          data: {
+            totals,
+            driverSummaries: [],
+            customerSummaries: [],
+            merchantSummaries: [],
+            filters: {
+              dateFrom: req.query.dateFrom || null,
+              dateTo: req.query.dateTo || null
+            }
+          }
+        });
+      } catch (error) {
+        console.error('Reports summary error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Network error occurred',
+          data: {}
+        });
+      }
+    });
+
     // Catch-all for other API routes
     app.all('/api/*', (req, res) => {
       res.status(404).json({
