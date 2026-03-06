@@ -109,17 +109,7 @@ export function Dashboard() {
   const orderVolumeData = analytics?.orderVolume || [];
   const driverPerformanceData = analytics?.driverPerformance || [];
 
-  // Format last updated time
-  const formatLastUpdated = (date: Date): string => {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+
 
   // Helper to map Tookan status codes to human readable labels
   const mapStatus = (status: number | string | null | undefined) => {
@@ -279,17 +269,8 @@ export function Dashboard() {
             <span className="text-sm font-medium text-primary dark:text-[#C1EEFA]">Refresh</span>
           </button>
           <div className="text-right">
-            <p className="text-subheading dark:text-[#99BFD1] text-muted-light text-sm font-medium">Last updated</p>
-            <p className="text-heading dark:text-[#C1EEFA] font-semibold text-sm">
-              {isLoading ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading...
-                </span>
-              ) : (
-                formatLastUpdated(lastUpdated)
-              )}
-            </p>
+
+
           </div>
         </div>
       </div>
