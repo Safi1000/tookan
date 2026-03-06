@@ -196,6 +196,8 @@ export function FinancialPanel() {
     cod_collected: boolean;  // true = completed, false = pending
     status: 'PENDING' | 'COMPLETED';
     vendor_id: number | null;  // Merchant vendor_id for wallet crediting
+    order_id: number | null;   // order_id from tasks table (= merchant_id)
+    merchant_name: string | null; // Resolved from merchants table
   }
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [taskModalDate, setTaskModalDate] = useState<string | null>(null);
@@ -783,9 +785,36 @@ export function FinancialPanel() {
           db_balance: dbBalance,
           cod_collected: codCollected,
           status: codCollected ? 'COMPLETED' as const : 'PENDING' as const,
-          vendor_id: t.order_id ? Number(t.order_id) : null
+          vendor_id: t.order_id ? Number(t.order_id) : null,
+          order_id: t.order_id ? Number(t.order_id) : null,
+          merchant_name: null
         };
       });
+
+      // Batch-lookup merchant names from merchants table using order_id = merchant_id
+      const orderIds = taskEntries
+        .map(e => e.order_id)
+        .filter((id): id is number => id !== null);
+
+      if (orderIds.length > 0 && supabase) {
+        const { data: merchantRows } = await supabase
+          .from('merchants')
+          .select('merchant_id, customer_username')
+          .in('merchant_id', orderIds);
+
+        if (merchantRows && merchantRows.length > 0) {
+          const merchantMap: Record<number, string> = {};
+          merchantRows.forEach((m: any) => {
+            merchantMap[m.merchant_id] = m.customer_username || 'Unknown';
+          });
+          const enriched = taskEntries.map(e => ({
+            ...e,
+            merchant_name: e.order_id !== null ? (merchantMap[e.order_id] || null) : null
+          }));
+          setTasksList(enriched);
+          return;
+        }
+      }
 
       setTasksList(taskEntries);
     } catch (err) {
@@ -2886,6 +2915,8 @@ export function FinancialPanel() {
                               <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header hidden-mobile">Driver ID</th>
                               <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header hidden-mobile">Driver Name</th>
                               <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Customer</th>
+                              <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Merchant ID</th>
+                              <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Merchant Name</th>
                               <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Received</th>
                               <th style={{ textAlign: 'right', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Paid</th>
                               <th style={{ textAlign: 'center', padding: '0.5rem', color: 'var(--muted-light)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-header">Status</th>
@@ -2926,6 +2957,8 @@ export function FinancialPanel() {
                                   <td style={{ padding: '0.5rem', color: 'var(--heading)', fontWeight: 500 }} className="table-cell hidden-mobile text-xs">{task.fleet_id}</td>
                                   <td style={{ padding: '0.5rem', color: 'var(--heading)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '7.5rem' }} className="table-cell hidden-mobile">{task.fleet_name}</td>
                                   <td style={{ padding: '0.5rem', color: 'var(--heading)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '6.25rem' }} className="table-cell">{task.customer_name}</td>
+                                  <td style={{ padding: '0.5rem', color: 'var(--heading)', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-cell">{task.order_id ?? '—'}</td>
+                                  <td style={{ padding: '0.5rem', color: 'var(--heading)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '8rem' }} className="table-cell">{task.merchant_name ?? '—'}</td>
                                   <td style={{ padding: '0.5rem', color: 'var(--heading)', textAlign: 'right', fontWeight: 500, whiteSpace: 'nowrap' }} className="table-cell">
                                     {currency} {task.cod_amount.toFixed(2)}
                                   </td>
