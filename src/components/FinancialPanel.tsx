@@ -2995,8 +2995,8 @@ export function FinancialPanel() {
                                         fontSize: '0.75rem'
                                       }} className="select-status"
                                     >
-                                      <option value="PENDING">Pending</option>
-                                      <option value="COMPLETED">Completed</option>
+                                      <option value="PENDING" style={{ backgroundColor: 'var(--card)', color: 'var(--heading-color)' }}>Pending</option>
+                                      <option value="COMPLETED" style={{ backgroundColor: 'var(--card)', color: 'var(--heading-color)' }}>Completed</option>
                                     </select>
                                   </td>
                                   <td style={{ padding: '0.5rem', paddingRight: '15px', textAlign: 'right' }} className="table-cell">

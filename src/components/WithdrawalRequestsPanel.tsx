@@ -135,7 +135,7 @@ export function WithdrawalRequestsPanel() {
 
       const data = await response.json();
       if (response.ok && data.status === 'success') {
-        toast.success(`Global withdrawal fee set to BHD${feeValue.toFixed(2)} for all customers`);
+        toast.success(`Global withdrawal fee set to BHD${feeValue.toFixed(2)} for all merchants`);
         setCurrentFee(feeValue);
       } else {
         toast.error(data.message || 'Failed to set fee');
@@ -233,7 +233,7 @@ export function WithdrawalRequestsPanel() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-heading text-3xl mb-2">Withdrawal Requests</h1>
-          <p className="text-subheading">Review and manage customer withdrawal requests</p>
+          <p className="text-subheading">Review and manage merchant withdrawal requests</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -256,15 +256,15 @@ export function WithdrawalRequestsPanel() {
 
       {/* Customer Search Filters */}
       <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
-        <h3 className="text-foreground mb-4">Search Customer Requests</h3>
+        <h3 className="text-foreground mb-4">Search Merchant Requests</h3>
 
         <div className="mb-4">
-          <label className="block text-heading text-sm mb-2">Search by Customer ID, Name, or Phone Number</label>
+          <label className="block text-heading text-sm mb-2">Search by Merchant ID, Name, or Phone Number</label>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
             <input
               type="text"
-              placeholder="Enter Customer ID, Name, or Phone Number..."
+              placeholder="Enter Merchant ID, Name, or Phone Number..."
               value={customerSearch}
               onChange={(e) => setCustomerSearch(e.target.value)}
               className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-10 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all ${getValidationColor(customerSearch)}`}
@@ -281,7 +281,7 @@ export function WithdrawalRequestsPanel() {
           </div>
           {customerSearch && (
             <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-2">
-              Searching by: {detectSearchType(customerSearch) === 'id' ? 'Customer ID' : detectSearchType(customerSearch) === 'phone' ? 'Phone' : 'Name'}
+              Searching by: {detectSearchType(customerSearch) === 'id' ? 'Merchant ID' : detectSearchType(customerSearch) === 'phone' ? 'Phone' : 'Name'}
             </p>
           )}
         </div>
@@ -321,8 +321,8 @@ export function WithdrawalRequestsPanel() {
           <table className="w-full">
             <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
               <tr>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Customer ID</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Customer Name</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Merchant ID</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Merchant Name</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Phone Number</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">IBAN Number</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Requested Amount</th>
@@ -393,7 +393,7 @@ export function WithdrawalRequestsPanel() {
                 </div>
                 <div>
                   <h2 className="text-heading font-semibold" style={{ fontSize: '18px' }}>Global Withdrawal Fee</h2>
-                  <p className="text-muted-light" style={{ fontSize: '13px' }}>Set a fee applied to all customers</p>
+                  <p className="text-muted-light" style={{ fontSize: '13px' }}>Set a fee applied to all Merchant</p>
                 </div>
               </div>
               <button
@@ -432,7 +432,7 @@ export function WithdrawalRequestsPanel() {
               </div>
               {currentFee !== null ? (
                 <p className="text-muted-light" style={{ fontSize: '12px', marginTop: '12px' }}>
-                  Current fee: <span className="text-[#10B981] font-semibold">BHD{currentFee.toFixed(2)}</span> — applies to <span className="text-heading font-medium">all customers</span>
+                  Current fee: <span className="text-[#10B981] font-semibold">BHD{currentFee.toFixed(2)}</span> — applies to <span className="text-heading font-medium">all merchants</span>
                 </p>
               ) : (
                 <p className="text-muted-light" style={{ fontSize: '12px', marginTop: '12px' }}>

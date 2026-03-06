@@ -14,6 +14,7 @@ import {
     X,
     Eye,
     EyeOff,
+    Download,
 } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -23,6 +24,7 @@ import {
     type ApiToken,
     type CreateTokenResponse,
 } from "../services/apiTokenService"
+import apiDocUrl from "../assets/API Documentation.docx?url"
 
 export function SettingsPanel() {
     const [tokens, setTokens] = useState<ApiToken[]>([])
@@ -138,6 +140,14 @@ export function SettingsPanel() {
                         Manage API tokens and system configuration
                     </p>
                 </div>
+                <a
+                    href={apiDocUrl}
+                    download="API Documentation.docx"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-xl hover:bg-[#C1EEFA]/20 transition-all text-[#C1EEFA] text-sm font-medium"
+                >
+                    <Download className="w-4 h-4" />
+                    Download API Documentation
+                </a>
             </div>
 
             {/* API Tokens Section */}
