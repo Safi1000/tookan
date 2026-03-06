@@ -98,7 +98,7 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout, user }: Naviga
       <div className="p-6 border-b border-sidebar-border flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-heading">TD Admin</h1>
+            <h1 className="text-heading">BHTD Admin</h1>
             <p className="text-xs text-muted-light dark:text-[#99BFD1]">Internal System</p>
           </div>
         </div>
