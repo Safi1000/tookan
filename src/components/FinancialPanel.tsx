@@ -3062,6 +3062,14 @@ export function FinancialPanel() {
                                 backgroundColor: 'var(--footer-bg)',
                                 borderTop: '1px solid var(--border)'
                               }} className="table-cell"></td>
+                              <td style={{
+                                backgroundColor: 'var(--footer-bg)',
+                                borderTop: '1px solid var(--border)'
+                              }} className="table-cell"></td>
+                              <td style={{
+                                backgroundColor: 'var(--footer-bg)',
+                                borderTop: '1px solid var(--border)'
+                              }} className="table-cell"></td>
                               {/* COD Total */}
                               <td style={{
                                 backgroundColor: 'var(--footer-bg)',
