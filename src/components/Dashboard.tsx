@@ -88,13 +88,7 @@ export function Dashboard() {
       icon: Store,
       trend: analytics.trends.merchants
     },
-    {
-      id: 'pending-cod',
-      label: 'Total Pending COD',
-      value: formatCurrency(analytics.kpis.pendingCOD),
-      icon: DollarSign,
-      trend: analytics.trends.pendingCOD
-    },
+
     {
       id: 'completed',
       label: 'Completed Deliveries',
