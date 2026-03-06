@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { DollarSign, Wallet, CheckCircle, X, Search, Calendar, Save, Check, XCircle, Eye, Download, Loader2, AlertCircle } from 'lucide-react';
+import { DatePicker } from './ui/date-picker';
 import {
   createFleetWalletTransaction,
   fetchFleetWalletBalance,
@@ -1549,27 +1550,19 @@ export function FinancialPanel() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-heading text-sm mb-2">From Date</label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
-                  />
-                </div>
+                <DatePicker
+                  value={dateFrom}
+                  onChange={setDateFrom}
+                  placeholder="(YYYY-MM-DD)"
+                />
               </div>
               <div>
                 <label className="block text-heading text-sm mb-2">To Date</label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
-                  />
-                </div>
+                <DatePicker
+                  value={dateTo}
+                  onChange={setDateTo}
+                  placeholder="(YYYY-MM-DD)"
+                />
               </div>
             </div>
 
@@ -1914,27 +1907,19 @@ export function FinancialPanel() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-heading text-sm mb-2">From Date</label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-                    <input
-                      type="date"
-                      value={codDateFrom}
-                      onChange={(e) => setCodDateFrom(e.target.value)}
-                      className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
-                    />
-                  </div>
+                  <DatePicker
+                    value={codDateFrom}
+                    onChange={setCodDateFrom}
+                    placeholder="(YYYY-MM-DD)"
+                  />
                 </div>
                 <div>
                   <label className="block text-heading text-sm mb-2">To Date</label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-                    <input
-                      type="date"
-                      value={codDateTo}
-                      onChange={(e) => setCodDateTo(e.target.value)}
-                      className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
-                    />
-                  </div>
+                  <DatePicker
+                    value={codDateTo}
+                    onChange={setCodDateTo}
+                    placeholder="(YYYY-MM-DD)"
+                  />
                 </div>
                 <div>
                   <label className="block text-heading text-sm mb-2">Status Filter</label>

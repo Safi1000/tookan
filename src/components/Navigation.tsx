@@ -158,7 +158,6 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout, user }: Naviga
             </div>
             <div className="flex-1 text-left min-w-0">
               <p className="text-heading dark:text-[#C1EEFA] text-sm truncate">{userName}</p>
-              <p className="text-xs text-muted-light dark:text-[#99BFD1] truncate">{userEmail}</p>
             </div>
             <ChevronDown className={`w-4 h-4 icon-default dark:text-[#99BFD1] transition-transform flex-shrink-0 ${showUserMenu ? 'rotate-180' : ''}`} />
           </button>
