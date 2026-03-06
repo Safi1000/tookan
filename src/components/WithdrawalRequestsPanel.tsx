@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Check, X, Search, Calendar, CheckCircle, XCircle, RefreshCw, DollarSign } from 'lucide-react';
+import { DatePicker } from './ui/date-picker';
 import { toast } from 'sonner';
 import { fetchWithdrawalRequests, approveWithdrawalRequest, rejectWithdrawalRequest, type WithdrawalRequest } from '../services/tookanApi';
 
@@ -290,27 +291,19 @@ export function WithdrawalRequestsPanel() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-heading text-sm mb-2">From Date</label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
-              />
-            </div>
+            <DatePicker
+              value={dateFrom}
+              onChange={setDateFrom}
+              placeholder="(YYYY-MM-DD)"
+            />
           </div>
           <div>
             <label className="block text-heading text-sm mb-2">To Date</label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl pl-10 pr-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
-              />
-            </div>
+            <DatePicker
+              value={dateTo}
+              onChange={setDateTo}
+              placeholder="(YYYY-MM-DD)"
+            />
           </div>
         </div>
       </div>
