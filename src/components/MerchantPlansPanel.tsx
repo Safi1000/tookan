@@ -16,7 +16,6 @@ import {
   Link,
   Search
 } from 'lucide-react';
-import { fetchReportsSummary } from '../services/tookanApi';
 import { toast } from 'sonner';
 
 
@@ -50,7 +49,6 @@ export function MerchantPlansPanel() {
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [selectedPlanForAssign, setSelectedPlanForAssign] = useState<Plan | null>(null);
-  const [totalCustomers, setTotalCustomers] = useState(0);
   const [planCounts, setPlanCounts] = useState<Record<string, number>>({});
   const [totalAssigned, setTotalAssigned] = useState(0);
   const [activeTab, setActiveTab] = useState<'plans' | 'customers'>('plans');
@@ -208,7 +206,7 @@ export function MerchantPlansPanel() {
           setAssignedCustomers(data.data.customers || []);
         }
       } catch (error) {
-        console.error('Error loading assigned customers:', error);
+        console.error('Error loading assigned merchants:', error);
       } finally {
         setIsLoadingAssigned(false);
       }
@@ -251,21 +249,6 @@ export function MerchantPlansPanel() {
       }
     };
     loadMerchants();
-  }, []);
-
-  // Fetch total customer count
-  useEffect(() => {
-    const loadCustomerCount = async () => {
-      try {
-        const result = await fetchReportsSummary({});
-        if (result.status === 'success' && result.data?.totals?.customers) {
-          setTotalCustomers(result.data.totals.customers);
-        }
-      } catch (error) {
-        console.error('Error loading customer count:', error);
-      }
-    };
-    loadCustomerCount();
   }, []);
 
   // Plan form state
@@ -687,7 +670,7 @@ export function MerchantPlansPanel() {
             <div>
               <p className="text-muted-light dark:text-[#99BFD1] text-sm">Unassigned Merchants</p>
               <p className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">
-                {Math.max(0, totalCustomers - totalAssigned)}
+                {Math.max(0, merchants.length - totalAssigned)}
               </p>
             </div>
           </div>
@@ -840,7 +823,7 @@ export function MerchantPlansPanel() {
                 : 'text-muted-light dark:text-[#99BFD1] hover:bg-muted/20'
                 }`}
             >
-              Assigned Customers ({totalAssigned})
+              Assigned Merchants ({totalAssigned})
             </button>
           </div>
         </div>
@@ -908,9 +891,9 @@ export function MerchantPlansPanel() {
         {activeTab === 'customers' && (
           <div className="overflow-x-auto">
             {isLoadingAssigned ? (
-              <div className="p-8 text-center text-muted-light dark:text-[#99BFD1]">Loading assigned customers...</div>
+              <div className="p-8 text-center text-muted-light dark:text-[#99BFD1]">Loading assigned merchants...</div>
             ) : assignedCustomers.length === 0 ? (
-              <div className="p-8 text-center text-muted-light dark:text-[#99BFD1]">No customers are currently assigned to plans</div>
+              <div className="p-8 text-center text-muted-light dark:text-[#99BFD1]">No merchants are currently assigned to plans</div>
             ) : (
               <table className="w-full">
                 <thead>
