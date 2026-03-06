@@ -113,6 +113,33 @@ app.delete('/api/merchant-plans/:id', authenticate, async (req, res) => {
 });
 
 // Get customer counts per plan
+
+// List all merchants from the merchants table
+app.get('/api/merchants/list', authenticate, async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.json({ status: 'success', data: { merchants: [] } });
+    }
+
+    const { data: merchants, error } = await supabase
+      .from('merchants')
+      .select('customer_id, merchant_id, customer_username, customer_phone, plan_id')
+      .order('customer_username', { ascending: true });
+
+    if (error) {
+      console.error('List merchants error:', error);
+      return res.status(500).json({ status: 'error', message: error.message });
+    }
+
+    res.json({
+      status: 'success',
+      data: { merchants: merchants || [] }
+    });
+  } catch (error) {
+    console.error('List merchants error:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Failed to list merchants' });
+  }
+});
 app.get('/api/plans/customer-counts', authenticate, async (req, res) => {
   try {
     if (!isConfigured()) {
@@ -122,9 +149,9 @@ app.get('/api/plans/customer-counts', authenticate, async (req, res) => {
       });
     }
 
-    // Get all customers with plan_id
+    // Get all merchants with plan_id
     const { data: customers, error } = await supabase
-      .from('customers')
+      .from('merchants')
       .select('plan_id')
       .not('plan_id', 'is', null);
 
@@ -170,10 +197,10 @@ app.get('/api/customers/assigned', authenticate, async (req, res) => {
       });
     }
 
-    // Fetch customers with plan_id set
+    // Fetch merchants with plan_id set
     const { data: customers, error } = await supabase
-      .from('customers')
-      .select('vendor_id, customer_name, customer_phone, plan_id')
+      .from('merchants')
+      .select('merchant_id, customer_username, customer_phone, plan_id')
       .not('plan_id', 'is', null);
 
     if (error) {
@@ -194,10 +221,10 @@ app.get('/api/customers/assigned', authenticate, async (req, res) => {
       return acc;
     }, {});
 
-    // Map customers with plan names
+    // Map merchants with plan names
     const result = (customers || []).map(c => ({
-      vendorId: c.vendor_id,
-      name: c.customer_name || 'Unknown',
+      merchantId: c.merchant_id?.toString() || '',
+      name: c.customer_username || 'Unknown',
       phone: c.customer_phone || '',
       planId: c.plan_id,
       planName: plansMap[c.plan_id] || 'Unknown Plan'
@@ -223,10 +250,10 @@ app.get('/api/customers/with-plans', authenticate, async (req, res) => {
       return res.status(500).json({ status: 'error', message: 'Database not configured' });
     }
 
-    // Fetch customers with plan_id set
+    // Fetch merchants with plan_id set
     const { data: customers, error } = await supabase
-      .from('customers')
-      .select('vendor_id, customer_name, customer_phone, plan_id')
+      .from('merchants')
+      .select('merchant_id, customer_username, customer_phone, plan_id')
       .not('plan_id', 'is', null);
 
     if (error) {
@@ -249,10 +276,10 @@ app.get('/api/customers/with-plans', authenticate, async (req, res) => {
       return acc;
     }, {});
 
-    // Map customers with plan details
+    // Map merchants with plan details
     const result = customers.map(c => ({
-      vendor_id: c.vendor_id,
-      customer_name: c.customer_name,
+      vendor_id: c.merchant_id,
+      customer_name: c.customer_username,
       customer_phone: c.customer_phone,
       plan_id: c.plan_id,
       plan: plansMap[c.plan_id] || null
@@ -299,27 +326,27 @@ app.get('/api/get_all_customers_with_plans', validateApiKey, async (req, res) =>
 
     const { start_date, end_date } = req.query;
 
-    // Build query for customers with plan_id NOT NULL
+    // Build query for merchants with plan_id NOT NULL
     let query = supabase
-      .from('customers')
-      .select('vendor_id, customer_name, customer_phone, plan_id, created_at')
+      .from('merchants')
+      .select('merchant_id, customer_username, customer_phone, plan_id, synced_at')
       .not('plan_id', 'is', null);
 
     // Apply date range filter if provided
     if (start_date) {
-      query = query.gte('created_at', start_date);
+      query = query.gte('synced_at', start_date);
     }
     if (end_date) {
-      query = query.lte('created_at', end_date);
+      query = query.lte('synced_at', end_date);
     }
 
     const { data: customers, error: customersError } = await query;
 
     if (customersError) {
-      console.error('Get customers with plans error:', customersError);
+      console.error('Get merchants with plans error:', customersError);
       return res.status(500).json({
         status: 'error',
-        message: customersError.message || 'Failed to fetch customers'
+        message: customersError.message || 'Failed to fetch merchants'
       });
     }
 
@@ -361,8 +388,8 @@ app.get('/api/get_all_customers_with_plans', validateApiKey, async (req, res) =>
 
     // Build response with nested plan details
     const result = customers.map(customer => ({
-      vendor_id: customer.vendor_id,
-      customer_name: customer.customer_name,
+      vendor_id: customer.merchant_id,
+      customer_name: customer.customer_username,
       customer_phone: customer.customer_phone,
       plan_id: customer.plan_id,
       plan: plansMap[customer.plan_id] || null
@@ -383,40 +410,40 @@ app.get('/api/get_all_customers_with_plans', validateApiKey, async (req, res) =>
   }
 });
 
-// GET single customer plan by vendor_id (external API with API key auth)
-app.get('/api/get_customer_plan/:vendor_id', validateApiKey, async (req, res) => {
+// GET single customer plan by merchant_id (external API with API key auth)
+app.get('/api/get_customer_plan/:merchant_id', validateApiKey, async (req, res) => {
   try {
     if (!isConfigured()) {
       return res.status(500).json({ status: 'error', message: 'Database not configured' });
     }
 
-    const { vendor_id } = req.params;
+    const { merchant_id } = req.params;
 
-    if (!vendor_id) {
-      return res.status(400).json({ status: 'error', message: 'vendor_id is required' });
+    if (!merchant_id) {
+      return res.status(400).json({ status: 'error', message: 'merchant_id is required' });
     }
 
-    // Fetch customer
+    // Fetch merchant
     const { data: customer, error } = await supabase
-      .from('customers')
-      .select('vendor_id, customer_name, customer_phone, plan_id')
-      .eq('vendor_id', parseInt(vendor_id))
+      .from('merchants')
+      .select('merchant_id, customer_username, customer_phone, plan_id')
+      .eq('merchant_id', parseInt(merchant_id))
       .single();
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return res.status(404).json({ status: 'error', message: 'Customer not found' });
+        return res.status(404).json({ status: 'error', message: 'Merchant not found' });
       }
       return res.status(500).json({ status: 'error', message: error.message });
     }
 
-    // If customer has no plan, return null plan
+    // If merchant has no plan, return null plan
     if (!customer.plan_id) {
       return res.json({
         status: 'success',
         data: {
-          vendor_id: customer.vendor_id,
-          customer_name: customer.customer_name,
+          vendor_id: customer.merchant_id,
+          customer_name: customer.customer_username,
           customer_phone: customer.customer_phone,
           plan_id: null,
           plan: null
@@ -434,8 +461,8 @@ app.get('/api/get_customer_plan/:vendor_id', validateApiKey, async (req, res) =>
     res.json({
       status: 'success',
       data: {
-        vendor_id: customer.vendor_id,
-        customer_name: customer.customer_name,
+        vendor_id: customer.merchant_id,
+        customer_name: customer.customer_username,
         customer_phone: customer.customer_phone,
         plan_id: customer.plan_id,
         plan: plan ? { name: plan.name, description: plan.description, type: plan.type, amount: plan.amount } : null
@@ -448,8 +475,8 @@ app.get('/api/get_customer_plan/:vendor_id', validateApiKey, async (req, res) =>
   }
 });
 
-// GET all customers with withdraw fees (external API with API key auth)
-// Returns ALL customers with the global withdrawal fee applied
+// GET all merchants with withdraw fees (external API with API key auth)
+// Returns ALL merchants with the global withdrawal fee applied
 app.get('/api/get_all_customers_with_withdraw_fees', validateApiKey, async (req, res) => {
   try {
     if (!isConfigured()) {
@@ -459,23 +486,23 @@ app.get('/api/get_all_customers_with_withdraw_fees', validateApiKey, async (req,
       });
     }
 
-    // Query ALL customers
+    // Query ALL merchants
     const { data: customers, error } = await supabase
-      .from('customers')
-      .select('vendor_id, customer_name, customer_phone, withdraw_fees')
-      .order('customer_name', { ascending: true });
+      .from('merchants')
+      .select('merchant_id, customer_username, customer_phone, withdraw_fees')
+      .order('customer_username', { ascending: true });
 
     if (error) {
-      console.error('Get customers with withdraw fees error:', error);
+      console.error('Get merchants with withdraw fees error:', error);
       return res.status(500).json({
         status: 'error',
-        message: error.message || 'Failed to fetch customers'
+        message: error.message || 'Failed to fetch merchants'
       });
     }
 
     const result = (customers || []).map(c => ({
-      vendor_id: c.vendor_id,
-      customer_name: c.customer_name,
+      vendor_id: c.merchant_id,
+      customer_name: c.customer_username,
       customer_phone: c.customer_phone,
       withdraw_fees: c.withdraw_fees
     }));
@@ -487,7 +514,7 @@ app.get('/api/get_all_customers_with_withdraw_fees', validateApiKey, async (req,
     });
 
   } catch (error) {
-    console.error('Get all customers with withdraw fees error:', error);
+    console.error('Get all merchants with withdraw fees error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Internal server error'
@@ -495,29 +522,29 @@ app.get('/api/get_all_customers_with_withdraw_fees', validateApiKey, async (req,
   }
 });
 
-// GET single customer withdraw fees by vendor_id (external API with API key auth)
-// Returns the global withdrawal fee for the specified customer
-app.get('/api/get_customer_withdraw_fees/:vendor_id', validateApiKey, async (req, res) => {
+// GET single merchant withdraw fees by merchant_id (external API with API key auth)
+// Returns the global withdrawal fee for the specified merchant
+app.get('/api/get_customer_withdraw_fees/:merchant_id', validateApiKey, async (req, res) => {
   try {
     if (!isConfigured()) {
       return res.status(500).json({ status: 'error', message: 'Database not configured' });
     }
 
-    const { vendor_id } = req.params;
+    const { merchant_id } = req.params;
 
-    if (!vendor_id) {
-      return res.status(400).json({ status: 'error', message: 'vendor_id is required' });
+    if (!merchant_id) {
+      return res.status(400).json({ status: 'error', message: 'merchant_id is required' });
     }
 
     const { data: customer, error } = await supabase
-      .from('customers')
-      .select('vendor_id, customer_name, customer_phone, withdraw_fees')
-      .eq('vendor_id', parseInt(vendor_id))
+      .from('merchants')
+      .select('merchant_id, customer_username, customer_phone, withdraw_fees')
+      .eq('merchant_id', parseInt(merchant_id))
       .single();
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return res.status(404).json({ status: 'error', message: 'Customer not found' });
+        return res.status(404).json({ status: 'error', message: 'Merchant not found' });
       }
       return res.status(500).json({ status: 'error', message: error.message });
     }
@@ -525,15 +552,15 @@ app.get('/api/get_customer_withdraw_fees/:vendor_id', validateApiKey, async (req
     res.json({
       status: 'success',
       data: {
-        vendor_id: customer.vendor_id,
-        customer_name: customer.customer_name,
+        vendor_id: customer.merchant_id,
+        customer_name: customer.customer_username,
         customer_phone: customer.customer_phone,
         withdraw_fees: customer.withdraw_fees
       }
     });
 
   } catch (error) {
-    console.error('Get customer withdraw fees error:', error);
+    console.error('Get merchant withdraw fees error:', error);
     res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
   }
 });
@@ -679,7 +706,7 @@ app.get('/api/withdrawal-fees/current', authenticate, async (req, res) => {
     let fee = globalWithdrawalFee;
     if (isConfigured()) {
       const { data } = await supabase
-        .from('customers')
+        .from('merchants')
         .select('withdraw_fees')
         .not('withdraw_fees', 'is', null)
         .limit(1)
@@ -699,7 +726,7 @@ app.get('/api/withdrawal-fees/current', authenticate, async (req, res) => {
   }
 });
 
-// Set global withdrawal fee for all customers
+// Set global withdrawal fee for all merchants
 app.post('/api/withdrawal-fees/set', authenticate, async (req, res) => {
   try {
     const { fee } = req.body;
@@ -710,21 +737,21 @@ app.post('/api/withdrawal-fees/set', authenticate, async (req, res) => {
 
     globalWithdrawalFee = fee;
 
-    // Update ALL customers with the global fee
+    // Update ALL merchants with the global fee
     if (isConfigured()) {
       const { error } = await supabase
-        .from('customers')
+        .from('merchants')
         .update({ withdraw_fees: fee })
-        .gte('vendor_id', '0');
+        .gte('merchant_id', '0');
 
       if (error) {
-        console.error('Update all customers fee error:', error);
+        console.error('Update all merchants fee error:', error);
       }
     }
 
     res.json({
       status: 'success',
-      message: 'Global withdrawal fee updated for all customers',
+      message: 'Global withdrawal fee updated for all merchants',
       data: { fee: globalWithdrawalFee }
     });
   } catch (error) {
@@ -733,7 +760,7 @@ app.post('/api/withdrawal-fees/set', authenticate, async (req, res) => {
   }
 });
 
-// Search Customer by Vendor ID (exact match)
+// Search Merchant by Merchant ID (exact match)
 app.get('/api/customers/search', authenticate, async (req, res) => {
   try {
     const { vendor_id } = req.query;
@@ -753,33 +780,41 @@ app.get('/api/customers/search', authenticate, async (req, res) => {
     }
 
     const { data: customer, error } = await supabase
-      .from('customers')
-      .select('vendor_id, customer_name, customer_phone, plan_id')
-      .eq('vendor_id', vendor_id.trim())
+      .from('merchants')
+      .select('merchant_id, customer_username, customer_phone, plan_id')
+      .eq('merchant_id', vendor_id.trim())
       .single();
 
     if (error && error.code !== 'PGRST116') {
-      console.error('Search customer error:', error);
+      console.error('Search merchant error:', error);
       return res.status(500).json({
         status: 'error',
-        message: error.message || 'Failed to search customer'
+        message: error.message || 'Failed to search merchant'
       });
     }
 
+    // Map response to keep frontend compatibility
+    const mapped = customer ? {
+      vendor_id: customer.merchant_id,
+      customer_name: customer.customer_username,
+      customer_phone: customer.customer_phone,
+      plan_id: customer.plan_id
+    } : null;
+
     res.json({
       status: 'success',
-      data: { customer: customer || null }
+      data: { customer: mapped }
     });
   } catch (error) {
-    console.error('Search customer error:', error);
+    console.error('Search merchant error:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message || 'Failed to search customer'
+      message: error.message || 'Failed to search merchant'
     });
   }
 });
 
-// Link Customer to Plan (update plan_id)
+// Link Merchant to Plan (update plan_id)
 app.put('/api/customers/:vendor_id/plan', authenticate, async (req, res) => {
   try {
     const { vendor_id } = req.params;
@@ -793,30 +828,30 @@ app.put('/api/customers/:vendor_id/plan', authenticate, async (req, res) => {
     }
 
     const { data: customer, error } = await supabase
-      .from('customers')
+      .from('merchants')
       .update({ plan_id: plan_id || null })
-      .eq('vendor_id', vendor_id)
+      .eq('merchant_id', vendor_id)
       .select()
       .single();
 
     if (error) {
-      console.error('Link customer to plan error:', error);
+      console.error('Link merchant to plan error:', error);
       return res.status(500).json({
         status: 'error',
-        message: error.message || 'Failed to link customer to plan'
+        message: error.message || 'Failed to link merchant to plan'
       });
     }
 
     res.json({
       status: 'success',
-      message: 'Customer linked to plan successfully',
+      message: 'Merchant linked to plan successfully',
       data: { customer }
     });
   } catch (error) {
-    console.error('Link customer to plan error:', error);
+    console.error('Link merchant to plan error:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message || 'Failed to link customer to plan'
+      message: error.message || 'Failed to link merchant to plan'
     });
   }
 });

@@ -16,7 +16,7 @@ import {
   Link,
   Search
 } from 'lucide-react';
-import { fetchAllCustomers, fetchReportsSummary } from '../services/tookanApi';
+import { fetchReportsSummary } from '../services/tookanApi';
 import { toast } from 'sonner';
 
 
@@ -35,7 +35,7 @@ interface Plan {
 
 interface Merchant {
   id: string;
-  vendorId: string;
+  merchantId: string;
   name: string;
   phone: string;
   planId: string | null;
@@ -55,7 +55,7 @@ export function MerchantPlansPanel() {
   const [totalAssigned, setTotalAssigned] = useState(0);
   const [activeTab, setActiveTab] = useState<'plans' | 'customers'>('plans');
   const [assignedCustomers, setAssignedCustomers] = useState<Array<{
-    vendorId: string;
+    merchantId: string;
     name: string;
     phone: string;
     planId: string;
@@ -64,16 +64,16 @@ export function MerchantPlansPanel() {
   const [isLoadingAssigned, setIsLoadingAssigned] = useState(false);
 
   // Quick Link State
-  const [searchVendorId, setSearchVendorId] = useState<string>('');
+  const [searchMerchantId, setSearchMerchantId] = useState<string>('');
   const [selectedPlanForLink, setSelectedPlanForLink] = useState<string>('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [searchedCustomer, setSearchedCustomer] = useState<{ id: string; vendorId: string; name: string; phone: string; planId: string | null } | null>(null);
+  const [searchedCustomer, setSearchedCustomer] = useState<{ id: string; merchantId: string; name: string; phone: string; planId: string | null } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
   // Search customer from database when vendor_id changes
   useEffect(() => {
     const searchCustomer = async () => {
-      const vendorId = searchVendorId.trim();
+      const vendorId = searchMerchantId.trim();
       if (!vendorId) {
         setSearchedCustomer(null);
         return;
@@ -96,7 +96,7 @@ export function MerchantPlansPanel() {
           const c = data.data.customer;
           setSearchedCustomer({
             id: c.vendor_id?.toString() || '',
-            vendorId: c.vendor_id?.toString() || '',
+            merchantId: c.vendor_id?.toString() || '',
             name: c.customer_name || 'Unknown Merchant',
             phone: c.customer_phone || '',
             planId: c.plan_id || null
@@ -115,7 +115,7 @@ export function MerchantPlansPanel() {
     // Debounce search
     const timeoutId = setTimeout(searchCustomer, 300);
     return () => clearTimeout(timeoutId);
-  }, [searchVendorId]);
+  }, [searchMerchantId]);
 
   // Fetch merchant plans on mount
   useEffect(() => {
@@ -221,19 +221,27 @@ export function MerchantPlansPanel() {
     const loadMerchants = async () => {
       setIsLoadingMerchants(true);
       try {
-        const response = await fetchAllCustomers();
-        if (response.status === 'success' && response.data?.customers) {
-          const customersList = response.data.customers;
-          const merchantsData: Merchant[] = customersList.map((customer: any) => ({
-            id: customer.id?.toString() || customer.vendor_id?.toString() || '',
-            vendorId: customer.vendor_id?.toString() || customer.id?.toString() || '', // Explicitly map vendor_id
-            name: customer.customer_name || customer.name || 'Unknown Merchant',
-            phone: customer.customer_phone || customer.phone || '',
-            planId: customer.plan_id || customer.planId || null
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch(`${API_BASE_URL}/api/merchants/list`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+        const data = await response.json();
+        if (response.ok && data.status === 'success' && data.data?.merchants) {
+          const merchantsData: Merchant[] = data.data.merchants.map((m: any) => ({
+            id: m.customer_id?.toString() || m.merchant_id?.toString() || '',
+            merchantId: m.merchant_id?.toString() || '',
+            name: m.customer_username || 'Unknown Merchant',
+            phone: m.customer_phone || '',
+            planId: m.plan_id || null
           }));
           setMerchants(merchantsData);
         } else {
-          toast.error(response.message || 'Failed to load merchants');
+          toast.error(data.message || 'Failed to load merchants');
         }
       } catch (error) {
         console.error('Error loading merchants:', error);
@@ -413,7 +421,7 @@ export function MerchantPlansPanel() {
     try {
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`${API_BASE_URL}/api/customers/${searchedCustomer.vendorId}/plan`, {
+      const response = await fetch(`${API_BASE_URL}/api/customers/${searchedCustomer.merchantId}/plan`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -427,12 +435,12 @@ export function MerchantPlansPanel() {
         toast.success('Plan linked to merchant successfully');
         // Update local state
         setMerchants(merchants.map(m =>
-          m.vendorId === searchedCustomer.vendorId
+          m.merchantId === searchedCustomer.merchantId
             ? { ...m, planId: selectedPlanForLink }
             : m
         ));
         // Reset selection
-        setSearchVendorId('');
+        setSearchMerchantId('');
         setSelectedPlanForLink('');
         setSearchedCustomer(null);
         setRefreshTrigger(prev => prev + 1);
@@ -699,13 +707,13 @@ export function MerchantPlansPanel() {
             {/* Merchant Search - Vendor ID Input */}
             <div className="flex-1 space-y-3">
               <div className="relative">
-                <InputLabel className="text-heading dark:text-[#C1EEFA] mb-1.5" style={{ color: 'white' }}>Search by Vendor ID</InputLabel>
+                <InputLabel className="text-heading dark:text-[#C1EEFA] mb-1.5" style={{ color: 'white' }}>Search by Merchant ID</InputLabel>
                 <div className="relative">
                   <input
                     type="text"
-                    value={searchVendorId}
-                    onChange={(e) => setSearchVendorId(e.target.value)}
-                    placeholder="Enter Vendor ID (e.g., 12345)"
+                    value={searchMerchantId}
+                    onChange={(e) => setSearchMerchantId(e.target.value)}
+                    placeholder="Enter Merchant ID (e.g., 12345)"
                     className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-base text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all"
                   />
                 </div>
@@ -737,7 +745,7 @@ export function MerchantPlansPanel() {
                     </div>
                   </div>
                 </div>
-              ) : searchVendorId.trim() !== '' && (
+              ) : searchMerchantId.trim() !== '' && (
                 <div className="bg-destructive/10 dark:bg-destructive/20 border border-destructive/30 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-destructive/20 flex items-center justify-center shrink-0">
@@ -916,8 +924,8 @@ export function MerchantPlansPanel() {
                 </thead>
                 <tbody>
                   {assignedCustomers.map((customer, index) => (
-                    <tr key={customer.vendorId} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-mono text-sm">{customer.vendorId}</td>
+                    <tr key={customer.merchantId} className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                      <td className="px-6 py-4 text-heading dark:text-[#C1EEFA] font-mono text-sm">{customer.merchantId}</td>
                       <td className="px-6 py-4 text-heading dark:text-[#C1EEFA]">{customer.name}</td>
                       <td className="px-6 py-4 text-muted-light dark:text-[#99BFD1]">{customer.phone || '-'}</td>
                       <td className="px-6 py-4">
@@ -927,7 +935,7 @@ export function MerchantPlansPanel() {
                       </td>
                       <td className="px-6 py-4">
                         <button
-                          onClick={() => handleUnlinkCustomer(customer.vendorId)}
+                          onClick={() => handleUnlinkCustomer(customer.merchantId)}
                           className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded-lg text-sm font-medium transition-colors"
                           title="Unlink from plan"
                         >
