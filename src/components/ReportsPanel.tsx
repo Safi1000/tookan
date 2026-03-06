@@ -155,6 +155,8 @@ export function ReportsPanel() {
             fetchedOrders
               .map((o: any) => o.order_id)
               .filter((id: any) => id !== null && id !== undefined && id !== '')
+              .map((id: any) => Number(id))
+              .filter((id: number) => !isNaN(id))
           )];
           if (orderIds.length > 0) {
             try {
