@@ -135,7 +135,7 @@ export function WithdrawalRequestsPanel() {
 
       const data = await response.json();
       if (response.ok && data.status === 'success') {
-        toast.success(`Global withdrawal fee set to $${feeValue.toFixed(2)} for all customers`);
+        toast.success(`Global withdrawal fee set to BHD${feeValue.toFixed(2)} for all customers`);
         setCurrentFee(feeValue);
       } else {
         toast.error(data.message || 'Failed to set fee');
@@ -240,7 +240,7 @@ export function WithdrawalRequestsPanel() {
             onClick={() => setShowFeesModal(true)}
             className="flex items-center gap-2 px-6 py-3 bg-[#10B981]/10 border border-[#10B981]/30 rounded-xl hover:bg-[#10B981]/20 transition-all text-[#10B981]"
           >
-            <DollarSign className="w-5 h-5" />
+            <span className="font-bold text-sm">BHD</span>
             Withdrawal Fees
           </button>
           <button
@@ -388,8 +388,8 @@ export function WithdrawalRequestsPanel() {
             {/* Modal Header */}
             <div className="border-b border-border flex items-center justify-between" style={{ padding: '16px', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div className="rounded-xl bg-[#10B981]/10 flex items-center justify-center" style={{ width: '40px', height: '40px', minWidth: '40px' }}>
-                  <DollarSign className="w-5 h-5 text-[#10B981]" />
+                <div className="rounded-xl bg-[#10B981]/10 flex items-center justify-center p-2" style={{ width: 'auto', minWidth: '40px', height: '40px' }}>
+                  <span className="font-bold text-[#10B981] text-sm">BHD</span>
                 </div>
                 <div>
                   <h2 className="text-heading font-semibold" style={{ fontSize: '18px' }}>Global Withdrawal Fee</h2>
@@ -410,16 +410,16 @@ export function WithdrawalRequestsPanel() {
               <label className="block text-heading" style={{ fontSize: '14px', marginBottom: '8px' }}>Fixed Withdrawal Fee</label>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <div style={{ position: 'relative', flex: '1 1 200px', minWidth: '150px' }}>
-                  <DollarSign className="text-[#10B981]" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px' }} />
+                  <span className="text-[#10B981] font-bold" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px' }}>BHD</span>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
                     value={withdrawalFee}
                     onChange={(e) => setWithdrawalFee(e.target.value)}
-                    placeholder="0.00"
+                    placeholder="0.000"
                     className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#10B981] transition-all"
-                    style={{ paddingLeft: '40px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px' }}
+                    style={{ paddingLeft: '48px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px' }}
                   />
                 </div>
                 <button
@@ -432,7 +432,7 @@ export function WithdrawalRequestsPanel() {
               </div>
               {currentFee !== null ? (
                 <p className="text-muted-light" style={{ fontSize: '12px', marginTop: '12px' }}>
-                  Current fee: <span className="text-[#10B981] font-semibold">${currentFee.toFixed(2)}</span> — applies to <span className="text-heading font-medium">all customers</span>
+                  Current fee: <span className="text-[#10B981] font-semibold">BHD{currentFee.toFixed(2)}</span> — applies to <span className="text-heading font-medium">all customers</span>
                 </p>
               ) : (
                 <p className="text-muted-light" style={{ fontSize: '12px', marginTop: '12px' }}>

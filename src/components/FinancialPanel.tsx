@@ -1855,7 +1855,7 @@ export function FinancialPanel() {
                                   }`}
                               >
                                 <Save className="w-3 h-3" />
-                                {isEditing ? 'Save' : 'Edit'}
+                                {isEditing ? 'Confirm' : 'Edit'}
                               </button>
 
                               {/* View Tasks Button */}
@@ -3145,7 +3145,7 @@ export function FinancialPanel() {
                     }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'} className="button border border-transparent dark:border-white"
                   >
                     <Save style={{ width: '1rem', height: '1rem' }} />
-                    Save
+                    Confirm
                   </button>
                 </div>
               </div>
