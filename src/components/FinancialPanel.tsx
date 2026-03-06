@@ -1804,7 +1804,8 @@ export function FinancialPanel() {
                                         [item.date]: e.target.value as 'PENDING' | 'COMPLETED'
                                       }));
                                     }}
-                                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1.5 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-[#C1EEFA] font-medium cursor-pointer"
+                                    className="w-full border border-input-border dark:border-[#C1EEFA] rounded-lg px-2 py-1.5 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-[#C1EEFA] font-medium cursor-pointer"
+                                    style={{ backgroundColor: "#223560" }}
                                   >
                                     <option value="PENDING">Pending</option>
                                     <option value="COMPLETED">Completed</option>

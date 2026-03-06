@@ -143,7 +143,8 @@ export function SettingsPanel() {
                 <a
                     href={apiDocUrl}
                     download="API Documentation.docx"
-                    className="flex items-center gap-2 px-5 py-2.5 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-xl hover:bg-[#C1EEFA]/20 transition-all text-[#C1EEFA] text-sm font-medium"
+                    className="flex items-center gap-2 py-2.5 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-xl hover:bg-[#C1EEFA]/20 transition-all text-[#C1EEFA] text-sm font-medium"
+                    style={{ paddingLeft: "30px", paddingRight: "30px" }}
                 >
                     <Download className="w-4 h-4" />
                     Download API Documentation
