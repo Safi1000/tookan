@@ -7020,6 +7020,110 @@ function getApp() {
     });
 
     // ==========================================
+    // Merchant Sync
+    // ==========================================
+
+    // POST /api/merchants/sync - Fetch all merchants from Tookan and upsert to Supabase
+    app.post('/api/merchants/sync', authenticate, requireSuperadmin(), async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const TOOKAN_API_KEY = getApiKey();
+        const limit = 50;
+        let offset = 0;
+        let allMerchants = [];
+        let totalCount = 0;
+
+        // Paginate through all merchants
+        while (true) {
+          const response = await fetch('https://node1-api.tookanapp.com/v2/viewCustomersWithPagination', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              api_key: TOOKAN_API_KEY,
+              userType: 1,
+              limit,
+              offset
+            })
+          });
+
+          const data = await response.json();
+
+          if (data.status !== 200 || !data.data?.customerData) {
+            if (allMerchants.length === 0) {
+              return res.status(400).json({ status: 'error', message: data.message || 'Failed to fetch merchants from Tookan' });
+            }
+            break; // Got partial data, continue with what we have
+          }
+
+          totalCount = data.data.customerCount || 0;
+          allMerchants = allMerchants.concat(data.data.customerData);
+          console.log(`[MERCHANT SYNC] Fetched ${allMerchants.length}/${totalCount} merchants`);
+
+          if (allMerchants.length >= totalCount || data.data.customerData.length < limit) {
+            break;
+          }
+          offset += limit;
+        }
+
+        // Map and upsert to Supabase
+        let upsertedCount = 0;
+        let errorCount = 0;
+
+        for (const m of allMerchants) {
+          const row = {
+            customer_id: m.customer_id,
+            customer_username: m.customer_username || null,
+            customer_phone: m.customer_phone || null,
+            customer_email: m.customer_email || null,
+            customer_address: m.customer_address || null,
+            company: m.company || null,
+            description: m.description || null,
+            customer_latitude: m.customer_latitude || null,
+            customer_longitude: m.customer_longitude || null,
+            creation_datetime: m.creation_datetime || null,
+            merchant_id: m.vendor_id, // Map vendor_id -> merchant_id
+            tags: m.tags || null,
+            registration_status: m.registration_status || 1,
+            is_blocked: m.is_blocked || 0,
+            vendor_image: m.vendor_image || null,
+            source: m.source || null,
+            is_form_user: m.is_form_user || false,
+            synced_at: new Date().toISOString()
+          };
+
+          const { error } = await supabase
+            .from('merchants')
+            .upsert(row, { onConflict: 'customer_id' });
+
+          if (error) {
+            console.error(`[MERCHANT SYNC] Error upserting customer_id ${m.customer_id}:`, error.message);
+            errorCount++;
+          } else {
+            upsertedCount++;
+          }
+        }
+
+        console.log(`[MERCHANT SYNC] Done. Upserted: ${upsertedCount}, Errors: ${errorCount}`);
+
+        res.json({
+          status: 'success',
+          data: {
+            total_from_tookan: totalCount,
+            fetched: allMerchants.length,
+            upserted: upsertedCount,
+            errors: errorCount
+          }
+        });
+      } catch (error) {
+        console.error('Merchant sync error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to sync merchants' });
+      }
+    });
+
+    // ==========================================
     // EDI API Routes (Token-authenticated)
     // ==========================================
 
