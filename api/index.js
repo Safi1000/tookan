@@ -7364,6 +7364,143 @@ function getApp() {
     });
 
     // ============================================================
+    // CACHED ORDERS ROUTE (Vercel) - Database-first paginated orders
+    // ============================================================
+    app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
+      try {
+        console.log('\n=== GET CACHED ORDERS (VERCEL) ===');
+        const { dateFrom, dateTo, driverId, customerId, status, search, limit = 50, page = 1 } = req.query;
+
+        if (!supabase) {
+          return res.status(500).json({
+            status: 'error',
+            message: 'Supabase not configured',
+            data: { orders: [], total: 0, page: 1, limit: 50, hasMore: false }
+          });
+        }
+
+        const limitNum = parseInt(limit) || 50;
+        const pageNum = parseInt(page) || 1;
+        const offset = (pageNum - 1) * limitNum;
+
+        // Build query
+        let query = supabase
+          .from('tasks')
+          .select('*', { count: 'exact' });
+
+        // Apply filters
+        if (dateFrom) {
+          query = query.gte('creation_datetime', `${dateFrom}T00:00:00`);
+        }
+        if (dateTo) {
+          query = query.lte('creation_datetime', `${dateTo}T23:59:59`);
+        }
+        if (status) {
+          query = query.eq('status', parseInt(status));
+        }
+        if (driverId) {
+          query = query.eq('fleet_id', parseInt(driverId));
+        }
+        if (customerId) {
+          query = query.or(`vendor_id.eq.${customerId},order_id.eq.${customerId}`);
+        }
+        if (search) {
+          const searchTerm = search.toString().trim();
+          // Normalize search for name matching
+          const normalizedSearch = searchTerm.replace(/\s+/g, ' ').toLowerCase();
+          // Try to detect if search is a number (fleet_id, job_id, or order_id)
+          if (/^\d+$/.test(searchTerm)) {
+            query = query.or(`job_id.eq.${searchTerm},fleet_id.eq.${searchTerm},order_id.eq.${searchTerm}`);
+          } else {
+            // Search by fleet_name or customer_name (case-insensitive)
+            query = query.or(`fleet_name.ilike.%${searchTerm}%,customer_name.ilike.%${searchTerm}%`);
+          }
+        }
+
+        // Apply pagination
+        query = query
+          .order('creation_datetime', { ascending: false })
+          .range(offset, offset + limitNum - 1);
+
+        const { data: tasks, error, count } = await query;
+
+        if (error) throw error;
+
+        // Resolve driver phones
+        const { data: allAgents } = await supabase.from('agents').select('fleet_id, phone');
+        const agentPhoneMap = {};
+        if (allAgents) {
+          allAgents.forEach(a => {
+            agentPhoneMap[String(a.fleet_id)] = a.phone || '';
+          });
+        }
+
+        const orders = (tasks || []).map(task => {
+          const codAmount = parseFloat(task.cod_amount || 0);
+          const orderFees = parseFloat(task.order_fees || 0);
+          const fleetIdStr = task.fleet_id ? String(task.fleet_id) : '';
+
+          return {
+            jobId: task.job_id?.toString() || '',
+            job_id: task.job_id,
+            order_id: task.order_id || '',
+            completed_datetime: task.completed_datetime || '',
+            codAmount,
+            cod_amount: codAmount,
+            orderFees,
+            order_fees: orderFees,
+            fleet_id: task.fleet_id || null,
+            assignedDriver: task.fleet_id || null,
+            fleet_name: task.fleet_name || '',
+            assignedDriverName: task.fleet_name || '',
+            vendor_id: task.vendor_id || null,
+            driver_phone: agentPhoneMap[fleetIdStr] || '',
+            driverPhone: agentPhoneMap[fleetIdStr] || '',
+            notes: task.notes || '',
+            date: task.creation_datetime || null,
+            creation_datetime: task.creation_datetime || null,
+            customer_name: task.customer_name || '',
+            customerName: task.customer_name || '',
+            customer_phone: task.customer_phone || '',
+            customerPhone: task.customer_phone || '',
+            customerEmail: task.customer_email || '',
+            pickup_address: task.pickup_address || '',
+            pickupAddress: task.pickup_address || '',
+            delivery_address: task.delivery_address || '',
+            deliveryAddress: task.delivery_address || '',
+            status: task.status ?? null,
+            tags: task.tags || ''
+          };
+        });
+
+        const total = count || 0;
+        const hasMore = (pageNum * limitNum) < total;
+
+        res.json({
+          status: 'success',
+          action: 'fetch_orders_cached',
+          entity: 'order',
+          message: 'Cached orders fetched successfully',
+          data: {
+            orders,
+            total,
+            page: pageNum,
+            limit: limitNum,
+            hasMore,
+            source: 'database'
+          }
+        });
+      } catch (error) {
+        console.error('Get cached orders error:', error);
+        res.status(500).json({
+          status: 'error',
+          message: error.message || 'Network error occurred',
+          data: { orders: [], total: 0, page: 1, limit: 50, hasMore: false }
+        });
+      }
+    });
+
+    // ============================================================
     // REPORTS ROUTES (Vercel)
     // ============================================================
 

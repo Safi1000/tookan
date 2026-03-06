@@ -196,14 +196,18 @@ export function ReportsPanel() {
 
       // Fetch Driver Performance if search is active
       if (unifiedDriverSearch.trim()) {
+        console.log('🔍 Fetching driver performance for:', unifiedDriverSearch.trim());
         const perfResult = await fetchDriverPerformance(
           unifiedDriverSearch.trim(),
           dateFrom || undefined,
           dateTo || undefined,
           statusFilter || undefined
         );
+        console.log('📊 Driver performance result:', perfResult.status, 'Data length:', perfResult.data?.length, perfResult);
         if (perfResult.status === 'success') {
           setDriverPerformanceData(perfResult.data);
+        } else {
+          console.warn('⚠️ Driver performance failed:', perfResult.message);
         }
       } else {
         setDriverPerformanceData([]);
