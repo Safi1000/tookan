@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Navigation } from './components/Navigation';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
@@ -17,6 +17,10 @@ import { Toaster } from './components/ui/sonner';
 // Superadmin email consistent with backend
 const SUPERADMIN_EMAIL = 'ahmedhassan123.ah83@gmail.com';
 
+// 6 hours in milliseconds
+const INACTIVITY_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+const LAST_ACTIVITY_KEY = 'last_activity_timestamp';
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeMenu, setActiveMenu] = useState('dashboard');
@@ -25,16 +29,41 @@ export default function App() {
 
   const isSuperadmin = user?.email?.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
 
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user');
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
+    setUser(null);
+    setIsAuthenticated(false);
+    setActiveMenu('dashboard');
+  }, []);
+
   // Check for existing auth token on mount
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
     const storedUser = localStorage.getItem('user');
 
     if (token && storedUser) {
+      // Check inactivity before restoring session
+      const lastActivity = localStorage.getItem(LAST_ACTIVITY_KEY);
+      if (lastActivity) {
+        const elapsed = Date.now() - parseInt(lastActivity, 10);
+        if (elapsed > INACTIVITY_TIMEOUT_MS) {
+          // Inactive for more than 6 hours — force logout
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('user');
+          localStorage.removeItem(LAST_ACTIVITY_KEY);
+          setIsCheckingAuth(false);
+          return;
+        }
+      }
+
       try {
         const userData = JSON.parse(storedUser);
         setUser(userData);
         setIsAuthenticated(true);
+        // Update activity timestamp on successful restore
+        localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
       } catch (error) {
         console.error('Error parsing stored user:', error);
         localStorage.removeItem('auth_token');
@@ -44,17 +73,46 @@ export default function App() {
     setIsCheckingAuth(false);
   }, []);
 
+  // Track user activity and auto-logout after 6 hours of inactivity
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Update last activity timestamp on user interaction
+    const updateActivity = () => {
+      localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
+    };
+
+    // Check if inactivity timeout has been exceeded
+    const checkInactivity = () => {
+      const lastActivity = localStorage.getItem(LAST_ACTIVITY_KEY);
+      if (lastActivity) {
+        const elapsed = Date.now() - parseInt(lastActivity, 10);
+        if (elapsed > INACTIVITY_TIMEOUT_MS) {
+          handleLogout();
+        }
+      }
+    };
+
+    // Listen for user activity events
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    events.forEach(event => window.addEventListener(event, updateActivity, { passive: true }));
+
+    // Set initial activity timestamp
+    updateActivity();
+
+    // Check inactivity every 60 seconds
+    const intervalId = setInterval(checkInactivity, 60 * 1000);
+
+    return () => {
+      events.forEach(event => window.removeEventListener(event, updateActivity));
+      clearInterval(intervalId);
+    };
+  }, [isAuthenticated, handleLogout]);
+
   const handleLogin = (session: any, userData: any) => {
     setUser(userData);
     setIsAuthenticated(true);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user');
-    setUser(null);
-    setIsAuthenticated(false);
-    setActiveMenu('dashboard');
+    localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
   };
 
   if (isCheckingAuth) {
@@ -83,15 +141,15 @@ export default function App() {
             user={user}
           />
           <main className="flex-1 overflow-y-auto">
-            {activeMenu === 'dashboard' && <Dashboard />}
-            {activeMenu === 'reports' && <ReportsPanel />}
-            {activeMenu === 'financial' && <FinancialPanel />}
-            {activeMenu === 'order-editor' && <OrderEditorPanel />}
-            {activeMenu === 'withdrawals' && <WithdrawalRequestsPanel />}
-            {activeMenu === 'merchant-plans' && <MerchantPlansPanel />}
-            {activeMenu === 'permissions' && isSuperadmin && <UserPermissionsPanel />}
-            {activeMenu === 'logs' && isSuperadmin && <SystemLogsPanel />}
-            {activeMenu === 'settings' && <SettingsPanel />}
+            <div style={{ display: activeMenu === 'dashboard' ? 'block' : 'none' }}><Dashboard /></div>
+            <div style={{ display: activeMenu === 'reports' ? 'block' : 'none' }}><ReportsPanel /></div>
+            <div style={{ display: activeMenu === 'financial' ? 'block' : 'none' }}><FinancialPanel /></div>
+            <div style={{ display: activeMenu === 'order-editor' ? 'block' : 'none' }}><OrderEditorPanel /></div>
+            <div style={{ display: activeMenu === 'withdrawals' ? 'block' : 'none' }}><WithdrawalRequestsPanel /></div>
+            <div style={{ display: activeMenu === 'merchant-plans' ? 'block' : 'none' }}><MerchantPlansPanel /></div>
+            {isSuperadmin && <div style={{ display: activeMenu === 'permissions' ? 'block' : 'none' }}><UserPermissionsPanel /></div>}
+            {isSuperadmin && <div style={{ display: activeMenu === 'logs' ? 'block' : 'none' }}><SystemLogsPanel /></div>}
+            <div style={{ display: activeMenu === 'settings' ? 'block' : 'none' }}><SettingsPanel /></div>
           </main>
         </div>
         <Toaster />
