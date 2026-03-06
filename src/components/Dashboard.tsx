@@ -83,7 +83,7 @@ export function Dashboard() {
     },
     {
       id: 'merchants',
-      label: 'Total Customers',
+      label: 'Total Merchants',
       value: formatNumber(analytics.kpis.totalMerchants),
       icon: Store,
       trend: analytics.trends.merchants

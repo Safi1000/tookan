@@ -2404,21 +2404,21 @@ function getApp() {
           .filter(t => (t.order_payment || t.total_amount) && parseInt(t.job_status) === 2)
           .reduce((sum, t) => sum + (parseFloat(t.order_payment || t.total_amount) || 0), 0);
 
-        // Get customer count from Supabase
+        // Get merchant count from Supabase merchants table
         let dbCustomerCount = 0;
         if (isSupabaseConfigured && supabase) {
           try {
             const { count } = await supabase
-              .from('customers')
+              .from('merchants')
               .select('*', { count: 'exact', head: true });
             dbCustomerCount = count || 0;
           } catch (e) {
-            console.log('Customer count check failed in analytics:', e.message);
+            console.log('Merchant count check failed in analytics:', e.message);
           }
         }
 
         const totalCustomers = dbCustomerCount;
-        const totalMerchants = dbCustomerCount; // Per user request, match Reports Panel which uses all customers
+        const totalMerchants = dbCustomerCount; // Count from merchants table
 
         console.log(`🚀 [VERCEL-BACKEND] Analytics: totalCustomers=${totalCustomers}, totalMerchants=${totalMerchants}`);
 
