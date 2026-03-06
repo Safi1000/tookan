@@ -902,7 +902,7 @@ export function ReportsPanel() {
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant ID</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant Name</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant Phone</th>
-                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date/Time Delivered</th>
+                    <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Date/Time</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Name</th>
                     <th className="text-left px-4 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Customer Phone</th>
