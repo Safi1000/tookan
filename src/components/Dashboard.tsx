@@ -416,19 +416,7 @@ export function Dashboard() {
               </div>
             </button>
 
-            <div className="pt-4 border-t border-border dark:border-[#2A3C63]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-subheading dark:text-[#99BFD1] text-muted-light text-sm font-medium">System Status</span>
-                <span className="text-[#10B981] dark:text-green-400 text-sm flex items-center gap-2 font-semibold">
-                  <span className="w-2 h-2 bg-[#10B981] dark:bg-green-400 rounded-full animate-pulse" />
-                  All Systems Operational
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-subheading dark:text-[#99BFD1] text-muted-light text-sm font-medium">Last Backup</span>
-                <span className="text-heading dark:text-[#C1EEFA] text-sm font-semibold">2 hours ago</span>
-              </div>
-            </div>
+
           </div>
         </div>
       </div>
