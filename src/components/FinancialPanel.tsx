@@ -142,6 +142,10 @@ export function FinancialPanel() {
   const [isProcessingCOD, setIsProcessingCOD] = useState(false);
   const [codError, setCodError] = useState<string | null>(null);
 
+  // Driver daily notes state
+  const [dailyNotes, setDailyNotes] = useState<Record<string, string>>({});
+  const [isSavingNote, setIsSavingNote] = useState(false);
+
   // Wallet state
   const [driverWalletSearch, setDriverWalletSearch] = useState('');
   const [driverWalletValidation, setDriverWalletValidation] = useState<'valid' | 'invalid' | null>(null);
@@ -508,10 +512,59 @@ export function FinancialPanel() {
       setDailyPayments(newDailyPayments);
       setDailyStatuses(newDailyStatuses);
       setIsLoadingDailyCOD(false);
+
+      // Fetch driver notes for the same date range
+      if (driver) {
+        try {
+          const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+          const token = localStorage.getItem('auth_token');
+          const params = new URLSearchParams({ fleet_id: driver.fleet_id.toString() });
+          if (dateFrom) params.append('date_from', dateFrom);
+          if (dateTo) params.append('date_to', dateTo);
+          const notesRes = await fetch(`${API_BASE_URL}/api/driver-notes?${params.toString()}`, {
+            headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+          });
+          const notesData = await notesRes.json();
+          if (notesData.status === 'success' && notesData.data) {
+            const notesMap: Record<string, string> = {};
+            for (const n of notesData.data) {
+              notesMap[n.note_date] = n.note_text;
+            }
+            setDailyNotes(notesMap);
+          }
+        } catch (err) {
+          console.error('Failed to load driver notes:', err);
+        }
+      }
     };
 
     loadCalendarData();
   }, [selectedDriver, dateFrom, dateTo, drivers]);
+
+  // Save a driver note (called on blur)
+  const saveDriverNote = async (noteDate: string, noteText: string) => {
+    if (!selectedDriver) return;
+    const driver = drivers.find(d => d.id === selectedDriver);
+    if (!driver) return;
+
+    setIsSavingNote(true);
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      await fetch(`${API_BASE_URL}/api/driver-notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ fleet_id: driver.fleet_id, note_date: noteDate, note_text: noteText })
+      });
+    } catch (err) {
+      console.error('Failed to save driver note:', err);
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
 
   const handleSearch = () => {
     if (!unifiedDriverSearch.trim()) {
@@ -1832,6 +1885,22 @@ export function FinancialPanel() {
                                 <p className="text-[#DE3544] dark:text-[#DE3544] font-medium">{currency} {codPending.toFixed(2)}</p>
                               </div>
 
+                              {/* Daily Note */}
+                              <div>
+                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Note</p>
+                                <textarea
+                                  value={dailyNotes[item.date] || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setDailyNotes(prev => ({ ...prev, [item.date]: val }));
+                                  }}
+                                  onBlur={() => saveDriverNote(item.date, dailyNotes[item.date] || '')}
+                                  placeholder="Add a note..."
+                                  rows={2}
+                                  className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-lg px-2 py-1.5 text-heading dark:text-[#C1EEFA] text-xs focus:outline-none focus:border-[#C1EEFA] transition-all resize-none placeholder-[#5B7894]"
+                                />
+                              </div>
+
                               {/* Edit/Save Button */}
                               <button
                                 onClick={async () => {
@@ -3105,6 +3174,26 @@ export function FinancialPanel() {
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Daily Note Section */}
+                <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)' }}>
+                  <p className="text-heading dark:text-[#C1EEFA] text-sm font-medium" style={{ marginBottom: '0.5rem' }}>Notes</p>
+                  <textarea
+                    value={dailyNotes[taskModalDate || ''] || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const date = taskModalDate || '';
+                      setDailyNotes(prev => ({ ...prev, [date]: val }));
+                    }}
+                    onBlur={() => {
+                      if (taskModalDate) saveDriverNote(taskModalDate, dailyNotes[taskModalDate] || '');
+                    }}
+                    placeholder="Add a note for this day..."
+                    rows={3}
+                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg px-3 py-2 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-[#C1EEFA] transition-all resize-none placeholder-[#5B7894]"
+                  />
+                  {isSavingNote && <p className="text-xs text-muted-light dark:text-[#5B7894] mt-1">Saving...</p>}
                 </div>
 
                 {/* Modal Footer */}

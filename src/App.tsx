@@ -26,8 +26,20 @@ export default function App() {
   const [activeMenu, setActiveMenu] = useState('dashboard');
   const [user, setUser] = useState<any>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  // Track visited panels for lazy mounting — only mount a panel after first visit
+  const [visitedPanels, setVisitedPanels] = useState<Set<string>>(new Set(['dashboard']));
 
   const isSuperadmin = user?.email?.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
+
+  // Update visited panels when activeMenu changes
+  useEffect(() => {
+    setVisitedPanels(prev => {
+      if (prev.has(activeMenu)) return prev;
+      const next = new Set(prev);
+      next.add(activeMenu);
+      return next;
+    });
+  }, [activeMenu]);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('auth_token');
@@ -36,6 +48,7 @@ export default function App() {
     setUser(null);
     setIsAuthenticated(false);
     setActiveMenu('dashboard');
+    setVisitedPanels(new Set(['dashboard']));
   }, []);
 
   // Check for existing auth token on mount
@@ -130,6 +143,10 @@ export default function App() {
     return <Login onLogin={handleLogin} />;
   }
 
+  // Helper: only mount a panel if it has been visited at least once
+  const lazyPanel = (key: string, component: React.ReactNode) =>
+    visitedPanels.has(key) ? <div style={{ display: activeMenu === key ? 'block' : 'none' }}>{component}</div> : null;
+
   return (
     <ThemeProvider>
       <PermissionProvider>
@@ -141,15 +158,15 @@ export default function App() {
             user={user}
           />
           <main className="flex-1 overflow-y-auto">
-            <div style={{ display: activeMenu === 'dashboard' ? 'block' : 'none' }}><Dashboard /></div>
-            <div style={{ display: activeMenu === 'reports' ? 'block' : 'none' }}><ReportsPanel /></div>
-            <div style={{ display: activeMenu === 'financial' ? 'block' : 'none' }}><FinancialPanel /></div>
-            <div style={{ display: activeMenu === 'order-editor' ? 'block' : 'none' }}><OrderEditorPanel /></div>
-            <div style={{ display: activeMenu === 'withdrawals' ? 'block' : 'none' }}><WithdrawalRequestsPanel /></div>
-            <div style={{ display: activeMenu === 'merchant-plans' ? 'block' : 'none' }}><MerchantPlansPanel /></div>
-            {isSuperadmin && <div style={{ display: activeMenu === 'permissions' ? 'block' : 'none' }}><UserPermissionsPanel /></div>}
-            {isSuperadmin && <div style={{ display: activeMenu === 'logs' ? 'block' : 'none' }}><SystemLogsPanel /></div>}
-            <div style={{ display: activeMenu === 'settings' ? 'block' : 'none' }}><SettingsPanel /></div>
+            {lazyPanel('dashboard', <Dashboard />)}
+            {lazyPanel('reports', <ReportsPanel />)}
+            {lazyPanel('financial', <FinancialPanel />)}
+            {lazyPanel('order-editor', <OrderEditorPanel />)}
+            {lazyPanel('withdrawals', <WithdrawalRequestsPanel />)}
+            {lazyPanel('merchant-plans', <MerchantPlansPanel />)}
+            {isSuperadmin && lazyPanel('permissions', <UserPermissionsPanel />)}
+            {isSuperadmin && lazyPanel('logs', <SystemLogsPanel />)}
+            {lazyPanel('settings', <SettingsPanel />)}
           </main>
         </div>
         <Toaster />

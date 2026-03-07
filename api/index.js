@@ -1299,6 +1299,70 @@ function getApp() {
       }
     });
 
+    // ========== DRIVER DAILY NOTES ENDPOINTS ==========
+
+    // GET /api/driver-notes?fleet_id=123&date_from=2025-01-01&date_to=2025-01-31
+    app.get('/api/driver-notes', authenticate, async (req, res) => {
+      try {
+        const { fleet_id, date_from, date_to } = req.query;
+        if (!fleet_id) {
+          return res.status(400).json({ status: 'error', message: 'fleet_id is required' });
+        }
+        if (!isSupabaseConfigured || !supabase) {
+          return res.json({ status: 'success', data: [] });
+        }
+
+        let query = supabase
+          .from('driver_daily_notes')
+          .select('*')
+          .eq('fleet_id', parseInt(fleet_id));
+
+        if (date_from) query = query.gte('note_date', date_from);
+        if (date_to) query = query.lte('note_date', date_to);
+
+        const { data, error } = await query.order('note_date', { ascending: true });
+        if (error) {
+          console.error('Fetch driver notes error:', error);
+          return res.status(500).json({ status: 'error', message: 'Failed to fetch notes' });
+        }
+        res.json({ status: 'success', data: data || [] });
+      } catch (error) {
+        console.error('Driver notes error:', error);
+        res.status(500).json({ status: 'error', message: 'Failed to fetch notes' });
+      }
+    });
+
+    // POST /api/driver-notes — upsert a note for a specific driver + date
+    app.post('/api/driver-notes', authenticate, async (req, res) => {
+      try {
+        const { fleet_id, note_date, note_text } = req.body;
+        if (!fleet_id || !note_date) {
+          return res.status(400).json({ status: 'error', message: 'fleet_id and note_date are required' });
+        }
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+        }
+
+        const { data, error } = await supabase
+          .from('driver_daily_notes')
+          .upsert(
+            { fleet_id: parseInt(fleet_id), note_date, note_text: note_text || '', updated_at: new Date().toISOString() },
+            { onConflict: 'fleet_id,note_date' }
+          )
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Upsert driver note error:', error);
+          return res.status(500).json({ status: 'error', message: 'Failed to save note' });
+        }
+        res.json({ status: 'success', data });
+      } catch (error) {
+        console.error('Driver note save error:', error);
+        res.status(500).json({ status: 'error', message: 'Failed to save note' });
+      }
+    });
+
     // Search Merchant by Merchant ID (exact match)
     app.get('/api/customers/search', authenticate, async (req, res) => {
       try {
