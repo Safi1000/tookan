@@ -3176,67 +3176,67 @@ export function FinancialPanel() {
                   )}
                 </div>
 
-                {/* Daily Note Section */}
-                <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)' }}>
-                  <p className="text-heading dark:text-[#C1EEFA] text-sm font-medium" style={{ marginBottom: '0.5rem' }}>Notes</p>
-                  <textarea
-                    value={dailyNotes[taskModalDate || ''] || ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      const date = taskModalDate || '';
-                      setDailyNotes(prev => ({ ...prev, [date]: val }));
-                    }}
-                    onBlur={() => {
-                      if (taskModalDate) saveDriverNote(taskModalDate, dailyNotes[taskModalDate] || '');
-                    }}
-                    placeholder="Add a note for this day..."
-                    rows={3}
-                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg px-3 py-2 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-[#C1EEFA] transition-all resize-none placeholder-[#5B7894]"
-                  />
-                  {isSavingNote && <p className="text-xs text-muted-light dark:text-[#5B7894] mt-1">Saving...</p>}
-                </div>
-
-                {/* Modal Footer */}
+                {/* Modal Footer with inline note */}
                 <div style={{
-                  padding: '1.5rem',
+                  padding: '1rem 1.5rem',
                   borderTop: '1px solid var(--border)',
                   display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: '0.75rem'
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1rem'
                 }} className="modal-footer">
-                  <button
-                    onClick={closeTaskModal}
-                    style={{
-                      padding: '0.625rem 1.5rem',
-                      color: 'var(--muted-light)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '0.5rem',
-                      backgroundColor: 'transparent',
-                      cursor: 'pointer',
-                      fontWeight: 500,
-                      transition: 'all 0.2s'
-                    }} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--heading)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted-light)'} className="button"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={saveTaskPayments}
-                    style={{
-                      padding: '0.625rem 1.5rem',
-                      backgroundColor: '#1A2C53',
-                      color: 'white',
-                      borderRadius: '0.5rem',
-                      cursor: 'pointer',
-                      fontWeight: 500,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      transition: 'box-shadow 0.2s'
-                    }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'} className="button border border-transparent dark:border-white"
-                  >
-                    <Save style={{ width: '1rem', height: '1rem' }} />
-                    Confirm
-                  </button>
+                  <div style={{ flex: 1, maxWidth: '60%', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span className="text-muted-light dark:text-[#99BFD1] text-xs" style={{ whiteSpace: 'nowrap' }}>Note:</span>
+                    <input
+                      type="text"
+                      value={dailyNotes[taskModalDate || ''] || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const date = taskModalDate || '';
+                        setDailyNotes(prev => ({ ...prev, [date]: val }));
+                      }}
+                      onBlur={() => {
+                        if (taskModalDate) saveDriverNote(taskModalDate, dailyNotes[taskModalDate] || '');
+                      }}
+                      placeholder="Add a note..."
+                      className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg px-2.5 py-1.5 text-heading dark:text-[#C1EEFA] text-xs focus:outline-none focus:border-[#C1EEFA] transition-all placeholder-[#5B7894]"
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.75rem', flexShrink: 0 }}>
+                    <button
+                      onClick={closeTaskModal}
+                      style={{
+                        padding: '0.625rem 1.5rem',
+                        color: 'var(--muted-light)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '0.5rem',
+                        backgroundColor: 'transparent',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                        transition: 'all 0.2s'
+                      }} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--heading)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted-light)'} className="button"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveTaskPayments}
+                      style={{
+                        padding: '0.625rem 1.5rem',
+                        backgroundColor: '#1A2C53',
+                        color: 'white',
+                        borderRadius: '0.5rem',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        transition: 'box-shadow 0.2s'
+                      }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'} className="button border border-transparent dark:border-white"
+                    >
+                      <Save style={{ width: '1rem', height: '1rem' }} />
+                      Confirm
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
