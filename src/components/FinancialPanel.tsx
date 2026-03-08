@@ -265,25 +265,34 @@ export function FinancialPanel() {
     loadDrivers();
   }, []);
 
-  // Fetch merchants on mount
+  // Fetch merchants from Supabase merchants table
   useEffect(() => {
     const loadMerchants = async () => {
       setIsLoadingMerchants(true);
       try {
-        const response = await fetchAllCustomers();
-        if (response.status === 'success' && response.data?.customers) {
-          const merchantsList = response.data.customers;
-          const merchantsData: Merchant[] = merchantsList.map((merchant: any) => ({
-            id: merchant.id?.toString() || merchant.vendor_id?.toString() || '',
-            vendor_id: merchant.vendor_id || merchant.id || '',
-            name: merchant.customer_name || merchant.name || 'Unknown Merchant',
-            phone: merchant.customer_phone || merchant.phone || '',
+        if (!supabase) {
+          toast.error('Supabase not configured');
+          setIsLoadingMerchants(false);
+          return;
+        }
+        const { data, error } = await supabase
+          .from('merchants')
+          .select('merchant_id, customer_username, customer_phone')
+          .order('merchant_id', { ascending: true });
+
+        if (error) {
+          console.error('Error loading merchants from Supabase:', error);
+          toast.error('Failed to load merchants');
+        } else if (data) {
+          const merchantsData: Merchant[] = data.map((m: any) => ({
+            id: m.merchant_id?.toString() || '',
+            vendor_id: m.merchant_id || '',
+            name: m.customer_username || 'Unknown Merchant',
+            phone: m.customer_phone || '',
             balance: 0,
             pending: 0
           }));
           setMerchants(merchantsData);
-        } else {
-          toast.error(response.message || 'Failed to load merchants');
         }
       } catch (error) {
         console.error('Error loading merchants:', error);
@@ -2522,13 +2531,6 @@ export function FinancialPanel() {
                   </tbody>
                 </table>
 
-                {/* Note about API limitation */}
-                <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
-                  <p className="text-yellow-600 dark:text-yellow-400 text-sm">
-                    <strong>Note:</strong> Due to Tookan API limitations, only the first 100 merchants are displayed.
-                    Use the search box above to find specific merchants by their Merchant ID.
-                  </p>
-                </div>
               </div>
             </div>
           </div>
