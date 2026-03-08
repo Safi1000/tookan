@@ -3516,8 +3516,8 @@ export function FinancialPanel() {
 
       {/* Transaction History Modal */}
       {txHistoryOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
-          <div className="bg-card dark:bg-[#1A2C53] border border-border dark:border-[#2A3C63] rounded-2xl shadow-2xl w-[95vw] md:max-w-2xl lg:max-w-3xl max-h-[90vh] sm:max-h-[85vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card dark:bg-[#1A2C53] border border-border dark:border-[#2A3C63] rounded-xl shadow-2xl w-full max-w-3xl h-[80vh] max-h-[600px] flex flex-col overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-border dark:border-[#2A3C63]">
               <div className="min-w-0 flex-1">
