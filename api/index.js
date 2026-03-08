@@ -1414,6 +1414,62 @@ function getApp() {
       }
     });
 
+    // Batch fetch wallet balances for multiple fleet IDs
+    app.post('/api/fleet/wallet/batch-balances', authenticate, async (req, res) => {
+      try {
+        const { fleet_ids } = req.body;
+        if (!fleet_ids || !Array.isArray(fleet_ids) || fleet_ids.length === 0) {
+          return res.status(400).json({ status: 'error', message: 'fleet_ids array is required' });
+        }
+
+        const tookanApiKey = process.env.TOOKAN_API_KEY;
+        if (!tookanApiKey) {
+          return res.status(500).json({ status: 'error', message: 'Tookan API key not configured' });
+        }
+
+        const endDate = new Date().toISOString().split('T')[0];
+        const startDate = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+        const tookanFetch = await import('node-fetch').then(m => m.default).catch(() => require('node-fetch'));
+        const CONCURRENCY = 5;
+        const balances = {};
+        for (let i = 0; i < fleet_ids.length; i += CONCURRENCY) {
+          const batch = fleet_ids.slice(i, i + CONCURRENCY);
+          const results = await Promise.allSettled(
+            batch.map(async (fid) => {
+              const response = await tookanFetch('https://api.tookanapp.com/v2/fleet/wallet/read_transaction_history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  api_key: tookanApiKey,
+                  fleet_id: parseInt(fid),
+                  wallet_type: 1,
+                  starting_date: startDate,
+                  ending_date: endDate
+                })
+              });
+              const data = await response.json();
+              if (data.status === 200 && data.data?.wallet_balance) {
+                const wb = data.data.wallet_balance.find(w => w.wallet_type === 1);
+                return { fleet_id: fid, balance: wb?.wallet_balance || 0 };
+              }
+              return { fleet_id: fid, balance: 0 };
+            })
+          );
+          results.forEach(r => {
+            if (r.status === 'fulfilled') {
+              balances[r.value.fleet_id] = r.value.balance;
+            }
+          });
+        }
+
+        res.json({ status: 'success', data: { balances } });
+      } catch (error) {
+        console.error('Batch wallet balances error:', error);
+        res.status(500).json({ status: 'error', message: 'Failed to fetch wallet balances' });
+      }
+    });
+
     // Search Merchant by Merchant ID (exact match)
     app.get('/api/customers/search', authenticate, async (req, res) => {
       try {

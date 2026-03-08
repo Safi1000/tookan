@@ -311,6 +311,41 @@ export function FinancialPanel() {
     loadMerchants();
   }, []);
 
+  // Fetch wallet balances for all drivers when driver-wallets tab becomes active
+  const driverBalancesLoaded = useRef(false);
+  useEffect(() => {
+    if (activeTab !== 'driver-wallets' || drivers.length === 0 || driverBalancesLoaded.current) return;
+    driverBalancesLoaded.current = true;
+
+    const loadBalances = async () => {
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+        const token = localStorage.getItem('auth_token');
+        const fleetIds = drivers.map(d => d.fleet_id || d.id);
+        const res = await fetch(`${API_BASE_URL}/api/fleet/wallet/batch-balances`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ fleet_ids: fleetIds })
+        });
+        const data = await res.json();
+        if (data.status === 'success' && data.data?.balances) {
+          const balanceMap = data.data.balances;
+          setDrivers(prev => prev.map(d => {
+            const fid = d.fleet_id || d.id;
+            const bal = balanceMap[fid];
+            return bal !== undefined ? { ...d, balance: bal } : d;
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to load driver balances:', err);
+      }
+    };
+    loadBalances();
+  }, [activeTab, drivers.length]);
+
   // Load COD confirmations on mount
   // Calendar data is now loaded via RPC/direct query in the driver-specific useEffect below
 
@@ -3489,7 +3524,7 @@ export function FinancialPanel() {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="flex-1 overflow-auto p-4 md:p-5">
               {isLoadingTxHistory ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-3" />
@@ -3502,7 +3537,7 @@ export function FinancialPanel() {
                   <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-1">No wallet transactions in the last 30 days.</p>
                 </div>
               ) : (
-                <table className="w-full">
+                <table className="w-full min-w-[600px]">
                   <thead className="table-header-bg dark:bg-[#223560] border-b border-border dark:border-[#2A3C63] sticky top-0">
                     <tr>
                       <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Date</th>
