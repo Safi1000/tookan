@@ -3661,7 +3661,7 @@ export function FinancialPanel() {
                       overflowY: 'auto',
                       overflowX: 'auto',
                       minHeight: 0
-                    }} className="hidden md:block">
+                    }}>
                       <table style={{
                         width: '100%',
                         minWidth: '600px',
@@ -3682,7 +3682,7 @@ export function FinancialPanel() {
                             <tr key={tx.id || i} className={`border-b border-border dark:border-[#2A3C63]/50 hover:bg-table-row-hover dark:hover:bg-[#223560]/50 transition-colors ${i % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
                               <td className="px-4 py-3 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
                                 {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                <span className="text-muted-light dark:text-[#5B7894] text-xs ml-1">
+                                <span style={{ color: 'var(--muted-light)', marginLeft: '0.25rem' }}>
                                   {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                               </td>
@@ -3707,40 +3707,6 @@ export function FinancialPanel() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
-
-                    {/* Mobile Cards */}
-                    <div style={{
-                      flex: 1,
-                      overflowY: 'auto',
-                      minHeight: 0,
-                      padding: '0.5rem'
-                    }} className="md:hidden space-y-3">
-                      {txHistoryData.map((tx: any, i: number) => (
-                        <div key={tx.id || i} className="bg-muted/30 dark:bg-[#223560]/40 rounded-xl p-3 border border-border dark:border-[#2A3C63]/50">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 2
-                              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                              : tx.transaction_type === 1
-                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                                : 'bg-red-500/10 text-red-500'
-                              }`}>
-                              {tx.transaction_type === 2 ? 'Credit' : tx.transaction_type === 1 ? 'Debit' : `Type ${tx.transaction_type}`}
-                            </span>
-                            <span className={`font-semibold text-sm ${tx.transaction_type === 2 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                              {tx.transaction_type === 2 ? '+' : '-'}{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tx.amount?.toFixed(2)}
-                            </span>
-                          </div>
-                          <p className="text-heading dark:text-[#C1EEFA] text-xs">
-                            {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            <span className="text-muted-light dark:text-[#5B7894] ml-1">
-                              {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </p>
-                          {tx.reference_id && <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-1 font-mono">Ref: {tx.reference_id}</p>}
-                          {(tx.remarks || tx.description) && <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-1 truncate">{tx.remarks || tx.description}</p>}
-                        </div>
-                      ))}
                     </div>
                   </div>
                 )}
