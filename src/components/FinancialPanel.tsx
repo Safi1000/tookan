@@ -3516,126 +3516,255 @@ export function FinancialPanel() {
 
       {/* Transaction History Modal */}
       {txHistoryOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card dark:bg-[#1A2C53] border border-border dark:border-[#2A3C63] rounded-xl shadow-2xl w-full max-w-3xl h-[80vh] max-h-[600px] flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-border dark:border-[#2A3C63]">
-              <div className="min-w-0 flex-1">
-                <h3 className="text-heading dark:text-[#C1EEFA] text-base sm:text-lg font-semibold truncate">{txHistoryName}</h3>
-                <p className="text-muted-light dark:text-[#99BFD1] text-xs sm:text-sm mt-0.5">
-                  Balance: <span className="text-green-500 font-semibold">{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {txHistoryBalance.toFixed(2)}</span>
-                  <span className="text-muted-light dark:text-[#5B7894] ml-2 hidden sm:inline">• Last 30 days</span>
-                </p>
+        <>
+          <style>{`
+            @media (max-width: 640px) {
+              .tx-modal-container { padding: 1rem; }
+              .tx-modal-header { padding: 0.75rem; font-size: 0.875rem; }
+              .tx-close-btn { width: 1.25rem; height: 1.25rem; }
+              .tx-modal-body { padding: 0.5rem; }
+            }
+          `}</style>
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50
+          }} className="tx-modal-container bg-black/60 backdrop-blur-sm">
+            <div style={{
+              backgroundColor: 'var(--background)',
+              borderRadius: '0.75rem',
+              border: '1px solid var(--border)',
+              width: '100%',
+              maxWidth: '48rem',
+              height: '80vh',
+              maxHeight: '600px',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+            }} className="bg-card dark:bg-[#1A2C53] border-border dark:border-[#2A3C63]">
+              {/* Header */}
+              <div style={{
+                padding: '1rem',
+                borderBottom: '1px solid var(--border)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexShrink: 0
+              }} className="tx-modal-header">
+                <div>
+                  <h3 style={{
+                    color: 'var(--heading)',
+                    fontSize: '1.125rem',
+                    fontWeight: 600,
+                    marginBottom: 0
+                  }} className="truncate">{txHistoryName}</h3>
+                  <p style={{
+                    color: 'var(--muted-light)',
+                    fontSize: '0.875rem',
+                    marginTop: '0.125rem'
+                  }}>
+                    Balance: <span className="text-green-500 font-semibold">{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {txHistoryBalance.toFixed(2)}</span>
+                    <span className="ml-2 hidden sm:inline">• Last 30 days</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => setTxHistoryOpen(false)}
+                  style={{
+                    color: 'var(--muted-light)',
+                    padding: '0.25rem',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'color 0.2s',
+                    marginLeft: '0.5rem',
+                    flexShrink: 0
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = 'var(--heading)'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted-light)'}
+                  className="tx-close-btn"
+                >
+                  <X style={{ width: '1.5rem', height: '1.5rem' }} />
+                </button>
               </div>
-              <button
-                onClick={() => setTxHistoryOpen(false)}
-                className="p-2 hover:bg-muted/20 dark:hover:bg-[#2A3C63] rounded-xl transition-colors ml-2 flex-shrink-0"
-              >
-                <X className="w-5 h-5 text-muted-light dark:text-[#99BFD1]" />
-              </button>
-            </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-3 sm:p-5">
-              {isLoadingTxHistory ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-3" />
-                  <p className="text-muted-light dark:text-[#99BFD1] text-sm">Loading transactions...</p>
-                </div>
-              ) : txHistoryData.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <Wallet className="w-10 h-10 text-muted-light dark:text-[#5B7894] mb-3" />
-                  <p className="text-heading dark:text-[#C1EEFA] font-medium">No transactions found</p>
-                  <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-1">No wallet transactions in the last 30 days.</p>
-                </div>
-              ) : (
-                <>
-                  {/* Desktop Table */}
-                  <div className="w-full overflow-x-auto hidden md:block">
-                    <table className="w-full min-w-[600px]">
-                      <thead className="table-header-bg dark:bg-[#223560] border-b border-border dark:border-[#2A3C63] sticky top-0">
-                        <tr>
-                          <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Date</th>
-                          <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Type</th>
-                          <th className="text-right px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Amount</th>
-                          <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Reference</th>
-                          <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Remarks</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {txHistoryData.map((tx: any, i: number) => (
-                          <tr key={tx.id || i} className={`border-b border-border dark:border-[#2A3C63]/50 hover:bg-table-row-hover dark:hover:bg-[#223560]/50 transition-colors ${i % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                            <td className="px-4 py-3 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
-                              {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                              <span className="text-muted-light dark:text-[#5B7894] text-xs ml-1">
-                                {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 2
-                                ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                                : tx.transaction_type === 1
-                                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                                  : 'bg-red-500/10 text-red-500'
-                                }`}>
-                                {tx.transaction_type === 2 ? 'Credit' : tx.transaction_type === 1 ? 'Debit' : `Type ${tx.transaction_type}`}
-                              </span>
-                            </td>
-                            <td className={`px-4 py-3 text-right font-semibold text-sm whitespace-nowrap ${tx.transaction_type === 2 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                              {tx.transaction_type === 2 ? '+' : '-'}{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tx.amount?.toFixed(2)}
-                            </td>
-                            <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm font-mono">{tx.reference_id || '-'}</td>
-                            <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm max-w-[200px] truncate" title={tx.remarks || tx.description || ''}>
-                              {tx.remarks || tx.description || '-'}
-                            </td>
+              {/* Content */}
+              <div style={{
+                flex: 1,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
+                padding: '1rem'
+              }} className="tx-modal-body">
+                {isLoadingTxHistory ? (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingTop: '2rem',
+                    paddingBottom: '2rem'
+                  }}>
+                    <Loader2 style={{
+                      width: '2rem',
+                      height: '2rem',
+                      animation: 'spin 1s linear infinite',
+                      color: '#C1EEFA',
+                      marginBottom: '0.75rem'
+                    }} className="loader" />
+                    <p style={{
+                      color: 'var(--muted-light)',
+                      fontSize: '0.875rem'
+                    }} className="loader-text">Loading transactions...</p>
+                  </div>
+                ) : txHistoryData.length === 0 ? (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingTop: '2rem',
+                    paddingBottom: '2rem'
+                  }}>
+                    <Wallet style={{
+                      width: '2.5rem',
+                      height: '2.5rem',
+                      color: 'var(--muted-light)',
+                      marginBottom: '0.75rem'
+                    }} className="empty-icon" />
+                    <p style={{
+                      color: 'var(--heading)',
+                      fontWeight: 500,
+                      fontSize: '1rem'
+                    }} className="empty-title">No transactions found</p>
+                    <p style={{
+                      color: 'var(--muted-light)',
+                      fontSize: '0.875rem'
+                    }} className="empty-subtitle">No wallet transactions in the last 30 days.</p>
+                  </div>
+                ) : (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: 'hidden'
+                  }}>
+                    {/* Desktop Table */}
+                    <div style={{
+                      flex: 1,
+                      overflowY: 'auto',
+                      overflowX: 'auto',
+                      minHeight: 0
+                    }} className="hidden md:block">
+                      <table style={{
+                        width: '100%',
+                        minWidth: '600px',
+                        borderCollapse: 'collapse',
+                        fontSize: '0.875rem'
+                      }} className="table">
+                        <thead className="table-header-bg dark:bg-[#223560] border-b border-border dark:border-[#2A3C63] sticky top-0">
+                          <tr>
+                            <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Date</th>
+                            <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Type</th>
+                            <th className="text-right px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Amount</th>
+                            <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Reference</th>
+                            <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Remarks</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {txHistoryData.map((tx: any, i: number) => (
+                            <tr key={tx.id || i} className={`border-b border-border dark:border-[#2A3C63]/50 hover:bg-table-row-hover dark:hover:bg-[#223560]/50 transition-colors ${i % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                              <td className="px-4 py-3 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
+                                {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                <span className="text-muted-light dark:text-[#5B7894] text-xs ml-1">
+                                  {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 2
+                                  ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                                  : tx.transaction_type === 1
+                                    ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                                    : 'bg-red-500/10 text-red-500'
+                                  }`}>
+                                  {tx.transaction_type === 2 ? 'Credit' : tx.transaction_type === 1 ? 'Debit' : `Type ${tx.transaction_type}`}
+                                </span>
+                              </td>
+                              <td className={`px-4 py-3 text-right font-semibold text-sm whitespace-nowrap ${tx.transaction_type === 2 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                                {tx.transaction_type === 2 ? '+' : '-'}{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tx.amount?.toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm font-mono">{tx.reference_id || '-'}</td>
+                              <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm max-w-[200px] truncate" title={tx.remarks || tx.description || ''}>
+                                {tx.remarks || tx.description || '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
 
-                  {/* Mobile Cards */}
-                  <div className="md:hidden space-y-3">
-                    {txHistoryData.map((tx: any, i: number) => (
-                      <div key={tx.id || i} className="bg-muted/30 dark:bg-[#223560]/40 rounded-xl p-3 border border-border dark:border-[#2A3C63]/50">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 2
-                            ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                            : tx.transaction_type === 1
-                              ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                              : 'bg-red-500/10 text-red-500'
-                            }`}>
-                            {tx.transaction_type === 2 ? 'Credit' : tx.transaction_type === 1 ? 'Debit' : `Type ${tx.transaction_type}`}
-                          </span>
-                          <span className={`font-semibold text-sm ${tx.transaction_type === 2 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                            {tx.transaction_type === 2 ? '+' : '-'}{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tx.amount?.toFixed(2)}
-                          </span>
+                    {/* Mobile Cards */}
+                    <div style={{
+                      flex: 1,
+                      overflowY: 'auto',
+                      minHeight: 0,
+                      padding: '0.5rem'
+                    }} className="md:hidden space-y-3">
+                      {txHistoryData.map((tx: any, i: number) => (
+                        <div key={tx.id || i} className="bg-muted/30 dark:bg-[#223560]/40 rounded-xl p-3 border border-border dark:border-[#2A3C63]/50">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 2
+                              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                              : tx.transaction_type === 1
+                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                                : 'bg-red-500/10 text-red-500'
+                              }`}>
+                              {tx.transaction_type === 2 ? 'Credit' : tx.transaction_type === 1 ? 'Debit' : `Type ${tx.transaction_type}`}
+                            </span>
+                            <span className={`font-semibold text-sm ${tx.transaction_type === 2 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                              {tx.transaction_type === 2 ? '+' : '-'}{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tx.amount?.toFixed(2)}
+                            </span>
+                          </div>
+                          <p className="text-heading dark:text-[#C1EEFA] text-xs">
+                            {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            <span className="text-muted-light dark:text-[#5B7894] ml-1">
+                              {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </p>
+                          {tx.reference_id && <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-1 font-mono">Ref: {tx.reference_id}</p>}
+                          {(tx.remarks || tx.description) && <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-1 truncate">{tx.remarks || tx.description}</p>}
                         </div>
-                        <p className="text-heading dark:text-[#C1EEFA] text-xs">
-                          {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                          <span className="text-muted-light dark:text-[#5B7894] ml-1">
-                            {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </p>
-                        {tx.reference_id && <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-1 font-mono">Ref: {tx.reference_id}</p>}
-                        {(tx.remarks || tx.description) && <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-1 truncate">{tx.remarks || tx.description}</p>}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </>
+                )}
+              </div>
+
+              {/* Footer */}
+              {txHistoryData.length > 0 && (
+                <div style={{
+                  padding: '1rem',
+                  borderTop: '1px solid var(--border)',
+                  textAlign: 'center',
+                  flexShrink: 0
+                }} className="tx-modal-header">
+                  <p style={{
+                    color: 'var(--muted-light)',
+                    fontSize: '0.75rem'
+                  }}>{txHistoryData.length} transactions shown</p>
+                </div>
               )}
             </div>
-
-            {/* Footer */}
-            {txHistoryData.length > 0 && (
-              <div className="p-3 sm:p-4 border-t border-border dark:border-[#2A3C63] text-center">
-                <p className="text-muted-light dark:text-[#5B7894] text-xs">{txHistoryData.length} transactions shown</p>
-              </div>
-            )}
           </div>
-        </div>
+        </>
       )}
 
-    </div >
+    </div>
   );
 }
