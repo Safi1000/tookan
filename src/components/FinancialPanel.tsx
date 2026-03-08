@@ -180,6 +180,7 @@ export function FinancialPanel() {
   const [txHistoryName, setTxHistoryName] = useState('');
   const [isLoadingTxHistory, setIsLoadingTxHistory] = useState(false);
   const [isLoadingDriverBalances, setIsLoadingDriverBalances] = useState(false);
+  const [isLoadingMerchantBalances, setIsLoadingMerchantBalances] = useState(false);
 
   // Real data state
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -350,6 +351,44 @@ export function FinancialPanel() {
     };
     loadBalances();
   }, [activeTab, drivers.length]);
+
+  // Fetch wallet balances for all merchants when merchant-wallets tab becomes active
+  const merchantBalancesLoaded = useRef(false);
+  useEffect(() => {
+    if (activeTab !== 'merchant-wallets' || merchants.length === 0 || merchantBalancesLoaded.current) return;
+    merchantBalancesLoaded.current = true;
+
+    const loadMerchantBalances = async () => {
+      setIsLoadingMerchantBalances(true);
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+        const token = localStorage.getItem('auth_token');
+        const vendorIds = merchants.map(m => m.vendor_id || m.id);
+        const res = await fetch(`${API_BASE_URL}/api/merchant/wallet/batch-balances`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ vendor_ids: vendorIds })
+        });
+        const data = await res.json();
+        if (data.status === 'success' && data.data?.balances) {
+          const balanceMap = data.data.balances;
+          setMerchants(prev => prev.map(m => {
+            const vid = m.vendor_id || m.id;
+            const bal = balanceMap[vid];
+            return bal !== undefined ? { ...m, balance: bal } : m;
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to load merchant balances:', err);
+      } finally {
+        setIsLoadingMerchantBalances(false);
+      }
+    };
+    loadMerchantBalances();
+  }, [activeTab, merchants.length]);
 
   // Load COD confirmations on mount
   // Calendar data is now loaded via RPC/direct query in the driver-specific useEffect below
@@ -2563,74 +2602,82 @@ export function FinancialPanel() {
               </div>
 
               {/* Merchant Wallet Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                    <tr>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant ID</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant Name</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Wallet Balance</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Show merchantWallets if available, otherwise show merchants */}
-                    {(merchantWallets.length > 0 ? merchantWallets : merchants.map(m => ({
-                      id: m.id,
-                      name: m.name,
-                      phone: m.phone || '',
-                      balance: m.balance || 0,
-                      pending: m.pending || 0,
-                      vendor_id: m.vendor_id
-                    }))).map((merchant, index) => {
-                      const searchTerm = merchantWalletSearch.toLowerCase().trim();
-                      const isHighlighted = merchantWalletValidation === 'valid' && (
-                        merchant.name.toLowerCase().includes(searchTerm) ||
-                        merchant.id.toLowerCase().includes(searchTerm) ||
-                        ((merchant as any).vendor_id && (merchant as any).vendor_id.toString().includes(searchTerm)) ||
-                        ((merchant as any).phone && (merchant as any).phone.includes(merchantWalletSearch))
-                      );
+              {(!merchantBalancesLoaded.current || isLoadingMerchantBalances) ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-3" />
+                  <p className="text-heading dark:text-[#C1EEFA] font-medium">Loading Merchant Wallets</p>
+                  <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-1">Fetching wallet balances for all merchants...</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                      <tr>
+                        <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant ID</th>
+                        <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant Name</th>
+                        <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Wallet Balance</th>
+                        <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
+                        <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Show merchantWallets if available, otherwise show merchants */}
+                      {(merchantWallets.length > 0 ? merchantWallets : merchants.map(m => ({
+                        id: m.id,
+                        name: m.name,
+                        phone: m.phone || '',
+                        balance: m.balance || 0,
+                        pending: m.pending || 0,
+                        vendor_id: m.vendor_id
+                      }))).map((merchant, index) => {
+                        const searchTerm = merchantWalletSearch.toLowerCase().trim();
+                        const isHighlighted = merchantWalletValidation === 'valid' && (
+                          merchant.name.toLowerCase().includes(searchTerm) ||
+                          merchant.id.toLowerCase().includes(searchTerm) ||
+                          ((merchant as any).vendor_id && (merchant as any).vendor_id.toString().includes(searchTerm)) ||
+                          ((merchant as any).phone && (merchant as any).phone.includes(merchantWalletSearch))
+                        );
 
-                      return (
-                        <tr
-                          key={merchant.id}
-                          className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${isHighlighted ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)] bg-[#C1EEFA]/10' : ''
-                            }`}
-                        >
-                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.id}</td>
-                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.name}</td>
-                          <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${((merchant as any).balance || 0).toFixed(2)}</td>
-                          <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{(merchant as any).phone || ''}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => {
-                                  setEditingBalance({ type: 'merchant', id: merchant.id });
-                                  setTxAmount('');
-                                  setTxType('credit');
-                                  setBalanceNote('');
-                                  setWalletError(null);
-                                }}
-                                className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
-                              >
-                                Credit/Debit
-                              </button>
-                              <button
-                                onClick={() => fetchTransactionHistory((merchant as any).vendor_id || merchant.id, merchant.name)}
-                                className="px-4 py-2 bg-blue-500/10 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-500/20 dark:hover:bg-blue-400/20 transition-all text-sm font-medium"
-                              >
-                                View Transactions
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                        return (
+                          <tr
+                            key={merchant.id}
+                            className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${isHighlighted ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)] bg-[#C1EEFA]/10' : ''
+                              }`}
+                          >
+                            <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.id}</td>
+                            <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.name}</td>
+                            <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${((merchant as any).balance || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{(merchant as any).phone || ''}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingBalance({ type: 'merchant', id: merchant.id });
+                                    setTxAmount('');
+                                    setTxType('credit');
+                                    setBalanceNote('');
+                                    setWalletError(null);
+                                  }}
+                                  className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
+                                >
+                                  Credit/Debit
+                                </button>
+                                <button
+                                  onClick={() => fetchTransactionHistory((merchant as any).vendor_id || merchant.id, merchant.name)}
+                                  className="px-4 py-2 bg-blue-500/10 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-500/20 dark:hover:bg-blue-400/20 transition-all text-sm font-medium"
+                                >
+                                  View Transaction History
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
 
-              </div>
+                </div>
+              )}
             </div>
           </div>
         )
@@ -2686,8 +2733,8 @@ export function FinancialPanel() {
                         <button
                           onClick={() => setTxType('credit')}
                           className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all border ${txType === 'credit'
-                              ? 'bg-green-500/20 border-green-500/50 text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.2)]'
-                              : 'bg-muted/30 dark:bg-[#1A2C53] border-border dark:border-[#2A3C63] text-muted-light dark:text-[#99BFD1] hover:bg-muted/50 dark:hover:bg-[#2A3C63]'
+                            ? 'bg-green-500/20 border-green-500/50 text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.2)]'
+                            : 'bg-muted/30 dark:bg-[#1A2C53] border-border dark:border-[#2A3C63] text-muted-light dark:text-[#99BFD1] hover:bg-muted/50 dark:hover:bg-[#2A3C63]'
                             }`}
                         >
                           ↑ Credit
@@ -2695,8 +2742,8 @@ export function FinancialPanel() {
                         <button
                           onClick={() => setTxType('debit')}
                           className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all border ${txType === 'debit'
-                              ? 'bg-red-500/20 border-red-500/50 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.2)]'
-                              : 'bg-muted/30 dark:bg-[#1A2C53] border-border dark:border-[#2A3C63] text-muted-light dark:text-[#99BFD1] hover:bg-muted/50 dark:hover:bg-[#2A3C63]'
+                            ? 'bg-red-500/20 border-red-500/50 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.2)]'
+                            : 'bg-muted/30 dark:bg-[#1A2C53] border-border dark:border-[#2A3C63] text-muted-light dark:text-[#99BFD1] hover:bg-muted/50 dark:hover:bg-[#2A3C63]'
                             }`}
                         >
                           ↓ Debit
@@ -2844,8 +2891,8 @@ export function FinancialPanel() {
                         }}
                         disabled={isProcessingWallet}
                         className={`flex-1 py-3 rounded-xl transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${txType === 'credit'
-                            ? 'bg-green-500 text-white hover:shadow-[0_0_16px_rgba(34,197,94,0.4)]'
-                            : 'bg-red-500 text-white hover:shadow-[0_0_16px_rgba(239,68,68,0.4)]'
+                          ? 'bg-green-500 text-white hover:shadow-[0_0_16px_rgba(34,197,94,0.4)]'
+                          : 'bg-red-500 text-white hover:shadow-[0_0_16px_rgba(239,68,68,0.4)]'
                           }`}
                       >
                         {isProcessingWallet ? (
