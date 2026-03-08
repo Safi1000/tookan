@@ -172,6 +172,13 @@ export function FinancialPanel() {
   const [merchantWallets, setMerchantWallets] = useState<CustomerWallet[]>([]);
   const [isLoadingMerchantWallets, setIsLoadingMerchantWallets] = useState(false);
 
+  // Transaction history modal state
+  const [txHistoryOpen, setTxHistoryOpen] = useState(false);
+  const [txHistoryData, setTxHistoryData] = useState<any[]>([]);
+  const [txHistoryBalance, setTxHistoryBalance] = useState<number>(0);
+  const [txHistoryName, setTxHistoryName] = useState('');
+  const [isLoadingTxHistory, setIsLoadingTxHistory] = useState(false);
+
   // Real data state
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
@@ -573,6 +580,36 @@ export function FinancialPanel() {
       console.error('Failed to save driver note:', err);
     } finally {
       setIsSavingNote(false);
+    }
+  };
+
+  // Fetch transaction history for a driver/merchant
+  const fetchTransactionHistory = async (fleetId: string | number, name: string) => {
+    setTxHistoryName(name);
+    setTxHistoryOpen(true);
+    setIsLoadingTxHistory(true);
+    setTxHistoryData([]);
+    setTxHistoryBalance(0);
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_BASE_URL}/api/fleet/wallet/transaction-history`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ fleet_id: fleetId })
+      });
+      const data = await res.json();
+      if (data.status === 'success' && data.data) {
+        setTxHistoryData(data.data.transactions || []);
+        setTxHistoryBalance(data.data.wallet_balance || 0);
+      }
+    } catch (err) {
+      console.error('Failed to fetch transaction history:', err);
+    } finally {
+      setIsLoadingTxHistory(false);
     }
   };
 
@@ -2405,12 +2442,10 @@ export function FinancialPanel() {
                               Edit Balance
                             </button>
                             <button
-                              onClick={() => {
-                                window.open(`https://app.tookanapp.com/#/fleet/fleet_profile/${driver.fleet_id || driver.id}/wallet`, '_blank');
-                              }}
+                              onClick={() => fetchTransactionHistory(driver.fleet_id || driver.id, driver.name)}
                               className="px-4 py-2 bg-blue-500/10 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-500/20 dark:hover:bg-blue-400/20 transition-all text-sm font-medium"
                             >
-                              View Transactions
+                              View Transaction History
                             </button>
                           </div>
                         </td>
@@ -2530,9 +2565,7 @@ export function FinancialPanel() {
                                 Edit Balance
                               </button>
                               <button
-                                onClick={() => {
-                                  window.open(`https://app.tookanapp.com/#/customer/customerProfile/${(merchant as any).vendor_id || merchant.id}/wallet`, '_blank');
-                                }}
+                                onClick={() => fetchTransactionHistory((merchant as any).vendor_id || merchant.id, merchant.name)}
                                 className="px-4 py-2 bg-blue-500/10 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-500/20 dark:hover:bg-blue-400/20 transition-all text-sm font-medium"
                               >
                                 View Transactions
@@ -3428,6 +3461,95 @@ export function FinancialPanel() {
                     Next
                   </button>
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Transaction History Modal */}
+      {txHistoryOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card dark:bg-[#1A2C53] border border-border dark:border-[#2A3C63] rounded-2xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-border dark:border-[#2A3C63]">
+              <div>
+                <h3 className="text-heading dark:text-[#C1EEFA] text-lg font-semibold">{txHistoryName}</h3>
+                <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-0.5">
+                  Current Balance: <span className="text-green-500 font-semibold">{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {txHistoryBalance.toFixed(2)}</span>
+                  <span className="text-muted-light dark:text-[#5B7894] ml-2">• Last 30 days</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setTxHistoryOpen(false)}
+                className="p-2 hover:bg-muted/20 dark:hover:bg-[#2A3C63] rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5 text-muted-light dark:text-[#99BFD1]" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {isLoadingTxHistory ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-3" />
+                  <p className="text-muted-light dark:text-[#99BFD1] text-sm">Loading transactions...</p>
+                </div>
+              ) : txHistoryData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Wallet className="w-10 h-10 text-muted-light dark:text-[#5B7894] mb-3" />
+                  <p className="text-heading dark:text-[#C1EEFA] font-medium">No transactions found</p>
+                  <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-1">No wallet transactions in the last 30 days.</p>
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead className="table-header-bg dark:bg-[#223560] border-b border-border dark:border-[#2A3C63] sticky top-0">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Date</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Type</th>
+                      <th className="text-right px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Amount</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Reference</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {txHistoryData.map((tx: any, i: number) => (
+                      <tr key={tx.id || i} className={`border-b border-border dark:border-[#2A3C63]/50 hover:bg-table-row-hover dark:hover:bg-[#223560]/50 transition-colors ${i % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
+                          {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          <span className="text-muted-light dark:text-[#5B7894] text-xs ml-1">
+                            {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 2
+                            ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                            : tx.transaction_type === 1
+                              ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                              : 'bg-red-500/10 text-red-500'
+                            }`}>
+                            {tx.transaction_type === 2 ? 'Credit' : tx.transaction_type === 1 ? 'Debit' : `Type ${tx.transaction_type}`}
+                          </span>
+                        </td>
+                        <td className={`px-4 py-3 text-right font-semibold text-sm ${tx.transaction_type === 2 ? 'text-green-600 dark:text-green-400' : 'text-red-500'
+                          }`}>
+                          {tx.transaction_type === 2 ? '+' : '-'}{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tx.amount?.toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm font-mono">{tx.reference_id || '-'}</td>
+                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm max-w-[200px] truncate" title={tx.remarks || tx.description || ''}>
+                          {tx.remarks || tx.description || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Footer */}
+            {txHistoryData.length > 0 && (
+              <div className="p-4 border-t border-border dark:border-[#2A3C63] text-center">
+                <p className="text-muted-light dark:text-[#5B7894] text-xs">{txHistoryData.length} transactions shown</p>
               </div>
             )}
           </div>

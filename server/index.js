@@ -760,6 +760,58 @@ app.post('/api/withdrawal-fees/set', authenticate, async (req, res) => {
   }
 });
 
+// ========== FLEET WALLET TRANSACTION HISTORY ==========
+app.post('/api/fleet/wallet/transaction-history', authenticate, async (req, res) => {
+  try {
+    const { fleet_id } = req.body;
+    if (!fleet_id) {
+      return res.status(400).json({ status: 'error', message: 'fleet_id is required' });
+    }
+
+    const tookanApiKey = process.env.TOOKAN_API_KEY;
+    if (!tookanApiKey) {
+      return res.status(500).json({ status: 'error', message: 'Tookan API key not configured' });
+    }
+
+    // Default to last 30 days
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const response = await fetch('https://api.tookanapp.com/v2/fleet/wallet/read_transaction_history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: tookanApiKey,
+        fleet_id: parseInt(fleet_id),
+        wallet_type: 1,
+        starting_date: startDate,
+        ending_date: endDate
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.status !== 200) {
+      return res.status(500).json({ status: 'error', message: data.message || 'Failed to fetch transaction history' });
+    }
+
+    // Extract wallet balance for wallet_type 1
+    const walletBalance = data.data?.wallet_balance?.find(w => w.wallet_type === 1)?.wallet_balance || 0;
+
+    res.json({
+      status: 'success',
+      data: {
+        transactions: data.data?.transaction_history || [],
+        wallet_balance: walletBalance,
+        total_count: data.data?.total_count || 0
+      }
+    });
+  } catch (error) {
+    console.error('Fleet wallet transaction history error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to fetch transaction history' });
+  }
+});
+
 // Search Merchant by Merchant ID (exact match)
 app.get('/api/customers/search', authenticate, async (req, res) => {
   try {
