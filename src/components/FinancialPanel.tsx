@@ -2372,7 +2372,6 @@ export function FinancialPanel() {
                       <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
                       <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
                       <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Current Balance</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pending COD</th>
                       <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
                       <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Action</th>
                     </tr>
@@ -2392,19 +2391,28 @@ export function FinancialPanel() {
                         <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.id}</td>
                         <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
                         <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(driver.balance || 0).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${(driver.pending || 0).toFixed(2)}</td>
                         <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{driver.phone || ''}</td>
                         <td className="px-4 py-3">
-                          <button
-                            onClick={() => {
-                              setEditingBalance({ type: 'driver', id: driver.id });
-                              setNewBalance((driver.balance || 0).toFixed(2));
-                              setBalanceNote('');
-                            }}
-                            className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
-                          >
-                            Edit Balance
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingBalance({ type: 'driver', id: driver.id });
+                                setNewBalance((driver.balance || 0).toFixed(2));
+                                setBalanceNote('');
+                              }}
+                              className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
+                            >
+                              Edit Balance
+                            </button>
+                            <button
+                              onClick={() => {
+                                window.open(`https://app.tookanapp.com/#/fleet/fleet_profile/${driver.fleet_id || driver.id}/wallet`, '_blank');
+                              }}
+                              className="px-4 py-2 bg-blue-500/10 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-500/20 dark:hover:bg-blue-400/20 transition-all text-sm font-medium"
+                            >
+                              View Transactions
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2475,10 +2483,8 @@ export function FinancialPanel() {
                   <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
                     <tr>
                       <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant ID</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Vendor ID</th>
                       <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant Name</th>
                       <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Wallet Balance</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Pending COD</th>
                       <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
                       <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Action</th>
                     </tr>
@@ -2508,22 +2514,30 @@ export function FinancialPanel() {
                             }`}
                         >
                           <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.id}</td>
-                          <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] font-mono text-sm">{(merchant as any).vendor_id || '-'}</td>
                           <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.name}</td>
                           <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${((merchant as any).balance || 0).toFixed(2)}</td>
-                          <td className="px-4 py-3 text-[#DE3544] dark:text-[#DE3544]">${((merchant as any).pending || 0).toFixed(2)}</td>
                           <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{(merchant as any).phone || ''}</td>
                           <td className="px-4 py-3">
-                            <button
-                              onClick={() => {
-                                setEditingBalance({ type: 'merchant', id: merchant.id });
-                                setNewBalance(((merchant as any).balance || 0).toFixed(2));
-                                setBalanceNote('');
-                              }}
-                              className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
-                            >
-                              Edit Balance
-                            </button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingBalance({ type: 'merchant', id: merchant.id });
+                                  setNewBalance(((merchant as any).balance || 0).toFixed(2));
+                                  setBalanceNote('');
+                                }}
+                                className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
+                              >
+                                Edit Balance
+                              </button>
+                              <button
+                                onClick={() => {
+                                  window.open(`https://app.tookanapp.com/#/customer/customerProfile/${(merchant as any).vendor_id || merchant.id}/wallet`, '_blank');
+                                }}
+                                className="px-4 py-2 bg-blue-500/10 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-500/20 dark:hover:bg-blue-400/20 transition-all text-sm font-medium"
+                              >
+                                View Transactions
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
