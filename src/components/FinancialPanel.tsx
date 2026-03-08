@@ -100,8 +100,8 @@ export function FinancialPanel() {
     'reconciliation',
     'logs',
     // ...(showCODSection ? (['cod'] as const) : []), // COD tab hidden
-    // 'driver-wallets', // Hidden from UI
-    // 'merchant-wallets' // Hidden from UI
+    'driver-wallets',
+    'merchant-wallets'
   ];
 
   // Ensure activeTab is valid, default to reconciliation if current tab is hidden
@@ -1546,7 +1546,7 @@ export function FinancialPanel() {
             : 'text-muted-light dark:text-[#99BFD1] hover:text-[#DE3544] dark:hover:text-[#C1EEFA]'
             }`}
         >
-          Customer Wallet
+          Merchant Wallet
         </button>
       </div>
 
