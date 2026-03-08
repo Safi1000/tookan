@@ -2441,7 +2441,7 @@ export function FinancialPanel() {
               </div>
 
               {/* Driver Wallet Table */}
-              {isLoadingDriverBalances ? (
+              {(!driverBalancesLoaded.current || isLoadingDriverBalances) ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-3" />
                   <p className="text-heading dark:text-[#C1EEFA] font-medium">Loading Driver Wallets</p>
@@ -3517,7 +3517,7 @@ export function FinancialPanel() {
       {/* Transaction History Modal */}
       {txHistoryOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
-          <div className="bg-card dark:bg-[#1A2C53] border border-border dark:border-[#2A3C63] rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] sm:max-h-[80vh] flex flex-col">
+          <div className="bg-card dark:bg-[#1A2C53] border border-border dark:border-[#2A3C63] rounded-2xl shadow-2xl w-[95vw] md:max-w-2xl lg:max-w-3xl max-h-[90vh] sm:max-h-[85vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-border dark:border-[#2A3C63]">
               <div className="min-w-0 flex-1">
@@ -3551,46 +3551,48 @@ export function FinancialPanel() {
               ) : (
                 <>
                   {/* Desktop Table */}
-                  <table className="w-full hidden md:table">
-                    <thead className="table-header-bg dark:bg-[#223560] border-b border-border dark:border-[#2A3C63] sticky top-0">
-                      <tr>
-                        <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Date</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Type</th>
-                        <th className="text-right px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Amount</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Reference</th>
-                        <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Remarks</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {txHistoryData.map((tx: any, i: number) => (
-                        <tr key={tx.id || i} className={`border-b border-border dark:border-[#2A3C63]/50 hover:bg-table-row-hover dark:hover:bg-[#223560]/50 transition-colors ${i % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
-                            {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            <span className="text-muted-light dark:text-[#5B7894] text-xs ml-1">
-                              {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 2
-                              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                              : tx.transaction_type === 1
-                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                                : 'bg-red-500/10 text-red-500'
-                              }`}>
-                              {tx.transaction_type === 2 ? 'Credit' : tx.transaction_type === 1 ? 'Debit' : `Type ${tx.transaction_type}`}
-                            </span>
-                          </td>
-                          <td className={`px-4 py-3 text-right font-semibold text-sm ${tx.transaction_type === 2 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                            {tx.transaction_type === 2 ? '+' : '-'}{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tx.amount?.toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm font-mono">{tx.reference_id || '-'}</td>
-                          <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm max-w-[200px] truncate" title={tx.remarks || tx.description || ''}>
-                            {tx.remarks || tx.description || '-'}
-                          </td>
+                  <div className="w-full overflow-x-auto hidden md:block">
+                    <table className="w-full min-w-[600px]">
+                      <thead className="table-header-bg dark:bg-[#223560] border-b border-border dark:border-[#2A3C63] sticky top-0">
+                        <tr>
+                          <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Date</th>
+                          <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Type</th>
+                          <th className="text-right px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Amount</th>
+                          <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Reference</th>
+                          <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Remarks</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {txHistoryData.map((tx: any, i: number) => (
+                          <tr key={tx.id || i} className={`border-b border-border dark:border-[#2A3C63]/50 hover:bg-table-row-hover dark:hover:bg-[#223560]/50 transition-colors ${i % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                            <td className="px-4 py-3 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
+                              {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              <span className="text-muted-light dark:text-[#5B7894] text-xs ml-1">
+                                {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 2
+                                ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                                : tx.transaction_type === 1
+                                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                                  : 'bg-red-500/10 text-red-500'
+                                }`}>
+                                {tx.transaction_type === 2 ? 'Credit' : tx.transaction_type === 1 ? 'Debit' : `Type ${tx.transaction_type}`}
+                              </span>
+                            </td>
+                            <td className={`px-4 py-3 text-right font-semibold text-sm whitespace-nowrap ${tx.transaction_type === 2 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                              {tx.transaction_type === 2 ? '+' : '-'}{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tx.amount?.toFixed(2)}
+                            </td>
+                            <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm font-mono">{tx.reference_id || '-'}</td>
+                            <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm max-w-[200px] truncate" title={tx.remarks || tx.description || ''}>
+                              {tx.remarks || tx.description || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
 
                   {/* Mobile Cards */}
                   <div className="md:hidden space-y-3">
