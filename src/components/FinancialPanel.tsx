@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { DollarSign, Wallet, CheckCircle, X, Search, Calendar, Save, Check, XCircle, Eye, Download, Loader2, AlertCircle } from 'lucide-react';
+import { DollarSign, Wallet, CheckCircle, X, Search, Calendar, Save, Check, XCircle, Eye, Download, Loader2, AlertCircle, StickyNote } from 'lucide-react';
 import { DatePicker } from './ui/date-picker';
 import {
   createFleetWalletTransaction,
@@ -145,6 +145,7 @@ export function FinancialPanel() {
   // Driver daily notes state
   const [dailyNotes, setDailyNotes] = useState<Record<string, string>>({});
   const [isSavingNote, setIsSavingNote] = useState(false);
+  const [notePopupDate, setNotePopupDate] = useState<string | null>(null);
 
   // Wallet state
   const [driverWalletSearch, setDriverWalletSearch] = useState('');
@@ -1529,8 +1530,7 @@ export function FinancialPanel() {
             COD Confirmation
           </button>
         )} */}
-        {/* Driver and Merchant Wallets Tabs — Hidden from UI */}
-        {/* <button
+        <button
           onClick={() => handleTabChange('driver-wallets')}
           className={`px-6 py-3 rounded-t-xl transition-all ${activeTab === 'driver-wallets'
             ? 'bg-hover-bg-light dark:bg-[#223560] text-[#DE3544] dark:text-[#C1EEFA] border-b-2 border-[#DE3544]'
@@ -1547,7 +1547,7 @@ export function FinancialPanel() {
             }`}
         >
           Customer Wallet
-        </button> */}
+        </button>
       </div>
 
       {/* Reconciliation Tab */}
@@ -1885,21 +1885,17 @@ export function FinancialPanel() {
                                 <p className="text-[#DE3544] dark:text-[#DE3544] font-medium">{currency} {codPending.toFixed(2)}</p>
                               </div>
 
-                              {/* Daily Note */}
-                              <div>
-                                <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Note</p>
-                                <textarea
-                                  value={dailyNotes[item.date] || ''}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setDailyNotes(prev => ({ ...prev, [item.date]: val }));
-                                  }}
-                                  onBlur={() => saveDriverNote(item.date, dailyNotes[item.date] || '')}
-                                  placeholder="Add a note..."
-                                  rows={2}
-                                  className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-lg px-2 py-1.5 text-heading dark:text-[#C1EEFA] text-xs focus:outline-none focus:border-[#C1EEFA] transition-all resize-none placeholder-[#5B7894]"
-                                />
-                              </div>
+                              {/* Daily Note Button */}
+                              <button
+                                onClick={() => setNotePopupDate(item.date)}
+                                className={`w-full mt-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs transition-all font-medium ${dailyNotes[item.date]
+                                  ? 'bg-yellow-500/10 dark:bg-yellow-400/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30 dark:border-yellow-400/30 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20'
+                                  : 'bg-muted/20 dark:bg-[#2A3C63]/30 text-muted-light dark:text-[#99BFD1] border border-border dark:border-[#2A3C63] hover:bg-muted/30 dark:hover:bg-[#2A3C63]/50'
+                                  }`}
+                              >
+                                <StickyNote className="w-3 h-3" />
+                                {dailyNotes[item.date] ? 'View Note' : 'Add Note'}
+                              </button>
 
                               {/* Edit/Save Button */}
                               <button
@@ -1942,6 +1938,57 @@ export function FinancialPanel() {
                       })}
                     </div>
                   </>
+                )}
+
+                {/* Note Popup Modal */}
+                {notePopupDate && (
+                  <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center" style={{ padding: '16px' }}>
+                    <div className="bg-card dark:bg-[#223560] border border-border dark:border-[#2A3C63] rounded-2xl shadow-2xl" style={{ width: '100%', maxWidth: '400px' }}>
+                      <div className="flex items-center justify-between p-4 border-b border-border dark:border-[#2A3C63]">
+                        <div className="flex items-center gap-2">
+                          <StickyNote className="w-4 h-4 text-yellow-500" />
+                          <h3 className="text-heading dark:text-[#C1EEFA] text-sm font-semibold">
+                            Note — {new Date(notePopupDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </h3>
+                        </div>
+                        <button
+                          onClick={() => {
+                            saveDriverNote(notePopupDate, dailyNotes[notePopupDate] || '');
+                            setNotePopupDate(null);
+                          }}
+                          className="p-1 hover:bg-muted/20 rounded-lg transition-colors"
+                        >
+                          <X className="w-4 h-4 text-muted-light dark:text-[#99BFD1]" />
+                        </button>
+                      </div>
+                      <div className="p-4">
+                        <textarea
+                          value={dailyNotes[notePopupDate] || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const date = notePopupDate;
+                            setDailyNotes(prev => ({ ...prev, [date]: val }));
+                          }}
+                          placeholder="Write your note here..."
+                          rows={4}
+                          autoFocus
+                          className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg px-3 py-2 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-[#C1EEFA] transition-all resize-none placeholder-[#5B7894]"
+                        />
+                      </div>
+                      <div className="p-4 pt-0 flex justify-end">
+                        <button
+                          onClick={() => {
+                            saveDriverNote(notePopupDate, dailyNotes[notePopupDate] || '');
+                            setNotePopupDate(null);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-[#10B981] text-white rounded-lg hover:bg-[#059669] transition-all text-xs font-medium"
+                        >
+                          <Save className="w-3 h-3" />
+                          Save Note
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </>
             )}
@@ -3176,7 +3223,7 @@ export function FinancialPanel() {
                   )}
                 </div>
 
-                {/* Modal Footer with inline note */}
+                {/* Modal Footer with note button */}
                 <div style={{
                   padding: '1rem 1.5rem',
                   borderTop: '1px solid var(--border)',
@@ -3185,23 +3232,16 @@ export function FinancialPanel() {
                   justifyContent: 'space-between',
                   gap: '1rem'
                 }} className="modal-footer">
-                  <div style={{ flex: 1, maxWidth: '60%', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span className="text-muted-light dark:text-[#99BFD1] text-xs" style={{ whiteSpace: 'nowrap' }}>Note:</span>
-                    <input
-                      type="text"
-                      value={dailyNotes[taskModalDate || ''] || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        const date = taskModalDate || '';
-                        setDailyNotes(prev => ({ ...prev, [date]: val }));
-                      }}
-                      onBlur={() => {
-                        if (taskModalDate) saveDriverNote(taskModalDate, dailyNotes[taskModalDate] || '');
-                      }}
-                      placeholder="Add a note..."
-                      className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg px-2.5 py-1.5 text-heading dark:text-[#C1EEFA] text-xs focus:outline-none focus:border-[#C1EEFA] transition-all placeholder-[#5B7894]"
-                    />
-                  </div>
+                  <button
+                    onClick={() => { if (taskModalDate) setNotePopupDate(taskModalDate); }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs transition-all font-medium ${dailyNotes[taskModalDate || '']
+                      ? 'bg-yellow-500/10 dark:bg-yellow-400/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30 dark:border-yellow-400/30 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20'
+                      : 'bg-muted/20 dark:bg-[#2A3C63]/30 text-muted-light dark:text-[#99BFD1] border border-border dark:border-[#2A3C63] hover:bg-muted/30 dark:hover:bg-[#2A3C63]/50'
+                      }`}
+                  >
+                    <StickyNote className="w-3 h-3" />
+                    {dailyNotes[taskModalDate || ''] ? 'View Note' : 'Add Note'}
+                  </button>
                   <div style={{ display: 'flex', gap: '0.75rem', flexShrink: 0 }}>
                     <button
                       onClick={closeTaskModal}
