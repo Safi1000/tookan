@@ -178,6 +178,7 @@ export function FinancialPanel() {
   const [txHistoryBalance, setTxHistoryBalance] = useState<number>(0);
   const [txHistoryName, setTxHistoryName] = useState('');
   const [isLoadingTxHistory, setIsLoadingTxHistory] = useState(false);
+  const [isLoadingDriverBalances, setIsLoadingDriverBalances] = useState(false);
 
   // Real data state
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -318,6 +319,7 @@ export function FinancialPanel() {
     driverBalancesLoaded.current = true;
 
     const loadBalances = async () => {
+      setIsLoadingDriverBalances(true);
       try {
         const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
         const token = localStorage.getItem('auth_token');
@@ -341,6 +343,8 @@ export function FinancialPanel() {
         }
       } catch (err) {
         console.error('Failed to load driver balances:', err);
+      } finally {
+        setIsLoadingDriverBalances(false);
       }
     };
     loadBalances();
@@ -2437,58 +2441,66 @@ export function FinancialPanel() {
               </div>
 
               {/* Driver Wallet Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
-                    <tr>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Current Balance</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
-                      <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {drivers.map((driver, index) => (
-                      <tr
-                        key={driver.id}
-                        className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${driverWalletValidation === 'valid' &&
-                          (driver.name.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
-                            driver.id.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
-                            (driver.phone && driver.phone.includes(driverWalletSearch)))
-                          ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)]'
-                          : ''
-                          }`}
-                      >
-                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.id}</td>
-                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
-                        <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(driver.balance || 0).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{driver.phone || ''}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingBalance({ type: 'driver', id: driver.id });
-                                setNewBalance((driver.balance || 0).toFixed(2));
-                                setBalanceNote('');
-                              }}
-                              className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
-                            >
-                              Edit Balance
-                            </button>
-                            <button
-                              onClick={() => fetchTransactionHistory(driver.fleet_id || driver.id, driver.name)}
-                              className="px-4 py-2 bg-blue-500/10 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-500/20 dark:hover:bg-blue-400/20 transition-all text-sm font-medium"
-                            >
-                              View Transaction History
-                            </button>
-                          </div>
-                        </td>
+              {isLoadingDriverBalances ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-3" />
+                  <p className="text-heading dark:text-[#C1EEFA] font-medium">Loading Driver Wallets</p>
+                  <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-1">Fetching wallet balances for all drivers...</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
+                      <tr>
+                        <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver ID</th>
+                        <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Driver Name</th>
+                        <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Current Balance</th>
+                        <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Phone</th>
+                        <th className="text-left px-4 py-3 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {drivers.map((driver, index) => (
+                        <tr
+                          key={driver.id}
+                          className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${driverWalletValidation === 'valid' &&
+                            (driver.name.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
+                              driver.id.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
+                              (driver.phone && driver.phone.includes(driverWalletSearch)))
+                            ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)]'
+                            : ''
+                            }`}
+                        >
+                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.id}</td>
+                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
+                          <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(driver.balance || 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{driver.phone || ''}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingBalance({ type: 'driver', id: driver.id });
+                                  setNewBalance((driver.balance || 0).toFixed(2));
+                                  setBalanceNote('');
+                                }}
+                                className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
+                              >
+                                Edit Balance
+                              </button>
+                              <button
+                                onClick={() => fetchTransactionHistory(driver.fleet_id || driver.id, driver.name)}
+                                className="px-4 py-2 bg-blue-500/10 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-500/20 dark:hover:bg-blue-400/20 transition-all text-sm font-medium"
+                              >
+                                View Transaction History
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )
@@ -3504,27 +3516,27 @@ export function FinancialPanel() {
 
       {/* Transaction History Modal */}
       {txHistoryOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card dark:bg-[#1A2C53] border border-border dark:border-[#2A3C63] rounded-2xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-card dark:bg-[#1A2C53] border border-border dark:border-[#2A3C63] rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] sm:max-h-[80vh] flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b border-border dark:border-[#2A3C63]">
-              <div>
-                <h3 className="text-heading dark:text-[#C1EEFA] text-lg font-semibold">{txHistoryName}</h3>
-                <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-0.5">
-                  Current Balance: <span className="text-green-500 font-semibold">{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {txHistoryBalance.toFixed(2)}</span>
-                  <span className="text-muted-light dark:text-[#5B7894] ml-2">• Last 30 days</span>
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-border dark:border-[#2A3C63]">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-heading dark:text-[#C1EEFA] text-base sm:text-lg font-semibold truncate">{txHistoryName}</h3>
+                <p className="text-muted-light dark:text-[#99BFD1] text-xs sm:text-sm mt-0.5">
+                  Balance: <span className="text-green-500 font-semibold">{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {txHistoryBalance.toFixed(2)}</span>
+                  <span className="text-muted-light dark:text-[#5B7894] ml-2 hidden sm:inline">• Last 30 days</span>
                 </p>
               </div>
               <button
                 onClick={() => setTxHistoryOpen(false)}
-                className="p-2 hover:bg-muted/20 dark:hover:bg-[#2A3C63] rounded-xl transition-colors"
+                className="p-2 hover:bg-muted/20 dark:hover:bg-[#2A3C63] rounded-xl transition-colors ml-2 flex-shrink-0"
               >
                 <X className="w-5 h-5 text-muted-light dark:text-[#99BFD1]" />
               </button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-auto p-4 md:p-5">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-5">
               {isLoadingTxHistory ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-3" />
@@ -3537,26 +3549,54 @@ export function FinancialPanel() {
                   <p className="text-muted-light dark:text-[#99BFD1] text-sm mt-1">No wallet transactions in the last 30 days.</p>
                 </div>
               ) : (
-                <table className="w-full min-w-[600px]">
-                  <thead className="table-header-bg dark:bg-[#223560] border-b border-border dark:border-[#2A3C63] sticky top-0">
-                    <tr>
-                      <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Date</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Type</th>
-                      <th className="text-right px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Amount</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Reference</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Remarks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <>
+                  {/* Desktop Table */}
+                  <table className="w-full hidden md:table">
+                    <thead className="table-header-bg dark:bg-[#223560] border-b border-border dark:border-[#2A3C63] sticky top-0">
+                      <tr>
+                        <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Date</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Type</th>
+                        <th className="text-right px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Amount</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Reference</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium table-header-text dark:text-[#C1EEFA]">Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {txHistoryData.map((tx: any, i: number) => (
+                        <tr key={tx.id || i} className={`border-b border-border dark:border-[#2A3C63]/50 hover:bg-table-row-hover dark:hover:bg-[#223560]/50 transition-colors ${i % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                          <td className="px-4 py-3 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
+                            {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            <span className="text-muted-light dark:text-[#5B7894] text-xs ml-1">
+                              {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 2
+                              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                              : tx.transaction_type === 1
+                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                                : 'bg-red-500/10 text-red-500'
+                              }`}>
+                              {tx.transaction_type === 2 ? 'Credit' : tx.transaction_type === 1 ? 'Debit' : `Type ${tx.transaction_type}`}
+                            </span>
+                          </td>
+                          <td className={`px-4 py-3 text-right font-semibold text-sm ${tx.transaction_type === 2 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                            {tx.transaction_type === 2 ? '+' : '-'}{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tx.amount?.toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm font-mono">{tx.reference_id || '-'}</td>
+                          <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm max-w-[200px] truncate" title={tx.remarks || tx.description || ''}>
+                            {tx.remarks || tx.description || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Mobile Cards */}
+                  <div className="md:hidden space-y-3">
                     {txHistoryData.map((tx: any, i: number) => (
-                      <tr key={tx.id || i} className={`border-b border-border dark:border-[#2A3C63]/50 hover:bg-table-row-hover dark:hover:bg-[#223560]/50 transition-colors ${i % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                        <td className="px-4 py-3 text-heading dark:text-[#C1EEFA] text-sm whitespace-nowrap">
-                          {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                          <span className="text-muted-light dark:text-[#5B7894] text-xs ml-1">
-                            {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
+                      <div key={tx.id || i} className="bg-muted/30 dark:bg-[#223560]/40 rounded-xl p-3 border border-border dark:border-[#2A3C63]/50">
+                        <div className="flex items-center justify-between mb-2">
                           <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 2
                             ? 'bg-green-500/10 text-green-600 dark:text-green-400'
                             : tx.transaction_type === 1
@@ -3565,25 +3605,28 @@ export function FinancialPanel() {
                             }`}>
                             {tx.transaction_type === 2 ? 'Credit' : tx.transaction_type === 1 ? 'Debit' : `Type ${tx.transaction_type}`}
                           </span>
-                        </td>
-                        <td className={`px-4 py-3 text-right font-semibold text-sm ${tx.transaction_type === 2 ? 'text-green-600 dark:text-green-400' : 'text-red-500'
-                          }`}>
-                          {tx.transaction_type === 2 ? '+' : '-'}{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tx.amount?.toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm font-mono">{tx.reference_id || '-'}</td>
-                        <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1] text-sm max-w-[200px] truncate" title={tx.remarks || tx.description || ''}>
-                          {tx.remarks || tx.description || '-'}
-                        </td>
-                      </tr>
+                          <span className={`font-semibold text-sm ${tx.transaction_type === 2 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                            {tx.transaction_type === 2 ? '+' : '-'}{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {tx.amount?.toFixed(2)}
+                          </span>
+                        </div>
+                        <p className="text-heading dark:text-[#C1EEFA] text-xs">
+                          {new Date(tx.creation_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          <span className="text-muted-light dark:text-[#5B7894] ml-1">
+                            {new Date(tx.creation_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </p>
+                        {tx.reference_id && <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-1 font-mono">Ref: {tx.reference_id}</p>}
+                        {(tx.remarks || tx.description) && <p className="text-muted-light dark:text-[#99BFD1] text-xs mt-1 truncate">{tx.remarks || tx.description}</p>}
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                </>
               )}
             </div>
 
             {/* Footer */}
             {txHistoryData.length > 0 && (
-              <div className="p-4 border-t border-border dark:border-[#2A3C63] text-center">
+              <div className="p-3 sm:p-4 border-t border-border dark:border-[#2A3C63] text-center">
                 <p className="text-muted-light dark:text-[#5B7894] text-xs">{txHistoryData.length} transactions shown</p>
               </div>
             )}
