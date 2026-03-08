@@ -153,7 +153,8 @@ export function FinancialPanel() {
   const [merchantWalletSearch, setMerchantWalletSearch] = useState('');
   const [merchantWalletValidation, setMerchantWalletValidation] = useState<'valid' | 'invalid' | null>(null);
   const [editingBalance, setEditingBalance] = useState<{ type: 'driver' | 'merchant'; id: string } | null>(null);
-  const [newBalance, setNewBalance] = useState('');
+  const [txAmount, setTxAmount] = useState('');
+  const [txType, setTxType] = useState<'credit' | 'debit'>('credit');
   const [balanceNote, setBalanceNote] = useState('');
   const [isProcessingWallet, setIsProcessingWallet] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
@@ -2480,12 +2481,14 @@ export function FinancialPanel() {
                               <button
                                 onClick={() => {
                                   setEditingBalance({ type: 'driver', id: driver.id });
-                                  setNewBalance((driver.balance || 0).toFixed(2));
+                                  setTxAmount('');
+                                  setTxType('credit');
                                   setBalanceNote('');
+                                  setWalletError(null);
                                 }}
                                 className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
                               >
-                                Edit Balance
+                                Credit/Debit
                               </button>
                               <button
                                 onClick={() => fetchTransactionHistory(driver.fleet_id || driver.id, driver.name)}
@@ -2604,12 +2607,14 @@ export function FinancialPanel() {
                               <button
                                 onClick={() => {
                                   setEditingBalance({ type: 'merchant', id: merchant.id });
-                                  setNewBalance(((merchant as any).balance || 0).toFixed(2));
+                                  setTxAmount('');
+                                  setTxType('credit');
                                   setBalanceNote('');
+                                  setWalletError(null);
                                 }}
                                 className="px-4 py-2 bg-primary/10 dark:bg-[#C1EEFA]/10 border border-primary/30 dark:border-[#C1EEFA]/30 text-primary dark:text-[#C1EEFA] rounded-lg hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium"
                               >
-                                Edit Balance
+                                Credit/Debit
                               </button>
                               <button
                                 onClick={() => fetchTransactionHistory((merchant as any).vendor_id || merchant.id, merchant.name)}
@@ -2631,18 +2636,19 @@ export function FinancialPanel() {
         )
       }
 
-      {/* Edit Balance Modal */}
+      {/* Credit/Debit Modal */}
       {
         editingBalance && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
             <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6 max-w-md w-full shadow-xl">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-heading text-xl">Edit Balance</h3>
+                <h3 className="text-heading dark:text-[#C1EEFA] text-xl font-semibold">Credit / Debit</h3>
                 <button
                   onClick={() => {
                     setEditingBalance(null);
-                    setNewBalance('');
+                    setTxAmount('');
                     setBalanceNote('');
+                    setWalletError(null);
                   }}
                   className="p-2 hover:bg-hover-bg-light dark:hover:bg-[#223560] rounded-lg transition-all"
                 >
@@ -2661,36 +2667,63 @@ export function FinancialPanel() {
                   ? (entity as Driver).balance || 0
                   : (entity as CustomerWallet).balance;
 
+                const currency = (localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$';
+
                 return (
                   <div className="space-y-4">
-                    <div>
-                      <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
-                        Current Balance
-                      </label>
-                      <input
-                        type="text"
-                        value={`$${(currentBalance || 0).toFixed(2)}`}
-                        disabled
-                        className="w-full bg-muted dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] opacity-60 cursor-not-allowed"
-                      />
+                    {/* Current Balance Display */}
+                    <div className="flex items-center justify-between bg-muted/30 dark:bg-[#1A2C53] rounded-xl px-4 py-3 border border-border dark:border-[#2A3C63]">
+                      <span className="text-muted-light dark:text-[#99BFD1] text-sm">Current Balance</span>
+                      <span className="text-green-500 font-semibold text-lg">{currency} {(currentBalance || 0).toFixed(2)}</span>
                     </div>
 
+                    {/* Credit / Debit Toggle */}
                     <div>
                       <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
-                        New Balance
+                        Transaction Type
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setTxType('credit')}
+                          className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all border ${txType === 'credit'
+                              ? 'bg-green-500/20 border-green-500/50 text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.2)]'
+                              : 'bg-muted/30 dark:bg-[#1A2C53] border-border dark:border-[#2A3C63] text-muted-light dark:text-[#99BFD1] hover:bg-muted/50 dark:hover:bg-[#2A3C63]'
+                            }`}
+                        >
+                          ↑ Credit
+                        </button>
+                        <button
+                          onClick={() => setTxType('debit')}
+                          className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all border ${txType === 'debit'
+                              ? 'bg-red-500/20 border-red-500/50 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.2)]'
+                              : 'bg-muted/30 dark:bg-[#1A2C53] border-border dark:border-[#2A3C63] text-muted-light dark:text-[#99BFD1] hover:bg-muted/50 dark:hover:bg-[#2A3C63]'
+                            }`}
+                        >
+                          ↓ Debit
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Amount Input */}
+                    <div>
+                      <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
+                        Amount ({currency})
                       </label>
                       <input
                         type="number"
-                        value={newBalance}
-                        onChange={(e) => setNewBalance(e.target.value)}
-                        placeholder="Enter new balance"
+                        value={txAmount}
+                        onChange={(e) => { setTxAmount(e.target.value); setWalletError(null); }}
+                        placeholder="Enter amount"
+                        min="0"
+                        step="0.01"
                         className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all"
                       />
                     </div>
 
+                    {/* Description */}
                     <div>
                       <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
-                        Description {editingBalance.type === 'driver' && <span className="text-[#DE3544]">*</span>}
+                        Description <span className="text-[#DE3544]">*</span>
                       </label>
                       <textarea
                         value={balanceNote}
@@ -2698,23 +2731,13 @@ export function FinancialPanel() {
                           setBalanceNote(e.target.value);
                           setWalletError(null);
                         }}
-                        placeholder={editingBalance.type === 'driver'
-                          ? "Add description for this transaction (e.g., 'Earnings credit', 'Penalty adjustment')..."
-                          : "Add description for this transaction (optional, e.g., 'COD credit', 'Wallet top-up')..."
-                        }
-                        rows={4}
+                        placeholder="Reason for this transaction (e.g., 'Earnings credit', 'Penalty adjustment')..."
+                        rows={3}
                         className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all resize-none"
                       />
-                      {editingBalance.type === 'driver' && (
-                        <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1">
-                          Required: Explain the reason for this transaction
-                        </p>
-                      )}
-                      {editingBalance.type === 'merchant' && (
-                        <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1">
-                          Optional: Explain the reason for adding money to the wallet
-                        </p>
-                      )}
+                      <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1">
+                        Required: Explain the reason for this transaction
+                      </p>
                     </div>
 
                     {walletError && (
@@ -2728,7 +2751,7 @@ export function FinancialPanel() {
                       <button
                         onClick={() => {
                           setEditingBalance(null);
-                          setNewBalance('');
+                          setTxAmount('');
                           setBalanceNote('');
                           setWalletError(null);
                         }}
@@ -2741,15 +2764,20 @@ export function FinancialPanel() {
                         onClick={async () => {
                           if (!editingBalance) return;
 
-                          const amount = parseFloat(newBalance);
+                          const amount = parseFloat(txAmount);
                           if (isNaN(amount) || amount <= 0) {
                             setWalletError('Please enter a valid amount greater than 0');
                             return;
                           }
 
-                          // Description is required for driver operations, optional for customer operations
-                          if (editingBalance.type === 'driver' && !balanceNote.trim()) {
+                          if (!balanceNote.trim()) {
                             setWalletError('Please provide a description for this transaction');
+                            return;
+                          }
+
+                          // Merchant debit not supported
+                          if (editingBalance.type === 'merchant' && txType === 'debit') {
+                            setWalletError('Debiting merchant wallet is not supported via this API. Please use the Tookan dashboard.');
                             return;
                           }
 
@@ -2761,86 +2789,47 @@ export function FinancialPanel() {
 
                             if (editingBalance.type === 'driver') {
                               const driver = drivers.find(d => d.id === editingBalance.id);
-                              if (!driver) {
-                                throw new Error('Driver not found');
-                              }
+                              if (!driver) throw new Error('Driver not found');
 
-                              // Determine transaction type based on whether new balance is higher or lower
-                              const currentBalance = driver.balance || 0;
-                              const difference = amount - currentBalance;
-
-                              if (difference > 0) {
-                                // Credit driver wallet
-                                response = await createFleetWalletTransaction(
-                                  driver.fleet_id || driver.id,
-                                  difference,
-                                  balanceNote.trim(),
-                                  'credit'
-                                );
-                              } else if (difference < 0) {
-                                // Debit driver wallet (penalty/adjustment)
-                                response = await createFleetWalletTransaction(
-                                  driver.fleet_id || driver.id,
-                                  Math.abs(difference),
-                                  balanceNote.trim(),
-                                  'debit'
-                                );
-                              } else {
-                                // No change needed
-                                setIsProcessingWallet(false);
-                                setEditingBalance(null);
-                                setNewBalance('');
-                                setBalanceNote('');
-                                toast.success('No balance change needed');
-                                return;
-                              }
+                              response = await createFleetWalletTransaction(
+                                driver.fleet_id || driver.id,
+                                amount,
+                                balanceNote.trim(),
+                                txType
+                              );
                             } else {
-                              // Merchant wallet
                               const merchant = merchantWallets.find(m => m.id === editingBalance.id);
-                              if (!merchant) {
-                                throw new Error('Merchant not found');
-                              }
+                              if (!merchant) throw new Error('Merchant not found');
 
-                              const currentBalance = (merchant as any).balance || 0;
-                              const difference = amount - currentBalance;
+                              const vendorId = merchant.vendor_id;
+                              if (!vendorId) throw new Error('Merchant vendor ID not found.');
 
-                              if (difference > 0) {
-                                // Add money to merchant wallet (only addition is supported by Tookan Custom Wallet API)
-                                const vendorId = merchant.vendor_id;
-                                if (!vendorId) {
-                                  throw new Error('Merchant vendor ID not found. Cannot process wallet transaction.');
-                                }
-
-                                // Description is optional for merchant wallet operations (per API documentation)
-                                response = await addCustomerWalletPayment(
-                                  vendorId,
-                                  difference,
-                                  balanceNote.trim() || undefined
-                                );
-                              } else if (difference < 0) {
-                                // Note: Tookan Custom Wallet API typically only supports adding money
-                                // For debiting, you may need a different endpoint or workflow
-                                setWalletError('Debiting merchant wallet is not supported via this API. To reduce balance, please use the Tookan dashboard directly.');
-                                setIsProcessingWallet(false);
-                                return;
-                              } else {
-                                // No change needed
-                                setIsProcessingWallet(false);
-                                setEditingBalance(null);
-                                setNewBalance('');
-                                setBalanceNote('');
-                                toast.success('No balance change needed');
-                                return;
-                              }
+                              response = await addCustomerWalletPayment(
+                                vendorId,
+                                amount,
+                                balanceNote.trim() || undefined
+                              );
                             }
 
                             if (response.status === 'success') {
-                              toast.success(response.message);
+                              toast.success(`${txType === 'credit' ? 'Credited' : 'Debited'} ${currency} ${amount.toFixed(2)} successfully`);
+
+                              // Refresh driver balance locally
+                              if (editingBalance.type === 'driver') {
+                                const driver = drivers.find(d => d.id === editingBalance.id);
+                                if (driver) {
+                                  const newBal = txType === 'credit'
+                                    ? (driver.balance || 0) + amount
+                                    : (driver.balance || 0) - amount;
+                                  setDrivers(prev => prev.map(d =>
+                                    d.id === editingBalance.id ? { ...d, balance: newBal } : d
+                                  ));
+                                }
+                              }
+
                               setEditingBalance(null);
-                              setNewBalance('');
+                              setTxAmount('');
                               setBalanceNote('');
-                              // In a real app, you'd refresh the wallet data here
-                              // await refreshWalletData(editingBalance.type, editingBalance.id);
                             } else {
                               setWalletError(response.message);
                               toast.error(response.message);
@@ -2854,7 +2843,10 @@ export function FinancialPanel() {
                           }
                         }}
                         disabled={isProcessingWallet}
-                        className="flex-1 bg-[#C1EEFA] text-[#1A2C53] py-3 rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className={`flex-1 py-3 rounded-xl transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${txType === 'credit'
+                            ? 'bg-green-500 text-white hover:shadow-[0_0_16px_rgba(34,197,94,0.4)]'
+                            : 'bg-red-500 text-white hover:shadow-[0_0_16px_rgba(239,68,68,0.4)]'
+                          }`}
                       >
                         {isProcessingWallet ? (
                           <>
@@ -2862,7 +2854,7 @@ export function FinancialPanel() {
                             Processing...
                           </>
                         ) : (
-                          'Update Balance'
+                          `Confirm ${txType === 'credit' ? 'Credit' : 'Debit'}`
                         )}
                       </button>
                     </div>
