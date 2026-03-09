@@ -1470,6 +1470,52 @@ function getApp() {
       }
     });
 
+    // Batch fetch wallet balances for multiple merchant vendor IDs
+    app.post('/api/merchant/wallet/batch-balances', authenticate, async (req, res) => {
+      try {
+        const { vendor_ids } = req.body;
+        if (!vendor_ids || !Array.isArray(vendor_ids) || vendor_ids.length === 0) {
+          return res.status(400).json({ status: 'error', message: 'vendor_ids array is required' });
+        }
+
+        const tookanApiKey = process.env.TOOKAN_API_KEY;
+        if (!tookanApiKey) {
+          return res.status(500).json({ status: 'error', message: 'Tookan API key not configured' });
+        }
+
+        const tookanFetch = await import('node-fetch').then(m => m.default).catch(() => require('node-fetch'));
+        const response = await tookanFetch('https://api.tookanapp.com/v2/fetch_customers_wallet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: tookanApiKey,
+            vendor_ids: vendor_ids.map(id => parseInt(id)),
+            is_pagination: 1,
+            off_set: 0,
+            limit: vendor_ids.length + 10
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.status !== 200) {
+          return res.status(500).json({ status: 'error', message: data.message || 'Failed to fetch merchant wallets' });
+        }
+
+        const balances = {};
+        if (data.data?.wallet_details) {
+          for (const detail of data.data.wallet_details) {
+            balances[detail.vendor_id] = detail.wallet_balance || 0;
+          }
+        }
+
+        res.json({ status: 'success', data: { balances } });
+      } catch (error) {
+        console.error('Merchant batch wallet balances error:', error);
+        res.status(500).json({ status: 'error', message: 'Failed to fetch merchant wallet balances' });
+      }
+    });
+
     // Search Merchant by Merchant ID (exact match)
     app.get('/api/customers/search', authenticate, async (req, res) => {
       try {
