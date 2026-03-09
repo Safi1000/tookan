@@ -2700,13 +2700,15 @@ export function FinancialPanel() {
               {editingBalance && (() => {
                 const entity = editingBalance.type === 'driver'
                   ? drivers.find(d => d.id === editingBalance.id)
-                  : merchantWallets.find(m => m.id === editingBalance.id);
+                  : (merchantWallets.length > 0
+                    ? merchantWallets.find(m => m.id === editingBalance.id)
+                    : merchants.find(m => m.id === editingBalance.id));
 
                 if (!entity) return null;
 
                 const currentBalance = editingBalance.type === 'driver'
                   ? (entity as Driver).balance || 0
-                  : (entity as CustomerWallet).balance;
+                  : (entity as any).balance || 0;
 
                 const currency = (localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$';
 
