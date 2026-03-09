@@ -4629,17 +4629,49 @@ function getApp() {
 
         const { status: filterStatus } = req.query;
 
-        let query = supabase.from('withdrawal_requests').select('*');
+        // Query from withdrawals table (where the receiver API inserts)
+        let query = supabase.from('withdrawals').select('*');
         if (filterStatus) {
           query = query.eq('status', filterStatus);
         }
-        query = query.order('requested_at', { ascending: false });
+        query = query.order('created_at', { ascending: false });
 
         const { data: requests, error } = await query;
 
+        if (error) {
+          console.error('Fetch withdrawals error:', error);
+          // Fallback to withdrawal_requests table
+          let fallbackQuery = supabase.from('withdrawal_requests').select('*');
+          if (filterStatus) fallbackQuery = fallbackQuery.eq('status', filterStatus);
+          fallbackQuery = fallbackQuery.order('requested_at', { ascending: false });
+          const { data: fallbackData } = await fallbackQuery;
+          return res.json({ status: 'success', data: { requests: fallbackData || [] } });
+        }
+
+        // Map withdrawals table fields to expected format
+        const mapped = (requests || []).map(w => ({
+          id: w.id,
+          type: 'customer',
+          customerId: w.vendor_id || w.fleet_id || '',
+          customerName: '',
+          phone: '',
+          iban: w.iban || '',
+          withdrawalAmount: parseFloat(w.requested_amount || 0),
+          walletAmount: 0,
+          date: w.created_at ? w.created_at.split('T')[0] : '',
+          status: w.status || 'pending',
+          createdAt: w.created_at,
+          // Raw DB fields
+          vendor_id: w.vendor_id || w.fleet_id,
+          email: w.email || '',
+          requested_amount: parseFloat(w.requested_amount || 0),
+          tax_applied: parseFloat(w.tax_applied || 0),
+          final_amount: parseFloat(w.final_amount || 0),
+        }));
+
         res.json({
           status: 'success',
-          data: { requests: requests || [] }
+          data: { requests: mapped }
         });
       } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });

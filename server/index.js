@@ -7463,21 +7463,25 @@ app.get('/api/withdrawal/requests', authenticate, requirePermission('manage_wall
         // Transform to expected format
         requests = requests.map(w => ({
           id: w.id,
-          type: w.request_type,
-          merchantId: w.merchant_id,
-          driverId: w.driver_id,
-          merchant: w.merchant_id ? `Merchant ${w.merchant_id}` : null,
-          driverName: w.driver_id ? `Driver ${w.driver_id}` : null,
+          type: w.request_type || 'customer',
+          customerId: w.vendor_id || w.merchant_id || w.fleet_id,
+          customerName: w.merchant_id ? `Merchant ${w.merchant_id}` : w.driver_id ? `Driver ${w.driver_id}` : '',
           phone: '',
-          iban: '',
-          withdrawalAmount: parseFloat(w.amount),
+          iban: w.iban || '',
+          withdrawalAmount: parseFloat(w.amount || w.requested_amount || 0),
           walletAmount: 0,
-          date: w.requested_at.split('T')[0],
+          date: w.requested_at ? w.requested_at.split('T')[0] : '',
           status: w.status,
           createdAt: w.requested_at,
           approvedAt: w.approved_at,
           rejectedAt: w.rejected_at,
-          rejectionReason: w.rejection_reason
+          rejectionReason: w.rejection_reason,
+          // Raw DB fields
+          vendor_id: w.vendor_id || w.fleet_id,
+          email: w.email || '',
+          requested_amount: parseFloat(w.requested_amount || w.amount || 0),
+          tax_applied: parseFloat(w.tax_applied || 0),
+          final_amount: parseFloat(w.final_amount || 0),
         }));
       } catch (error) {
         console.warn('Database fetch failed:', error.message);

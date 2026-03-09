@@ -267,10 +267,16 @@ export interface WithdrawalRequest {
   withdrawalAmount: number;
   walletAmount: number;
   date: string;
-  status: 'Pending' | 'Approved' | 'Rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'Pending' | 'Approved' | 'Rejected';
   createdAt?: string;
   updatedAt?: string;
   rejectedReason?: string;
+  // Raw DB fields
+  vendor_id?: number | string;
+  email?: string;
+  requested_amount?: number;
+  tax_applied?: number;
+  final_amount?: number;
 }
 
 /**

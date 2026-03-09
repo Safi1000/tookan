@@ -184,12 +184,12 @@ export function WithdrawalRequestsPanel() {
       : 'border-[#DE3544] shadow-[0_0_8px_rgba(222,53,68,0.3)]';
   };
 
-  // Auto-detect search type (ID, Name, or Phone)
+  // Auto-detect search type (ID, Email, or IBAN)
   const detectSearchType = (search: string) => {
     if (!search) return 'all';
-    if (/^(CUST-)/.test(search) || /^\d+$/.test(search)) return 'id';
-    if (/^\+?\d/.test(search)) return 'phone';
-    return 'name';
+    if (/^\d+$/.test(search)) return 'id';
+    if (search.includes('@')) return 'email';
+    return 'iban';
   };
 
   // Filter withdrawals based on search and date range (customers only per SRS)
@@ -203,12 +203,14 @@ export function WithdrawalRequestsPanel() {
       const searchType = detectSearchType(customerSearch);
 
       let matchesSearch = false;
+      const idStr = (withdrawal.vendor_id || withdrawal.customerId || '').toString().toLowerCase();
+
       if (searchType === 'id') {
-        matchesSearch = withdrawal.customerId?.toLowerCase().includes(searchLower) || false;
-      } else if (searchType === 'phone') {
-        matchesSearch = withdrawal.phone.includes(customerSearch);
+        matchesSearch = idStr.includes(searchLower);
+      } else if (searchType === 'email') {
+        matchesSearch = (withdrawal.email || '').toLowerCase().includes(searchLower);
       } else {
-        matchesSearch = withdrawal.customerName?.toLowerCase().includes(searchLower) || false;
+        matchesSearch = (withdrawal.iban || '').toLowerCase().includes(searchLower);
       }
       if (!matchesSearch) return false;
     }
@@ -260,12 +262,12 @@ export function WithdrawalRequestsPanel() {
         <h3 className="text-foreground mb-4">Search Merchant Requests</h3>
 
         <div className="mb-4">
-          <label className="block text-heading text-sm mb-2">Search by Merchant ID, Name, or Phone Number</label>
+          <label className="block text-heading text-sm mb-2">Search by Merchant ID, Email, or IBAN</label>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
             <input
               type="text"
-              placeholder="Enter Merchant ID, Name, or Phone Number..."
+              placeholder="Enter Merchant ID, Email, or IBAN..."
               value={customerSearch}
               onChange={(e) => setCustomerSearch(e.target.value)}
               className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-10 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all ${getValidationColor(customerSearch)}`}
@@ -282,7 +284,7 @@ export function WithdrawalRequestsPanel() {
           </div>
           {customerSearch && (
             <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-2">
-              Searching by: {detectSearchType(customerSearch) === 'id' ? 'Merchant ID' : detectSearchType(customerSearch) === 'phone' ? 'Phone' : 'Name'}
+              Searching by: {detectSearchType(customerSearch) === 'id' ? 'Merchant ID' : detectSearchType(customerSearch) === 'email' ? 'Email' : 'IBAN'}
             </p>
           )}
         </div>
@@ -308,67 +310,74 @@ export function WithdrawalRequestsPanel() {
         </div>
       </div>
 
-      {/* Customer Withdrawals Table */}
+      {/* Withdrawals Table */}
       <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
               <tr>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Merchant ID</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Merchant Name</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Phone Number</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">IBAN Number</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Requested Amount</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Total Pending</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Wallet Balance</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Date</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Merchant Email</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Withdraw Amount</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Tax</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Final Amount</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">IBAN</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Status</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredWithdrawals.map((withdrawal, index) => (
-                <tr key={withdrawal.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                  <td className="px-6 py-4 text-subheading">{withdrawal.customerId}</td>
-                  <td className="px-6 py-4 text-heading">{withdrawal.customerName}</td>
-                  <td className="px-6 py-4 text-subheading">{withdrawal.phone}</td>
-                  <td className="px-6 py-4 text-subheading font-mono text-sm">{withdrawal.iban}</td>
-                  <td className="px-6 py-4 text-[#DE3544] font-semibold">${withdrawal.withdrawalAmount.toFixed(2)}</td>
-                  <td className="px-6 py-4 text-[#DE3544] font-semibold">${getTotalPendingWithdrawal(withdrawal).toFixed(2)}</td>
-                  <td className="px-6 py-4 text-heading">${withdrawal.walletAmount.toFixed(2)}</td>
-                  <td className="px-6 py-4 text-subheading text-sm">{withdrawal.date}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-lg text-xs ${withdrawal.status === 'Pending'
-                      ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                      : withdrawal.status === 'Approved'
-                        ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                        : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                      }`}>
-                      {withdrawal.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {withdrawal.status === 'Pending' && (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleApprove(withdrawal.id)}
-                          className="p-2 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-lg hover:bg-[#C1EEFA]/20 transition-all group"
-                          title="Approve"
-                        >
-                          <Check className="w-4 h-4 text-[#C1EEFA] group-hover:scale-110 transition-transform" />
-                        </button>
-                        <button
-                          onClick={() => handleReject(withdrawal.id)}
-                          className="p-2 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-lg hover:bg-[#DE3544]/20 transition-all group"
-                          title="Reject"
-                        >
-                          <X className="w-4 h-4 text-[#DE3544] group-hover:scale-110 transition-transform" />
-                        </button>
-                      </div>
-                    )}
+              {filteredWithdrawals.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-muted-light dark:text-[#99BFD1]">
+                    No withdrawal requests found
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredWithdrawals.map((withdrawal, index) => {
+                  const statusLower = (withdrawal.status || '').toLowerCase();
+                  return (
+                    <tr key={withdrawal.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                      <td className="px-6 py-4 text-heading">{withdrawal.vendor_id || withdrawal.customerId || '—'}</td>
+                      <td className="px-6 py-4 text-subheading">{withdrawal.email || '—'}</td>
+                      <td className="px-6 py-4 text-heading font-semibold">${(withdrawal.requested_amount || withdrawal.withdrawalAmount || 0).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-subheading">${(withdrawal.tax_applied || 0).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-green-500 font-semibold">${(withdrawal.final_amount || 0).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-subheading font-mono text-sm">{withdrawal.iban || '—'}</td>
+                      <td className="px-6 py-4">
+                        {statusLower === 'pending' ? (
+                          <div className="flex items-center gap-2">
+                            <span className="px-3 py-1 rounded-lg text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                              Pending
+                            </span>
+                            <button
+                              onClick={() => handleApprove(withdrawal.id)}
+                              className="p-1.5 bg-green-500/10 border border-green-500/30 rounded-lg hover:bg-green-500/20 transition-all group"
+                              title="Approve"
+                            >
+                              <Check className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
+                            </button>
+                            <button
+                              onClick={() => handleReject(withdrawal.id)}
+                              className="p-1.5 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-lg hover:bg-[#DE3544]/20 transition-all group"
+                              title="Reject"
+                            >
+                              <X className="w-4 h-4 text-[#DE3544] group-hover:scale-110 transition-transform" />
+                            </button>
+                          </div>
+                        ) : statusLower === 'approved' ? (
+                          <span className="px-3 py-1 rounded-lg text-xs bg-green-500/20 text-green-400 border border-green-500/30">
+                            Approved
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 rounded-lg text-xs bg-red-500/20 text-red-400 border border-red-500/30">
+                            Rejected
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
