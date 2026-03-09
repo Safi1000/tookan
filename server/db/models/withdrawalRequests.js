@@ -27,7 +27,7 @@ async function createRequest(requestData) {
   };
 
   const { data, error } = await supabase
-    .from('withdrawal_requests')
+    .from('withdrawals')
     .insert(requestRecord)
     .select()
     .single();
@@ -47,7 +47,7 @@ async function getAllRequests(filters = {}) {
     throw new Error('Supabase not configured');
   }
 
-  let query = supabase.from('withdrawal_requests').select('*');
+  let query = supabase.from('withdrawals').select('*');
 
   if (filters.status) {
     query = query.eq('status', filters.status);
@@ -89,7 +89,7 @@ async function getRequestById(id) {
   }
 
   const { data, error } = await supabase
-    .from('withdrawal_requests')
+    .from('withdrawals')
     .select('*')
     .eq('id', id)
     .single();
@@ -110,7 +110,7 @@ async function approveRequest(id, approvedBy) {
   }
 
   const { data, error } = await supabase
-    .from('withdrawal_requests')
+    .from('withdrawals')
     .update({
       status: 'approved',
       approved_at: new Date().toISOString(),
@@ -136,7 +136,7 @@ async function rejectRequest(id, rejectedBy, reason = null) {
   }
 
   const { data, error } = await supabase
-    .from('withdrawal_requests')
+    .from('withdrawals')
     .update({
       status: 'rejected',
       rejected_at: new Date().toISOString(),

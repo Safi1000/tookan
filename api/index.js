@@ -4718,7 +4718,7 @@ function getApp() {
         }
 
         const { data, error } = await supabase
-          .from('withdrawal_requests')
+          .from('withdrawals')
           .update({
             status: 'approved',
             approved_at: new Date().toISOString()
@@ -4755,7 +4755,7 @@ function getApp() {
         }
 
         const { data, error } = await supabase
-          .from('withdrawal_requests')
+          .from('withdrawals')
           .update({
             status: 'rejected',
             rejected_at: new Date().toISOString(),

@@ -267,7 +267,7 @@ export function WithdrawalRequestsPanel() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 icon-default dark:text-[#99BFD1]" />
             <input
               type="text"
-              placeholder="Enter Merchant ID, Email, or IBAN..."
+              placeholder="Enter Merchant ID or IBAN..."
               value={customerSearch}
               onChange={(e) => setCustomerSearch(e.target.value)}
               className={`w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-border rounded-xl pl-10 pr-10 py-2.5 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all ${getValidationColor(customerSearch)}`}
@@ -339,9 +339,9 @@ export function WithdrawalRequestsPanel() {
                     <tr key={withdrawal.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
                       <td className="px-6 py-4 text-heading">{withdrawal.vendor_id || withdrawal.customerId || '—'}</td>
                       <td className="px-6 py-4 text-subheading">{withdrawal.email || '—'}</td>
-                      <td className="px-6 py-4 text-heading font-semibold">${(withdrawal.requested_amount || withdrawal.withdrawalAmount || 0).toFixed(2)}</td>
-                      <td className="px-6 py-4 text-subheading">${(withdrawal.tax_applied || 0).toFixed(2)}</td>
-                      <td className="px-6 py-4 text-green-500 font-semibold">${(withdrawal.final_amount || 0).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-heading font-semibold">BHD {(withdrawal.requested_amount || withdrawal.withdrawalAmount || 0).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-subheading">BHD {(withdrawal.tax_applied || 0).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-green-500 font-semibold">BHD {(withdrawal.final_amount || 0).toFixed(2)}</td>
                       <td className="px-6 py-4 text-subheading font-mono text-sm">{withdrawal.iban || '—'}</td>
                       <td className="px-6 py-4">
                         {statusLower === 'pending' ? (
