@@ -2662,12 +2662,6 @@ export function FinancialPanel() {
                                 >
                                   Credit/Debit
                                 </button>
-                                <button
-                                  onClick={() => fetchTransactionHistory((merchant as any).vendor_id || merchant.id, merchant.name)}
-                                  className="px-4 py-2 bg-blue-500/10 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-500/20 dark:hover:bg-blue-400/20 transition-all text-sm font-medium"
-                                >
-                                  View Transaction History
-                                </button>
                               </div>
                             </td>
                           </tr>
@@ -2770,7 +2764,7 @@ export function FinancialPanel() {
                     {/* Description */}
                     <div>
                       <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2">
-                        Description <span className="text-[#DE3544]">*</span>
+                        Description
                       </label>
                       <textarea
                         value={balanceNote}
@@ -2783,7 +2777,7 @@ export function FinancialPanel() {
                         className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all resize-none"
                       />
                       <p className="text-xs text-muted-light dark:text-[#99BFD1] mt-1">
-                        Required: Explain the reason for this transaction
+                        Optional: Explain the reason for this transaction
                       </p>
                     </div>
 
@@ -2817,16 +2811,9 @@ export function FinancialPanel() {
                             return;
                           }
 
-                          if (!balanceNote.trim()) {
-                            setWalletError('Please provide a description for this transaction');
-                            return;
-                          }
 
-                          // Merchant debit not supported
-                          if (editingBalance.type === 'merchant' && txType === 'debit') {
-                            setWalletError('Debiting merchant wallet is not supported via this API. Please use the Tookan dashboard.');
-                            return;
-                          }
+
+
 
                           setIsProcessingWallet(true);
                           setWalletError(null);
@@ -2845,7 +2832,9 @@ export function FinancialPanel() {
                                 txType
                               );
                             } else {
-                              const merchant = merchantWallets.find(m => m.id === editingBalance.id);
+                              const merchant = merchantWallets.length > 0
+                                ? merchantWallets.find(m => m.id === editingBalance.id)
+                                : merchants.find(m => m.id === editingBalance.id);
                               if (!merchant) throw new Error('Merchant not found');
 
                               const vendorId = merchant.vendor_id;
@@ -2854,14 +2843,15 @@ export function FinancialPanel() {
                               response = await addCustomerWalletPayment(
                                 vendorId,
                                 amount,
-                                balanceNote.trim() || undefined
+                                balanceNote.trim() || undefined,
+                                txType
                               );
                             }
 
                             if (response.status === 'success') {
                               toast.success(`${txType === 'credit' ? 'Credited' : 'Debited'} ${currency} ${amount.toFixed(2)} successfully`);
 
-                              // Refresh driver balance locally
+                              // Refresh balance locally
                               if (editingBalance.type === 'driver') {
                                 const driver = drivers.find(d => d.id === editingBalance.id);
                                 if (driver) {
@@ -2872,6 +2862,13 @@ export function FinancialPanel() {
                                     d.id === editingBalance.id ? { ...d, balance: newBal } : d
                                   ));
                                 }
+                              } else {
+                                // Refresh merchant balance locally
+                                setMerchants(prev => prev.map(m =>
+                                  m.id === editingBalance.id
+                                    ? { ...m, balance: txType === 'credit' ? (m.balance || 0) + amount : (m.balance || 0) - amount }
+                                    : m
+                                ));
                               }
 
                               setEditingBalance(null);

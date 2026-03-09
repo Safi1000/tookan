@@ -2686,7 +2686,10 @@ function getApp() {
     app.post('/api/tookan/customer-wallet/payment', authenticate, requirePermission(PERMISSIONS.MANAGE_WALLETS), async (req, res) => {
       try {
         const apiKey = getApiKey();
-        const { vendor_id, amount, description } = req.body;
+        const { vendor_id, amount, description, transaction_type } = req.body;
+
+        // Negative amount for debit, positive for credit
+        const finalAmount = transaction_type === 'debit' ? -Math.abs(amount) : Math.abs(amount);
 
         const response = await fetch('https://api.tookanapp.com/v2/addCustomerPaymentViaDashboard', {
           method: 'POST',
@@ -2694,7 +2697,7 @@ function getApp() {
           body: JSON.stringify({
             api_key: apiKey,
             vendor_id: vendor_id,
-            amount: amount,
+            amount: finalAmount,
             description: description || 'Payment from dashboard'
           })
         });

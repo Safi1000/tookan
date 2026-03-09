@@ -599,7 +599,8 @@ export async function fetchFleetWalletBalance(fleetId: string | number): Promise
 export async function addCustomerWalletPayment(
   vendorId: string | number,
   amount: number,
-  description?: string
+  description?: string,
+  transactionType: 'credit' | 'debit' = 'credit'
 ): Promise<TookanApiResponse<any>> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/tookan/customer-wallet/payment`, {
@@ -609,6 +610,7 @@ export async function addCustomerWalletPayment(
         vendor_id: vendorId,
         amount,
         description,
+        transaction_type: transactionType,
       }),
     });
 

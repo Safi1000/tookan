@@ -1433,7 +1433,7 @@ app.post('/api/tookan/driver-wallet/balance', authenticate, async (req, res) => 
 app.post('/api/tookan/customer-wallet/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
   try {
     const apiKey = getApiKey();
-    const { vendor_id, vendor_ids, amount, description } = req.body;
+    const { vendor_id, vendor_ids, amount, description, transaction_type } = req.body;
 
     if ((!vendor_id && !vendor_ids) || !amount) {
       return res.status(400).json({
@@ -1442,9 +1442,12 @@ app.post('/api/tookan/customer-wallet/payment', authenticate, requirePermission(
       });
     }
 
+    // Negative amount for debit, positive for credit
+    const finalAmount = transaction_type === 'debit' ? -Math.abs(amount) : Math.abs(amount);
+
     const payload = {
       api_key: apiKey,
-      amount: Math.abs(amount),
+      amount: finalAmount,
     };
 
     if (vendor_id) {
