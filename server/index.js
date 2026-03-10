@@ -1056,8 +1056,9 @@ app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermissio
 
     // transaction_type is optional, defaults to 'credit' if not provided
     // Tookan API expects: 1 = debit, 2 = credit (as numbers, not strings)
+    // For driver wallets, transaction_type controls the direction — amount is always positive
     const validTransactionType = (transaction_type === 'debit') ? 'debit' : 'credit';
-    const finalAmount = validTransactionType === 'debit' ? -Math.abs(amount) : Math.abs(amount);
+    const finalAmount = Math.abs(amount); // Always positive; transaction_type handles debit/credit
     const tookanTransactionType = validTransactionType === 'debit' ? 1 : 2; // Convert to number: 1=debit, 2=credit
 
     // wallet_type is required: 1 = wallet transaction, 2 = credits
@@ -1754,8 +1755,8 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
     console.log('\nðŸ”„ Processing settlement...');
 
     // Step C: Atomic settlement transaction
-    // 1. Credit driver wallet (+COD amount)
-    console.log('Step 1: Crediting driver wallet...');
+    // 1. Debit driver wallet (-COD amount)
+    console.log('Step 1: Debiting driver wallet...');
     const baseUrl = `http://localhost:${PORT}`;
     const driverWalletResponse = await fetch(`${baseUrl}/api/tookan/driver-wallet/transaction`, {
       method: 'POST',
@@ -1766,7 +1767,7 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
         fleet_id: driverId,
         amount: codAmount,
         description: `COD settlement for ${pendingCOD.orderId || pendingCOD.codId}${note ? ` - ${note}` : ''}`,
-        transaction_type: 'credit'
+        transaction_type: 'debit'
       }),
     });
 
@@ -1782,7 +1783,7 @@ app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_p
       });
     }
 
-    console.log('âœ… Driver wallet credited successfully');
+    console.log('âœ… Driver wallet debited successfully');
     console.log('  Driver wallet response status:', driverWalletResult.status);
 
     // 2. Credit merchant wallet (+COD amount)

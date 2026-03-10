@@ -2757,7 +2757,7 @@ function getApp() {
         const { fleet_id, amount, description, transaction_type } = req.body;
 
         const tookanTransactionType = transaction_type === 'debit' ? 1 : 2;
-        const finalAmount = transaction_type === 'debit' ? -Math.abs(amount) : Math.abs(amount);
+        const finalAmount = Math.abs(amount); // Always positive; transaction_type handles debit/credit
 
         const response = await fetch('https://api.tookanapp.com/v2/fleet/wallet/create_transaction', {
           method: 'POST',
