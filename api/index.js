@@ -4717,25 +4717,58 @@ function getApp() {
           return res.status(500).json({ status: 'error', message: 'Database not configured' });
         }
 
+        // Get the withdrawal request first to read final_amount and vendor_id
+        const { data: request, error: fetchError } = await supabase
+          .from('withdrawals')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (fetchError || !request) {
+          return res.status(404).json({ status: 'error', message: 'Withdrawal request not found' });
+        }
+
+        if (request.status !== 'pending') {
+          return res.status(400).json({ status: 'error', message: `Request is already ${request.status}` });
+        }
+
+        // Debit the final_amount from the merchant wallet using addCustomerPaymentViaDashboard
+        const vendorId = request.vendor_id;
+        const finalAmount = parseFloat(request.final_amount || request.requested_amount || 0);
+
+        if (vendorId && finalAmount > 0) {
+          const TOOKAN_API_KEY = process.env.TOOKAN_API_KEY;
+          const walletPayload = {
+            api_key: TOOKAN_API_KEY,
+            vendor_id: vendorId,
+            amount: -Math.abs(finalAmount), // Negative for debit
+            description: `Withdrawal approved (ID: ${id})`
+          };
+
+          const walletResponse = await fetch('https://api.tookanapp.com/v2/addCustomerPaymentViaDashboard', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(walletPayload)
+          });
+
+          const walletData = await walletResponse.json();
+          if (walletData.status !== 200) {
+            return res.status(500).json({
+              status: 'error',
+              message: walletData.message || 'Failed to debit merchant wallet'
+            });
+          }
+        }
+
+        // Update status to approved
         const { data, error } = await supabase
           .from('withdrawals')
-          .update({
-            status: 'approved',
-            approved_at: new Date().toISOString()
-          })
+          .update({ status: 'approved' })
           .eq('id', id)
           .select()
           .single();
 
         if (error) throw error;
-
-        // Log approval
-        await supabase.from('audit_logs').insert({
-          action: 'WITHDRAWAL_APPROVED',
-          entity_type: 'withdrawal',
-          entity_id: id,
-          notes: `Withdrawal request ${id} approved`
-        });
 
         res.json({ status: 'success', data: { request: data } });
       } catch (error) {
@@ -4748,7 +4781,6 @@ function getApp() {
     app.put('/api/withdrawal/request/:id/reject', authenticate, requirePermission(PERMISSIONS.MANAGE_WALLETS), async (req, res) => {
       try {
         const { id } = req.params;
-        const { reason } = req.body;
 
         if (!isSupabaseConfigured || !supabase) {
           return res.status(500).json({ status: 'error', message: 'Database not configured' });
@@ -4756,24 +4788,12 @@ function getApp() {
 
         const { data, error } = await supabase
           .from('withdrawals')
-          .update({
-            status: 'rejected',
-            rejected_at: new Date().toISOString(),
-            rejection_reason: reason || 'No reason provided'
-          })
+          .update({ status: 'rejected' })
           .eq('id', id)
           .select()
           .single();
 
         if (error) throw error;
-
-        // Log rejection
-        await supabase.from('audit_logs').insert({
-          action: 'WITHDRAWAL_REJECTED',
-          entity_type: 'withdrawal',
-          entity_id: id,
-          notes: `Withdrawal request ${id} rejected: ${reason}`
-        });
 
         res.json({ status: 'success', data: { request: data } });
       } catch (error) {

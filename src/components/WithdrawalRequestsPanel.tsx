@@ -62,6 +62,7 @@ export function WithdrawalRequestsPanel() {
   const [dateTo, setDateTo] = useState('');
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
 
   // Withdrawal Fees Modal State
   const [showFeesModal, setShowFeesModal] = useState(false);
@@ -162,9 +163,8 @@ export function WithdrawalRequestsPanel() {
   };
 
   const handleReject = async (id: number) => {
-    const reason = prompt('Enter rejection reason (optional):');
     try {
-      const result = await rejectWithdrawalRequest(id.toString(), reason || undefined);
+      const result = await rejectWithdrawalRequest(id.toString());
       if (result.status === 'success') {
         toast.success('Withdrawal request rejected');
         loadWithdrawals();
@@ -310,6 +310,49 @@ export function WithdrawalRequestsPanel() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 bg-card rounded-xl border border-border p-1 shadow-sm">
+        <button
+          onClick={() => setActiveTab('pending')}
+          className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'pending'
+              ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+              : 'text-subheading hover:bg-hover-bg-light dark:hover:bg-[#223560]'
+            }`}
+        >
+          Pending Requests
+          <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${activeTab === 'pending' ? 'bg-yellow-500/30' : 'bg-muted/20'
+            }`}>
+            {filteredWithdrawals.filter(w => (w.status || '').toLowerCase() === 'pending').length}
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('approved')}
+          className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'approved'
+              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+              : 'text-subheading hover:bg-hover-bg-light dark:hover:bg-[#223560]'
+            }`}
+        >
+          Approved Requests
+          <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${activeTab === 'approved' ? 'bg-green-500/30' : 'bg-muted/20'
+            }`}>
+            {filteredWithdrawals.filter(w => (w.status || '').toLowerCase() === 'approved').length}
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('rejected')}
+          className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'rejected'
+              ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+              : 'text-subheading hover:bg-hover-bg-light dark:hover:bg-[#223560]'
+            }`}
+        >
+          Rejected Requests
+          <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${activeTab === 'rejected' ? 'bg-red-500/30' : 'bg-muted/20'
+            }`}>
+            {filteredWithdrawals.filter(w => (w.status || '').toLowerCase() === 'rejected').length}
+          </span>
+        </button>
+      </div>
+
       {/* Withdrawals Table */}
       <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm transition-colors duration-300">
         <div className="overflow-x-auto">
@@ -322,62 +365,54 @@ export function WithdrawalRequestsPanel() {
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Tax</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Final Amount</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">IBAN</th>
-                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Status</th>
+                {activeTab === 'pending' && (
+                  <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Actions</th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {filteredWithdrawals.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-muted-light dark:text-[#99BFD1]">
-                    No withdrawal requests found
-                  </td>
-                </tr>
-              ) : (
-                filteredWithdrawals.map((withdrawal, index) => {
-                  const statusLower = (withdrawal.status || '').toLowerCase();
+              {(() => {
+                const tabRows = filteredWithdrawals.filter(w => (w.status || '').toLowerCase() === activeTab);
+                if (tabRows.length === 0) {
                   return (
-                    <tr key={withdrawal.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
-                      <td className="px-6 py-4 text-heading">{withdrawal.vendor_id || withdrawal.customerId || '—'}</td>
-                      <td className="px-6 py-4 text-subheading">{withdrawal.email || '—'}</td>
-                      <td className="px-6 py-4 text-heading font-semibold">BHD {(withdrawal.requested_amount || withdrawal.withdrawalAmount || 0).toFixed(2)}</td>
-                      <td className="px-6 py-4 text-subheading">BHD {(withdrawal.tax_applied || 0).toFixed(2)}</td>
-                      <td className="px-6 py-4 text-green-500 font-semibold">BHD {(withdrawal.final_amount || 0).toFixed(2)}</td>
-                      <td className="px-6 py-4 text-subheading font-mono text-sm">{withdrawal.iban || '—'}</td>
-                      <td className="px-6 py-4">
-                        {statusLower === 'pending' ? (
-                          <div className="flex items-center gap-2">
-                            <span className="px-3 py-1 rounded-lg text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
-                              Pending
-                            </span>
-                            <button
-                              onClick={() => handleApprove(withdrawal.id)}
-                              className="p-1.5 bg-green-500/10 border border-green-500/30 rounded-lg hover:bg-green-500/20 transition-all group"
-                              title="Approve"
-                            >
-                              <Check className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
-                            </button>
-                            <button
-                              onClick={() => handleReject(withdrawal.id)}
-                              className="p-1.5 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-lg hover:bg-[#DE3544]/20 transition-all group"
-                              title="Reject"
-                            >
-                              <X className="w-4 h-4 text-[#DE3544] group-hover:scale-110 transition-transform" />
-                            </button>
-                          </div>
-                        ) : statusLower === 'approved' ? (
-                          <span className="px-3 py-1 rounded-lg text-xs bg-green-500/20 text-green-400 border border-green-500/30">
-                            Approved
-                          </span>
-                        ) : (
-                          <span className="px-3 py-1 rounded-lg text-xs bg-red-500/20 text-red-400 border border-red-500/30">
-                            Rejected
-                          </span>
-                        )}
+                    <tr>
+                      <td colSpan={activeTab === 'pending' ? 7 : 6} className="px-6 py-12 text-center text-muted-light dark:text-[#99BFD1]">
+                        No {activeTab} withdrawal requests found
                       </td>
                     </tr>
                   );
-                })
-              )}
+                }
+                return tabRows.map((withdrawal, index) => (
+                  <tr key={withdrawal.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                    <td className="px-6 py-4 text-heading">{withdrawal.vendor_id || withdrawal.customerId || '—'}</td>
+                    <td className="px-6 py-4 text-subheading">{withdrawal.email || '—'}</td>
+                    <td className="px-6 py-4 text-heading font-semibold">BHD {(withdrawal.requested_amount || withdrawal.withdrawalAmount || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-subheading">BHD {(withdrawal.tax_applied || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-green-500 font-semibold">BHD {(withdrawal.final_amount || 0).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-subheading font-mono text-sm">{withdrawal.iban || '—'}</td>
+                    {activeTab === 'pending' && (
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleApprove(withdrawal.id)}
+                            className="p-1.5 bg-green-500/10 border border-green-500/30 rounded-lg hover:bg-green-500/20 transition-all group"
+                            title="Approve"
+                          >
+                            <Check className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
+                          </button>
+                          <button
+                            onClick={() => handleReject(withdrawal.id)}
+                            className="p-1.5 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-lg hover:bg-[#DE3544]/20 transition-all group"
+                            title="Reject"
+                          >
+                            <X className="w-4 h-4 text-[#DE3544] group-hover:scale-110 transition-transform" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ));
+              })()}
             </tbody>
           </table>
         </div>

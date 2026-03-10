@@ -7512,7 +7512,6 @@ app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('
   try {
     console.log('\n=== APPROVE WITHDRAWAL REQUEST ===');
     const { id } = req.params;
-    const { userId } = req.body;
     const requestId = parseInt(id);
 
     if (!isConfigured()) {
@@ -7540,99 +7539,51 @@ app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('
       });
     }
 
+    // Debit the final_amount from the merchant wallet using addCustomerPaymentViaDashboard
     const apiKey = getApiKey();
+    const vendorId = request.vendor_id;
+    const finalAmount = parseFloat(request.final_amount || request.requested_amount || request.amount || 0);
 
-    // Update wallet balance in Tookan
-    const vendorId = request.request_type === 'merchant' ? request.merchant_id : null;
-    const fleetId = request.request_type === 'driver' ? request.driver_id : null;
-
-    if (request.request_type === 'merchant' && vendorId) {
-      // Use customer wallet transaction API
+    if (vendorId && finalAmount > 0) {
       const walletPayload = {
         api_key: apiKey,
         vendor_id: vendorId,
-        transaction_type: 2, // Withdrawal
-        amount: request.amount,
-        transaction_description: `Withdrawal approved`
+        amount: -Math.abs(finalAmount), // Negative for debit
+        description: `Withdrawal approved (ID: ${requestId})`
       };
 
-      const walletResponse = await fetch('https://api.tookanapp.com/v2/customer_wallet_transaction', {
+      const walletResponse = await fetch('https://api.tookanapp.com/v2/addCustomerPaymentViaDashboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(walletPayload)
       });
 
       const walletData = await walletResponse.json();
-      if (!walletResponse.ok || walletData.status !== 200) {
+      if (walletData.status !== 200) {
         return res.status(500).json({
           status: 'error',
-          message: walletData.message || 'Failed to update merchant wallet',
+          message: walletData.message || 'Failed to debit merchant wallet',
           data: {}
         });
       }
-    } else if (request.request_type === 'driver' && fleetId) {
-      // Use fleet wallet transaction API
-      const walletPayload = {
-        api_key: apiKey,
-        fleet_id: fleetId,
-        transaction_type: 2, // Withdrawal
-        amount: request.amount,
-        transaction_description: `Withdrawal approved`
-      };
 
-      const walletResponse = await fetch('https://api.tookanapp.com/v2/fleet_wallet_transaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(walletPayload)
-      });
-
-      const walletData = await walletResponse.json();
-      if (!walletResponse.ok || walletData.status !== 200) {
-        return res.status(500).json({
-          status: 'error',
-          message: walletData.message || 'Failed to update driver wallet',
-          data: {}
-        });
-      }
+      console.log('✅ Merchant wallet debited:', vendorId, 'Amount:', finalAmount);
     }
 
     // Update request status in database
-    const approvedRequest = await withdrawalRequestsModel.approveRequest(requestId, userId || req.userId || null);
+    const approvedRequest = await withdrawalRequestsModel.approveRequest(requestId);
 
-    // Transform to expected format
-    const transformedRequest = {
-      id: approvedRequest.id,
-      type: approvedRequest.request_type,
-      merchantId: approvedRequest.merchant_id,
-      driverId: approvedRequest.driver_id,
-      withdrawalAmount: parseFloat(approvedRequest.amount),
-      status: approvedRequest.status,
-      approvedAt: approvedRequest.approved_at,
-      approvedBy: approvedRequest.approved_by
-    };
-
-    // Audit log
-    await auditLogger.createAuditLog(
-      req,
-      'withdrawal_approve',
-      'withdrawal_request',
-      requestId,
-      { status: 'pending', amount: request.amount },
-      { status: 'approved', amount: approvedRequest.amount, approvedBy: approvedRequest.approved_by }
-    );
-
-    console.log('âœ… Withdrawal request approved:', requestId);
-    console.log('=== END REQUEST (SUCCESS) ===\n');
+    console.log('✅ Withdrawal request approved:', requestId);
 
     res.json({
       status: 'success',
       action: 'approve_withdrawal',
       entity: 'withdrawal',
-      message: 'Withdrawal request approved and wallet updated',
-      data: { withdrawalRequest: transformedRequest }
+      message: 'Withdrawal request approved and wallet debited',
+      data: { withdrawalRequest: approvedRequest }
     });
   } catch (error) {
-    console.error('âŒ Approve withdrawal error:', error);
+    console.error('❌ Approve withdrawal error:', error);
     res.status(500).json({
       status: 'error',
       message: error.message || 'Network error occurred',
@@ -7645,7 +7596,6 @@ app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('
 app.put('/api/withdrawal/request/:id/reject', authenticate, requirePermission('manage_wallets'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason, userId } = req.body;
     const requestId = parseInt(id);
 
     if (!isConfigured()) {
@@ -7673,41 +7623,14 @@ app.put('/api/withdrawal/request/:id/reject', authenticate, requirePermission('m
       });
     }
 
-    const rejectedRequest = await withdrawalRequestsModel.rejectRequest(
-      requestId,
-      userId || req.userId || null,
-      reason || 'No reason provided'
-    );
-
-    // Transform to expected format
-    const transformedRequest = {
-      id: rejectedRequest.id,
-      type: rejectedRequest.request_type,
-      merchantId: rejectedRequest.merchant_id,
-      driverId: rejectedRequest.driver_id,
-      withdrawalAmount: parseFloat(rejectedRequest.amount),
-      status: rejectedRequest.status,
-      rejectionReason: rejectedRequest.rejection_reason,
-      rejectedAt: rejectedRequest.rejected_at,
-      rejectedBy: rejectedRequest.rejected_by
-    };
-
-    // Audit log
-    await auditLogger.createAuditLog(
-      req,
-      'withdrawal_reject',
-      'withdrawal_request',
-      requestId,
-      { status: 'pending', amount: request.amount },
-      { status: 'rejected', amount: rejectedRequest.amount, reason: rejectedRequest.rejection_reason, rejectedBy: rejectedRequest.rejected_by }
-    );
+    const rejectedRequest = await withdrawalRequestsModel.rejectRequest(requestId);
 
     res.json({
       status: 'success',
       action: 'reject_withdrawal',
       entity: 'withdrawal',
       message: 'Withdrawal request rejected',
-      data: { withdrawalRequest: transformedRequest }
+      data: { withdrawalRequest: rejectedRequest }
     });
   } catch (error) {
     res.status(500).json({

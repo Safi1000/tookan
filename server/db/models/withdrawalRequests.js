@@ -104,18 +104,14 @@ async function getRequestById(id) {
 /**
  * Approve withdrawal request
  */
-async function approveRequest(id, approvedBy) {
+async function approveRequest(id) {
   if (!isConfigured()) {
     throw new Error('Supabase not configured');
   }
 
   const { data, error } = await supabase
     .from('withdrawals')
-    .update({
-      status: 'approved',
-      approved_at: new Date().toISOString(),
-      approved_by: approvedBy
-    })
+    .update({ status: 'approved' })
     .eq('id', id)
     .select()
     .single();
@@ -130,19 +126,14 @@ async function approveRequest(id, approvedBy) {
 /**
  * Reject withdrawal request
  */
-async function rejectRequest(id, rejectedBy, reason = null) {
+async function rejectRequest(id) {
   if (!isConfigured()) {
     throw new Error('Supabase not configured');
   }
 
   const { data, error } = await supabase
     .from('withdrawals')
-    .update({
-      status: 'rejected',
-      rejected_at: new Date().toISOString(),
-      rejected_by: rejectedBy,
-      rejection_reason: reason || 'No reason provided'
-    })
+    .update({ status: 'rejected' })
     .eq('id', id)
     .select()
     .single();
