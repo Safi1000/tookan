@@ -8002,7 +8002,11 @@ function getApp() {
       });
     });
 
-
+    // Serve React frontend (Hostinger production)
+    app.use(express.static(path.join(__dirname, '../dist')));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(__dirname, '../dist/index.html'));
+    });
   }
 
   return app;
@@ -8014,5 +8018,12 @@ module.exports = (req, res) => {
   return expressApp(req, res);
 };
 
-
+// Start server when run directly (Hostinger)
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  const expressApp = getApp();
+  expressApp.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
