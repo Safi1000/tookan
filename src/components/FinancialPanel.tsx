@@ -1562,7 +1562,8 @@ export function FinancialPanel() {
       if (params.merchantName) body.merchant_name = params.merchantName;
       if (params.vendorId) body.vendor_id = params.vendorId;
 
-      const response = await fetch('/api/settlement-logs', {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const response = await fetch(`${API_BASE_URL}/api/settlement-logs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1589,7 +1590,8 @@ export function FinancialPanel() {
       if (logsDateTo) params.set('date_to', logsDateTo);
       if (logsDriverSearch.trim()) params.set('driver', logsDriverSearch.trim());
 
-      const response = await fetch(`/api/settlement-logs?${params.toString()}`);
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const response = await fetch(`${API_BASE_URL}/api/settlement-logs?${params.toString()}`);
       const result = await response.json();
 
       if (result.status === 'success') {
