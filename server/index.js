@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
 require('dotenv').config();
@@ -7400,9 +7400,9 @@ app.post('/api/withdrawal/request', authenticate, async (req, res) => {
       iban: iban,
       withdrawalAmount: parseFloat(withdrawalRequest.amount),
       walletAmount: 0, // Will be fetched during approval
-      date: withdrawalRequest.requested_at.split('T')[0],
+      date: (withdrawalRequest.created_at || '').split('T')[0],
       status: withdrawalRequest.status,
-      createdAt: withdrawalRequest.requested_at
+      createdAt: withdrawalRequest.created_at
     };
 
     // Audit log
@@ -7454,7 +7454,7 @@ app.get('/api/withdrawal/requests', authenticate, requirePermission('manage_wall
         // Apply date filters (client-side for now, can be moved to DB query)
         if (dateFrom || dateTo) {
           requests = requests.filter(w => {
-            const requestDate = w.requested_at.split('T')[0];
+            const requestDate = (w.created_at || '').split('T')[0];
             if (dateFrom && requestDate < dateFrom) return false;
             if (dateTo && requestDate > dateTo) return false;
             return true;
@@ -7471,9 +7471,9 @@ app.get('/api/withdrawal/requests', authenticate, requirePermission('manage_wall
           iban: w.iban || '',
           withdrawalAmount: parseFloat(w.amount || w.requested_amount || 0),
           walletAmount: 0,
-          date: w.requested_at ? w.requested_at.split('T')[0] : '',
+          date: w.created_at ? w.created_at.split('T')[0] : '',
           status: w.status,
-          createdAt: w.requested_at,
+          createdAt: w.created_at,
           approvedAt: w.approved_at,
           rejectedAt: w.rejected_at,
           rejectionReason: w.rejection_reason,
@@ -9191,5 +9191,731 @@ app.post('/api/tookan/delete-task', authenticate, requirePermission('perform_reo
   } catch (error) {
     console.error('âŒ Delete task error:', error);
     res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// ============================================
+// SETTLEMENT LOGS (synced from Vercel)
+// ============================================
+
+// POST /api/settlement-logs — Create settlement log entry
+app.post('/api/settlement-logs', async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const { settled_by_email, settled_by_name, driver_name, fleet_id, amount, settlement_type, settlement_date_from, settlement_date_to, task_count, merchant_name, vendor_id } = req.body;
+
+    if (!settled_by_email || amount === undefined) {
+      return res.status(400).json({ status: 'error', message: 'Missing required fields' });
+    }
+
+    const insertData = {
+      settled_by_email,
+      settled_by_name: settled_by_name || null,
+      driver_name: driver_name || null,
+      fleet_id: fleet_id ? Number(fleet_id) : 0,
+      amount: Number(amount),
+      settlement_type: settlement_type || 'calendar',
+      settlement_date_from: settlement_date_from || null,
+      settlement_date_to: settlement_date_to || null,
+      task_count: Number(task_count) || 0
+    };
+
+    if (merchant_name) insertData.merchant_name = merchant_name;
+    if (vendor_id) insertData.vendor_id = Number(vendor_id);
+
+    const { data, error } = await supabase
+      .from('settlement_logs')
+      .insert(insertData)
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('[SETTLEMENT LOG] Insert error:', error);
+      return res.status(500).json({ status: 'error', message: error.message });
+    }
+
+    console.log(`[SETTLEMENT LOG] Created: ${data.id}`);
+    return res.json({ status: 'success', data: { id: data.id } });
+  } catch (error) {
+    console.error('[SETTLEMENT LOG] Error:', error);
+    return res.status(500).json({ status: 'error', message: 'Internal server error' });
+  }
+});
+
+// GET /api/settlement-logs — Fetch settlement logs with filters
+app.get('/api/settlement-logs', async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const { date_from, date_to, driver, merchant, limit: queryLimit, offset: queryOffset } = req.query;
+    const pageLimit = Math.min(Number(queryLimit) || 50, 200);
+    const pageOffset = Number(queryOffset) || 0;
+
+    let query = supabase
+      .from('settlement_logs')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(pageOffset, pageOffset + pageLimit - 1);
+
+    if (date_from) query = query.gte('created_at', `${date_from}T00:00:00`);
+    if (date_to) query = query.lte('created_at', `${date_to}T23:59:59`);
+    if (driver) query = query.ilike('driver_name', `%${driver}%`);
+    if (merchant) query = query.ilike('merchant_name', `%${merchant}%`);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('[SETTLEMENT LOG] Fetch error:', error);
+      return res.status(500).json({ status: 'error', message: error.message });
+    }
+
+    return res.json({ status: 'success', data: data || [], total: count || 0 });
+  } catch (error) {
+    console.error('[SETTLEMENT LOG] Error:', error);
+    return res.status(500).json({ status: 'error', message: 'Internal server error' });
+  }
+});
+
+// ============================================
+// DRIVER NOTES (synced from Vercel)
+// ============================================
+
+// GET /api/driver-notes?fleet_id=123&date_from=2025-01-01&date_to=2025-01-31
+app.get('/api/driver-notes', authenticate, async (req, res) => {
+  try {
+    const { fleet_id, date_from, date_to } = req.query;
+    if (!fleet_id) {
+      return res.status(400).json({ status: 'error', message: 'fleet_id is required' });
+    }
+    if (!isConfigured()) {
+      return res.json({ status: 'success', data: [] });
+    }
+
+    let query = supabase
+      .from('driver_daily_notes')
+      .select('*')
+      .eq('fleet_id', parseInt(fleet_id));
+
+    if (date_from) query = query.gte('note_date', date_from);
+    if (date_to) query = query.lte('note_date', date_to);
+
+    const { data, error } = await query.order('note_date', { ascending: true });
+    if (error) {
+      console.error('Fetch driver notes error:', error);
+      return res.status(500).json({ status: 'error', message: 'Failed to fetch notes' });
+    }
+    res.json({ status: 'success', data: data || [] });
+  } catch (error) {
+    console.error('Driver notes error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to fetch notes' });
+  }
+});
+
+// POST /api/driver-notes — upsert a note for a specific driver + date
+app.post('/api/driver-notes', authenticate, async (req, res) => {
+  try {
+    const { fleet_id, note_date, note_text } = req.body;
+    if (!fleet_id || !note_date) {
+      return res.status(400).json({ status: 'error', message: 'fleet_id and note_date are required' });
+    }
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+    }
+
+    const { data, error } = await supabase
+      .from('driver_daily_notes')
+      .upsert(
+        { fleet_id: parseInt(fleet_id), note_date, note_text: note_text || '', updated_at: new Date().toISOString() },
+        { onConflict: 'fleet_id,note_date' }
+      )
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Upsert driver note error:', error);
+      return res.status(500).json({ status: 'error', message: 'Failed to save note' });
+    }
+    res.json({ status: 'success', data });
+  } catch (error) {
+    console.error('Driver note save error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to save note' });
+  }
+});
+
+// ============================================
+// USER MANAGEMENT — :userId param variants (synced from Vercel)
+// ============================================
+
+// POST /api/users — Create user (Superadmin only)
+app.post('/api/users', authenticate, requireSuperadmin(), async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const { email, password, name, role, permissions } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ status: 'error', message: 'Email and password required' });
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true
+    });
+
+    if (authError) {
+      return res.status(400).json({ status: 'error', message: authError.message });
+    }
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .insert({
+        id: authData.user.id,
+        email,
+        name: name || email,
+        role: role || 'staff',
+        permissions: permissions || {}
+      })
+      .select()
+      .single();
+
+    if (userError) {
+      console.error('Error creating user profile:', userError);
+    }
+
+    await auditLogger.createAuditLog(req, 'user_create', 'user', authData.user.id, null, { email, name, role });
+
+    res.json({
+      status: 'success',
+      message: 'User created successfully',
+      data: { user: userData || { id: authData.user.id, email, name, role } }
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// PUT /api/users/:userId/permissions — Update user permissions (Superadmin only)
+app.put('/api/users/:userId/permissions', authenticate, requireSuperadmin(), async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const { userId } = req.params;
+    const { permissions } = req.body;
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .update({ permissions, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .select();
+
+    if (!userError && userData && userData.length > 0) {
+      return res.json({ status: 'success', data: { user: userData[0] } });
+    }
+
+    const { data: tookanData, error: tookanError } = await supabase
+      .from('tookan_users')
+      .update({ permissions, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .select();
+
+    if (tookanError || !tookanData || tookanData.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'User not found' });
+    }
+
+    return res.json({ status: 'success', data: { user: tookanData[0] } });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// PUT /api/users/:userId/role — Update user role (Superadmin only)
+app.put('/api/users/:userId/role', authenticate, requireSuperadmin(), async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    if (!['admin', 'staff', 'driver', 'merchant'].includes(role)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid role' });
+    }
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .update({ role, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (userError && userError.code !== 'PGRST116') {
+      const { data: tookanData, error: tookanError } = await supabase
+        .from('tookan_users')
+        .update({ role, updated_at: new Date().toISOString() })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (tookanError) {
+        return res.status(404).json({ status: 'error', message: 'User not found' });
+      }
+
+      return res.json({ status: 'success', data: { user: tookanData } });
+    }
+
+    res.json({ status: 'success', data: { user: userData } });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// DELETE /api/users/:userId — Delete/ban user (Superadmin only)
+app.delete('/api/users/:userId', authenticate, requireSuperadmin(), async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const { userId } = req.params;
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .update({ status: 'banned', updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (userError && userError.code !== 'PGRST116') {
+      const { error: tookanError } = await supabase
+        .from('tookan_users')
+        .delete()
+        .eq('id', userId);
+
+      if (tookanError) {
+        return res.status(404).json({ status: 'error', message: 'User not found' });
+      }
+    }
+
+    await auditLogger.createAuditLog(req, 'user_delete', 'user', userId, null, { action: 'banned' });
+
+    res.json({ status: 'success', message: 'User deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// PUT /api/users/:userId/status — Update user status (Superadmin only)
+app.put('/api/users/:userId/status', authenticate, requireSuperadmin(), async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const { userId } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ status: 'error', message: 'Status is required. Valid values: active, disabled, banned' });
+    }
+
+    const validStatuses = ['active', 'disabled', 'banned'];
+    if (!validStatuses.includes(status.toLowerCase())) {
+      return res.status(400).json({ status: 'error', message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    if (req.user && req.user.id === userId) {
+      return res.status(400).json({ status: 'error', message: 'You cannot change your own status' });
+    }
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .update({ status: status.toLowerCase(), updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (userError) {
+      return res.status(500).json({ status: 'error', message: 'Failed to update user status' });
+    }
+
+    res.json({
+      status: 'success',
+      message: `User ${status === 'active' ? 'enabled' : status === 'banned' ? 'banned' : 'disabled'} successfully`,
+      data: { id: userData.id, email: userData.email, status: userData.status }
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// ============================================
+// TASK PAYMENT (synced from Vercel)
+// ============================================
+
+// PUT /api/tasks/:jobId/payment — Update task payment (paid amount and cod_collected status)
+app.put('/api/tasks/:jobId/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { paid, cod_collected } = req.body;
+
+    if (paid === undefined) {
+      return res.status(400).json({ status: 'error', message: 'Missing required field: paid' });
+    }
+
+    if (!isConfigured()) {
+      return res.status(503).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const numericJobId = parseInt(jobId);
+    const numericPaid = parseFloat(paid);
+
+    const updateData = {
+      paid: numericPaid,
+      updated_at: new Date().toISOString()
+    };
+
+    if (cod_collected !== undefined) {
+      updateData.cod_collected = Boolean(cod_collected);
+    }
+
+    const { data: updatedTask, error } = await supabase
+      .from('tasks')
+      .update(updateData)
+      .eq('job_id', numericJobId)
+      .select('job_id, cod_amount, paid, balance, cod_collected')
+      .single();
+
+    if (error) {
+      console.error('Update task payment error:', error);
+      throw error;
+    }
+
+    if (!updatedTask) {
+      return res.status(404).json({ status: 'error', message: `Task with job_id ${jobId} not found` });
+    }
+
+    console.log(`💰 Updated task ${numericJobId}: paid=${numericPaid}, balance=${updatedTask.balance}, cod_collected=${updatedTask.cod_collected}`);
+
+    res.json({
+      status: 'success',
+      message: 'Task payment updated',
+      data: updatedTask
+    });
+  } catch (error) {
+    console.error('Update task payment error:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Failed to update task payment' });
+  }
+});
+
+// ============================================
+// UPDATE TASK STATUS (synced from Vercel)
+// ============================================
+
+// POST /api/tookan/update-task-status — Update task status (Successful=2, Failed=3, Deleted=9)
+app.post('/api/tookan/update-task-status', authenticate, requirePermission('perform_reorder'), async (req, res) => {
+  try {
+    console.log('\n=== UPDATE TASK STATUS REQUEST ===');
+    const { jobId, status } = req.body;
+
+    if (!jobId) {
+      return res.status(400).json({ status: 'error', message: 'Job ID is required' });
+    }
+    const numericStatus = parseInt(status);
+    if (![2, 3, 9].includes(numericStatus)) {
+      return res.status(400).json({ status: 'error', message: 'Status must be 2 (Successful), 3 (Failed), or 9 (Deleted)' });
+    }
+
+    const statusLabels = { 2: 'Successful', 3: 'Failed', 9: 'Deleted' };
+    console.log(`Updating task ${jobId} to status: ${numericStatus} (${statusLabels[numericStatus]})`);
+
+    // Fetch task details from DB to find connected task
+    const { data: task, error: fetchError } = await supabase
+      .from('tasks')
+      .select('job_id, raw_data')
+      .eq('job_id', jobId)
+      .single();
+
+    if (fetchError || !task) {
+      console.error('Failed to find task in DB:', jobId);
+      return res.status(404).json({ status: 'error', message: 'Task not found in database' });
+    }
+
+    // Identify connected tasks via pickup_delivery_relationship
+    const relationshipId = task.raw_data?.pickup_delivery_relationship;
+    let connectedJobIds = [jobId];
+
+    if (relationshipId) {
+      const { data: relatedTasks } = await supabase
+        .from('tasks')
+        .select('job_id')
+        .eq('raw_data->>pickup_delivery_relationship', relationshipId);
+
+      if (relatedTasks) {
+        connectedJobIds = relatedTasks.map(t => t.job_id);
+      }
+    }
+
+    connectedJobIds = [...new Set(connectedJobIds)];
+    console.log(`Updating status for tasks: ${connectedJobIds.join(', ')}`);
+
+    const apiKey = getApiKey();
+    const results = [];
+
+    // Call Tookan API for each connected task
+    for (const id of connectedJobIds) {
+      let tookanResponse;
+
+      if (numericStatus === 9) {
+        tookanResponse = await fetch('https://api.tookanapp.com/v2/delete_task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, job_id: String(id) })
+        });
+      } else {
+        tookanResponse = await fetch('https://api.tookanapp.com/v2/update_task_status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: apiKey, job_id: String(id), job_status: numericStatus })
+        });
+      }
+
+      const data = await tookanResponse.json();
+      results.push({ id, tookanStatus: data.status, message: data.message });
+      console.log(`  Task ${id}: Tookan response status=${data.status}, message=${data.message}`);
+    }
+
+    // Update status in Supabase
+    const dbStatus = numericStatus === 9 ? 10 : numericStatus;
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({ status: dbStatus, last_synced_at: new Date().toISOString() })
+      .in('job_id', connectedJobIds);
+
+    if (updateError) {
+      console.error('Failed to update status in Supabase:', updateError);
+    } else {
+      console.log(`Status set to ${dbStatus} (${statusLabels[numericStatus]}) for tasks: ${connectedJobIds.join(', ')}`);
+    }
+
+    console.log('=== END REQUEST (SUCCESS) ===\n');
+
+    res.json({
+      status: 'success',
+      message: `Tasks updated to ${statusLabels[numericStatus]} successfully`,
+      data: { updatedIds: connectedJobIds, newStatus: numericStatus, results }
+    });
+  } catch (error) {
+    console.error('Update task status error:', error);
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// ============================================
+// CUSTOMER WALLET DETAILS (synced from Vercel)
+// ============================================
+
+// GET /api/tookan/customer-wallet/details — Get merchant wallet details
+app.get('/api/tookan/customer-wallet/details', authenticate, async (req, res) => {
+  try {
+    const apiKey = getApiKey();
+    const { vendor_id } = req.query;
+    if (!vendor_id) {
+      return res.status(400).json({ status: 'error', message: 'vendor_id required' });
+    }
+    const response = await fetch('https://api.tookanapp.com/v2/get_customer_wallet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey, vendor_id })
+    });
+    const data = await response.json();
+    res.json({ status: 'success', data });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// ============================================
+// TOKEN MANAGEMENT — /api/tokens/ path aliases (synced from Vercel)
+// Server already has these at /api/admin/tokens/ via adminTokenRoutes
+// Adding /api/tokens/ aliases for Vercel compatibility
+// ============================================
+
+const crypto = require('crypto');
+
+// POST /api/tokens/create — Create API token (Superadmin only)
+app.post('/api/tokens/create', authenticate, requireSuperadmin(), async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const { name, merchant_id, description } = req.body;
+    if (!name || !merchant_id) {
+      return res.status(400).json({ status: 'error', message: 'Missing required fields: name, merchant_id' });
+    }
+
+    const rawToken = 'edi_' + crypto.randomBytes(32).toString('hex');
+    const prefix = rawToken.substring(0, 8);
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    const { data, error } = await supabase
+      .from('api_tokens')
+      .insert({
+        merchant_id,
+        name,
+        description: description || null,
+        token_hash: tokenHash,
+        prefix,
+        created_by: req.user?.email || req.user?.id || null,
+        is_active: true
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      status: 'success',
+      data: {
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        token: rawToken,
+        prefix: data.prefix,
+        created_at: data.created_at
+      }
+    });
+  } catch (error) {
+    console.error('Error creating token:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Failed to create token' });
+  }
+});
+
+// GET /api/tokens/list — List API tokens (Superadmin only)
+app.get('/api/tokens/list', authenticate, requireSuperadmin(), async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const { data, error } = await supabase
+      .from('api_tokens')
+      .select('id, name, description, prefix, is_active, created_by, created_at, last_used_at, revoked_at, merchant_id')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ status: 'success', data: data || [] });
+  } catch (error) {
+    console.error('Error listing tokens:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Failed to list tokens' });
+  }
+});
+
+// POST /api/tokens/revoke — Revoke API token (Superadmin only)
+app.post('/api/tokens/revoke', authenticate, requireSuperadmin(), async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const { token_id } = req.body;
+    if (!token_id) {
+      return res.status(400).json({ status: 'error', message: 'Missing token_id' });
+    }
+
+    const { data, error } = await supabase
+      .from('api_tokens')
+      .update({ is_active: false, revoked_at: new Date().toISOString() })
+      .eq('id', token_id)
+      .select();
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Token not found' });
+    }
+
+    res.json({ status: 'success', message: 'Token revoked successfully' });
+  } catch (error) {
+    console.error('Error revoking token:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Failed to revoke token' });
+  }
+});
+
+// ============================================
+// MERCHANT SYNC (synced from Vercel)
+// ============================================
+
+// POST /api/merchants/sync — Fetch all merchants from Tookan and upsert to Supabase
+app.post('/api/merchants/sync', authenticate, requireSuperadmin(), async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Database not configured' });
+    }
+
+    const apiKey = getApiKey();
+    const limit = 50;
+    let offset = 0;
+    let allMerchants = [];
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await fetch('https://api.tookanapp.com/v2/get_all_customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: apiKey, limit, offset })
+      });
+
+      const data = await response.json();
+      if (data.status === 200 && data.data && data.data.length > 0) {
+        allMerchants = allMerchants.concat(data.data);
+        offset += limit;
+        if (data.data.length < limit) hasMore = false;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    console.log(`Fetched ${allMerchants.length} merchants from Tookan`);
+
+    // Upsert to merchants table
+    let upsertCount = 0;
+    for (const merchant of allMerchants) {
+      const { error } = await supabase
+        .from('merchants')
+        .upsert({
+          vendor_id: merchant.vendor_id,
+          name: merchant.name || merchant.username || '',
+          email: merchant.email || '',
+          phone: merchant.phone || '',
+          address: merchant.address || '',
+          raw_data: merchant,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'vendor_id' });
+
+      if (!error) upsertCount++;
+    }
+
+    console.log(`Upserted ${upsertCount}/${allMerchants.length} merchants`);
+
+    res.json({
+      status: 'success',
+      message: `Synced ${upsertCount} merchants from Tookan`,
+      data: { total_fetched: allMerchants.length, upserted: upsertCount }
+    });
+  } catch (error) {
+    console.error('Merchant sync error:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Failed to sync merchants' });
   }
 });

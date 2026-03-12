@@ -69,7 +69,7 @@ async function getAllRequests(filters = {}) {
     query = query.eq('request_type', filters.requestType);
   }
 
-  query = query.order('requested_at', { ascending: false });
+  query = query.order('created_at', { ascending: false });
 
   const { data, error } = await query;
 
