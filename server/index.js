@@ -6653,7 +6653,7 @@ function calculatePlanFee(plan, orderAmount, orderCount) {
   return 0;
 }
 
-// GET Analytics (KPIs, Charts, Performance Data)
+// GET Analytics (KPIs, Charts, Performance Data) — Synced with Vercel
 app.get('/api/reports/analytics', authenticate, async (req, res) => {
   try {
     console.log('\n=== GET ANALYTICS REQUEST ===');
@@ -6661,137 +6661,71 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
     console.log('Request received at:', new Date().toISOString());
 
     const apiKey = getApiKey();
-    const { dateFrom, dateTo } = req.query;
 
-    // Prepare date range - default to last 30 days
-    let startDate = dateFrom;
-    let endDate = dateTo;
-
-    if (!startDate || !endDate) {
-      const end = new Date();
-      const start = new Date();
-      start.setDate(start.getDate() - 30);
-
-      if (!startDate) startDate = start.toISOString().split('T')[0];
-      if (!endDate) endDate = end.toISOString().split('T')[0];
-    }
-
-    // Fetch orders and drivers (customers count comes from database now)
-    // Use localhost for internal API calls to avoid proxy/port issues
-    const baseUrl = `http://localhost:${process.env.PORT || 3001}`;
-
-    const authHeader = req.headers.authorization || '';
-
-    const [ordersResult, driversResult] = await Promise.all([
-      fetch(`${baseUrl}/api/tookan/orders?dateFrom=${startDate}&dateTo=${endDate}&limit=500`, {
-        headers: authHeader ? { Authorization: authHeader } : {}
-      }).then(r => r.json()).catch(err => {
-        console.error('Error fetching orders for analytics:', err);
-        return { status: 'error', data: { orders: [] } };
+    // Fetch data from Tookan directly (like Vercel) — NOT through internal localhost
+    // NOTE: We use small task limits because RPC provides accurate totals
+    const [fleetsRes, tasksRes] = await Promise.all([
+      fetch('https://api.tookanapp.com/v2/get_all_fleets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: apiKey })
       }),
-      fetch(`${baseUrl}/api/tookan/fleets`, {
-        headers: authHeader ? { Authorization: authHeader } : {}
-      }).then(r => r.json()).catch(err => {
-        console.error('Error fetching drivers for analytics:', err);
-        return { status: 'error', data: { fleets: [] } };
+      fetch('https://api.tookanapp.com/v2/get_all_tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: apiKey,
+          job_type: 1, // Delivery only for charts
+          job_status: '0,1,2,3,4,5,6,7,8,9',
+          limit: 100, // Small limit - RPC provides accurate totals
+          custom_fields: 1
+        })
       })
-      // Customers count is now fetched from database, no API call needed
     ]);
 
-    const orders = ordersResult.status === 'success' ? (ordersResult.data?.orders || []) : [];
-    const drivers = driversResult.status === 'success' ? (driversResult.data?.fleets || []) : [];
+    const [fleetsData, tasksData] = await Promise.all([
+      fleetsRes.json(),
+      tasksRes.json()
+    ]);
 
-    // Get customer count from Supabase database (instead of Tookan API)
-    let totalCustomers = 0;
+    // Ensure data is always an array
+    const fleets = Array.isArray(fleetsData.data) ? fleetsData.data :
+      Array.isArray(fleetsData.fleets) ? fleetsData.fleets :
+        Array.isArray(fleetsData) ? fleetsData : [];
+
+    const tasks = Array.isArray(tasksData.data) ? tasksData.data :
+      Array.isArray(tasksData.tasks) ? tasksData.tasks :
+        Array.isArray(tasksData) ? tasksData : [];
+
+    // Get totals from Supabase RPC (fast, accurate)
+    let rpcTotals = null;
     if (isConfigured()) {
       try {
-        totalCustomers = await customerModel.getCustomerCount();
-      } catch (err) {
-        console.error('Error getting customer count from DB:', err.message);
+        const { data: stats } = await supabase.rpc('get_order_stats');
+        if (stats && stats.length > 0) {
+          rpcTotals = stats[0];
+        }
+      } catch (e) {
+        console.log('RPC check failed in analytics:', e.message);
       }
     }
 
-    console.log(`ðŸ“Š Processing analytics for ${orders.length} orders, ${drivers.length} drivers, ${totalCustomers} customers (from DB)`);
-
-    // Log if orders are empty but we have drivers (indicates API issue)
-    if (orders.length === 0 && drivers.length > 0) {
-      console.log('âš ï¸  No orders found, but drivers exist. This may indicate a Tookan API issue with order fetching.');
-    }
-
-    // Calculate KPIs - Match Reports Panel (Total Orders, Drivers, Customers, Deliveries)
-    const totalOrders = orders.length;
-    const totalDrivers = drivers.length;
-    const totalMerchants = totalCustomers; // Use DB count
-
-    // Calculate COD metrics
-    const pendingCOD = orders
-      .filter(o => [0, 1, 3, 4, 6, 7].includes(parseInt(o.status))) // Ongoing orders (exclude Successful=2 and Canceled=8,9)
-      .reduce((sum, o) => sum + (parseFloat(o.cod) || 0), 0);
-
-    const collectedCOD = orders
-      .filter(o => [2].includes(parseInt(o.status))) // Tookan status 2 = Successful/Completed
-      .reduce((sum, o) => sum + (parseFloat(o.cod) || 0), 0);
-
-    const completedDeliveries = orders.filter(o => [2].includes(parseInt(o.status))).length;
-
-    // Calculate COD Collection Status (for pie chart)
-    // Note: Settled COD would come from COD queue settlement data
-    // For now, we'll use collected vs pending
-    const codStatus = [
-      { name: 'COD Collected', value: collectedCOD, color: '#DE3544' },
-      { name: 'Settled', value: 0, color: '#10B981' }, // Would need COD queue data
-      { name: 'Pending', value: pendingCOD, color: '#F59E0B' }
-    ];
-
-    // Calculate Order Volume (last 7 days for bar chart)
-    const orderVolume = [];
-    const today = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
-      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-
-      const dayOrders = orders.filter(o => {
-        // Handle different date field names and formats
-        const orderDateValue = o.date || o.job_pickup_datetime || o.created_at || o.order_date;
-        if (!orderDateValue) return false;
-
-        try {
-          const orderDate = new Date(orderDateValue);
-          if (isNaN(orderDate.getTime())) return false;
-          return orderDate.toISOString().split('T')[0] === dateStr;
-        } catch (e) {
-          return false;
-        }
-      });
-
-      orderVolume.push({
-        day: dayName,
-        orders: dayOrders.length
-      });
-    }
-
-    // Calculate Driver Performance using RPC (last 7 days, top 5)
+    // Get top drivers from RPC (last 7 days)
     let driverPerformance = [];
     if (isConfigured()) {
       try {
-        // Get order counts per fleet from RPC
-        const { data: fleetCounts, error: rpcErr } = await supabase.rpc('get_fleet_order_counts_last_7_days');
+        const { data: fleetCounts } = await supabase.rpc('get_fleet_order_counts_last_7_days');
 
-        if (!rpcErr && fleetCounts && fleetCounts.length > 0) {
-          // Get ALL agent names from agents table (safer matching)
+        if (fleetCounts && fleetCounts.length > 0) {
           const { data: agents } = await supabase
             .from('agents')
             .select('fleet_id, name');
 
-          // Create a map of fleet_id (as string) to name
           const agentMap = new Map();
           if (agents) {
             agents.forEach(a => agentMap.set(String(a.fleet_id), a.name));
           }
 
-          // Build leaderboard (top 5) using string lookup
           driverPerformance = fleetCounts.slice(0, 5).map(f => ({
             name: agentMap.get(String(f.fleet_id)) || `Driver ${f.fleet_id}`,
             deliveries: parseInt(f.total_orders) || 0
@@ -6802,24 +6736,35 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
       }
     }
 
-    // Calculate trends (compare with previous period)
-    const previousStart = new Date(startDate);
-    previousStart.setDate(previousStart.getDate() - (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24));
-    const previousEnd = new Date(startDate);
-    previousEnd.setDate(previousEnd.getDate() - 1);
+    // Calculate analytics from tasks
+    const completedTasks = tasks.filter(t => parseInt(t.job_status) === 2);
+    const pendingCOD = tasks
+      .filter(t => (t.order_payment || t.total_amount) && parseInt(t.job_status) === 2)
+      .reduce((sum, t) => sum + (parseFloat(t.order_payment || t.total_amount) || 0), 0);
 
-    // Note: Would need to fetch previous period data for accurate trends
-    // For now, return placeholder trends
-    const trends = {
-      orders: '+0%',
-      drivers: '+0%',
-      merchants: '+0%',
-      pendingCOD: '+0%',
-      driversPending: '+0%',
-      completed: '+0%'
-    };
+    // Get merchant count from Supabase merchants table (like Vercel)
+    let dbCustomerCount = 0;
+    if (isConfigured()) {
+      try {
+        const { count } = await supabase
+          .from('merchants')
+          .select('*', { count: 'exact', head: true });
+        dbCustomerCount = count || 0;
+      } catch (e) {
+        // Fallback to customers table
+        try {
+          dbCustomerCount = await customerModel.getCustomerCount();
+        } catch (e2) {
+          console.log('Customer count check failed:', e2.message);
+        }
+      }
+    }
 
-    console.log('âœ… Analytics calculated successfully');
+    const totalCustomers = dbCustomerCount;
+    const totalMerchants = dbCustomerCount;
+
+    console.log(`📊 Analytics: rpcTotals=${JSON.stringify(rpcTotals)}, fleets=${fleets.length}, tasks=${tasks.length}, merchants=${totalMerchants}`);
+    console.log('✅ Analytics calculated successfully');
     console.log('=== END REQUEST (SUCCESS) ===\n');
 
     res.json({
@@ -6829,21 +6774,26 @@ app.get('/api/reports/analytics', authenticate, async (req, res) => {
       message: 'Analytics fetched successfully',
       data: {
         kpis: {
-          totalOrders: totalOrders,
-          totalDrivers: totalDrivers,
+          totalOrders: rpcTotals?.total_orders || tasks.length,
+          totalDrivers: fleets.length,
           totalMerchants: totalMerchants,
+          totalCustomers: totalCustomers,
           pendingCOD: pendingCOD,
           driversWithPending: 0,
-          completedDeliveries: completedDeliveries
+          completedDeliveries: rpcTotals?.completed_deliveries || completedTasks.length
         },
-        codStatus: codStatus,
-        orderVolume: orderVolume,
-        driverPerformance: driverPerformance,
-        trends: trends,
-        filters: {
-          dateFrom: startDate,
-          dateTo: endDate
-        }
+        trends: {
+          orders: '+0%',
+          drivers: '+0%',
+          merchants: '+0%',
+          customers: '+0%',
+          pendingCOD: '+0%',
+          driversPending: '+0%',
+          completed: '+0%'
+        },
+        codStatus: [],
+        orderVolume: [],
+        driverPerformance: driverPerformance
       }
     });
   } catch (error) {
