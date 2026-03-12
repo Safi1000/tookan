@@ -7513,7 +7513,7 @@ app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('
   try {
     console.log('\n=== APPROVE WITHDRAWAL REQUEST ===');
     const { id } = req.params;
-    const requestId = parseInt(id);
+    const requestId = id; // UUID string, do not parseInt
 
     if (!isConfigured()) {
       return res.status(503).json({
@@ -7597,7 +7597,7 @@ app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('
 app.put('/api/withdrawal/request/:id/reject', authenticate, requirePermission('manage_wallets'), async (req, res) => {
   try {
     const { id } = req.params;
-    const requestId = parseInt(id);
+    const requestId = id; // UUID string, do not parseInt
 
     if (!isConfigured()) {
       return res.status(503).json({
