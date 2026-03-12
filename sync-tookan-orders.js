@@ -7,6 +7,7 @@
  * 
  * Usage:
  *   node sync-tookan-orders.js              # Full sync (last 6 months)
+ *   node sync-tookan-orders.js --today       # Sync only today's orders
  *   node sync-tookan-orders.js --incremental # Incremental sync (since last sync)
  *   node sync-tookan-orders.js --status      # Show sync status
  *   node sync-tookan-orders.js --force       # Force sync even if already running
@@ -28,10 +29,12 @@ const isIncremental = args.includes('--incremental') || args.includes('-i');
 const showStatus = args.includes('--status') || args.includes('-s');
 const forceSync = args.includes('--force') || args.includes('-f');
 const showHelp = args.includes('--help') || args.includes('-h');
+const isToday = args.includes('--today') || args.includes('-t');
+const todayStr = new Date().toISOString().split('T')[0];
 const dateFromArg = args.find(a => a.startsWith('--dateFrom=')) || args.find(a => a.startsWith('--from='));
 const dateToArg = args.find(a => a.startsWith('--dateTo=')) || args.find(a => a.startsWith('--to='));
-const dateFrom = dateFromArg ? dateFromArg.split('=')[1] : null;
-const dateTo = dateToArg ? dateToArg.split('=')[1] : null;
+const dateFrom = isToday ? todayStr : (dateFromArg ? dateFromArg.split('=')[1] : null);
+const dateTo = isToday ? todayStr : (dateToArg ? dateToArg.split('=')[1] : null);
 const jobIdArg = args.find(a => a.startsWith('--jobId=') || a.startsWith('--job=') || a.startsWith('--id='));
 const jobId = jobIdArg ? jobIdArg.split('=')[1] : null;
 
@@ -48,6 +51,7 @@ Usage:
 
 Options:
   (no options)    Full sync - Fetches all orders from last 6 months
+  --today         Sync only today's orders
   --incremental   Only sync orders since last successful sync
   --status        Show current sync status and exit
   --force         Force sync even if one is already in progress
@@ -62,6 +66,7 @@ Environment Variables:
 
 Examples:
   node sync-tookan-orders.js                # Run full 6-month sync
+  node sync-tookan-orders.js --today        # Sync only today's orders
   node sync-tookan-orders.js --incremental  # Quick sync of new orders
   node sync-tookan-orders.js --status       # Check sync progress
   node sync-tookan-orders.js --dateFrom=2025-11-17 --dateTo=2025-12-05 --force  # Targeted range

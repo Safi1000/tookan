@@ -8,6 +8,7 @@
  * 
  * Usage:
  *   node sync-cod-amounts.js              # Sync all tasks with null/0 cod_amount
+ *   node sync-cod-amounts.js --today      # Sync only today's tasks
  *   node sync-cod-amounts.js --all        # Force sync all tasks (even with existing COD)
  *   node sync-cod-amounts.js --limit=1000 # Limit number of tasks to process
  *   node sync-cod-amounts.js --status     # Show current COD status
@@ -28,12 +29,14 @@ const args = process.argv.slice(2);
 const syncAll = args.includes('--all') || args.includes('-a');
 const showStatus = args.includes('--status') || args.includes('-s');
 const showHelp = args.includes('--help') || args.includes('-h');
+const isToday = args.includes('--today') || args.includes('-t');
+const todayStr = new Date().toISOString().split('T')[0];
 const limitArg = args.find(a => a.startsWith('--limit='));
 const limit = limitArg ? parseInt(limitArg.split('=')[1]) : null;
 const dateFromArg = args.find(a => a.startsWith('--from=')); // e.g. --from=2023-01-01
-const dateFrom = dateFromArg ? dateFromArg.split('=')[1] : null;
+const dateFrom = isToday ? todayStr : (dateFromArg ? dateFromArg.split('=')[1] : null);
 const dateToArg = args.find(a => a.startsWith('--to='));     // e.g. --to=2023-01-31
-const dateTo = dateToArg ? dateToArg.split('=')[1] : null;
+const dateTo = isToday ? todayStr : (dateToArg ? dateToArg.split('=')[1] : null);
 
 const BATCH_SIZE = 50; // Tookan limits job_ids to 50 per request
 
@@ -50,6 +53,7 @@ Usage:
 
 Options:
   (no options)    Sync tasks with null or 0 cod_amount
+  --today         Sync only today's tasks
   --all           Force sync all tasks (even with existing COD values)
   --from=DATE     Start date (YYYY-MM-DD) inclusive
   --to=DATE       End date (YYYY-MM-DD) inclusive
@@ -64,6 +68,7 @@ Environment Variables:
 
 Examples:
   node sync-cod-amounts.js              # Sync tasks missing COD
+  node sync-cod-amounts.js --today      # Sync only today's tasks
   node sync-cod-amounts.js --all        # Re-sync all tasks
   node sync-cod-amounts.js --from=2023-01-01 --to=2023-01-31 # Sync Jan 2023
   node sync-cod-amounts.js --limit=500  # Sync up to 500 tasks
