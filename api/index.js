@@ -7353,7 +7353,7 @@ function getApp() {
 
         // Paginate through all merchants
         while (true) {
-          const response = await fetch('https://node1-api.tookanapp.com/v2/viewCustomersWithPagination', {
+          const response = await fetch('https://api.tookanapp.com/v2/viewCustomersWithPagination', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
