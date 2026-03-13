@@ -22,6 +22,7 @@ export interface ApiToken {
     name: string;
     description: string | null;
     prefix: string;
+    raw_token: string | null;
     is_active: boolean;
     merchant_id: string;
     created_by: string | null;
@@ -34,7 +35,7 @@ export interface CreateTokenResponse {
     id: string;
     name: string;
     description: string | null;
-    token: string; // Raw token, only shown once
+    token: string; // Raw token
     prefix: string;
     created_at: string;
 }

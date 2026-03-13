@@ -36,6 +36,7 @@ export function SettingsPanel() {
     const [newlyCreatedToken, setNewlyCreatedToken] = useState<CreateTokenResponse | null>(null)
     const [tokenCopied, setTokenCopied] = useState(false)
     const [showToken, setShowToken] = useState(false)
+    const [visibleTokenIds, setVisibleTokenIds] = useState<Set<string>>(new Set())
 
     // Create form state
     const [formData, setFormData] = useState({
@@ -209,12 +210,18 @@ export function SettingsPanel() {
                             </button>
                             <button
                                 onClick={() => setShowCreateModal(true)}
-                                style={{ border: "2px solid white", borderRadius: "12px" }}
-                                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold shadow-md flex-1 sm:flex-none"
+                                style={{
+                                    border: "2px solid white",
+                                    borderRadius: "12px",
+                                    paddingLeft: "10px",
+                                    paddingRight: "10px"
+                                }}
+                                className="flex items-center justify-center gap-2 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold shadow-md flex-1 sm:flex-none"
                             >
                                 <Plus className="w-4 h-4" />
                                 Create Token
                             </button>
+
 
                         </div>
                     </div>
@@ -247,11 +254,11 @@ export function SettingsPanel() {
                                     <tr>
                                         <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Name</th>
                                         <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Description</th>
-                                        <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Prefix</th>
+                                        <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Token</th>
                                         <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Merchant</th>
                                         <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Status</th>
                                         <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Created</th>
-                                        <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Last Used</th>
+                                        {/* <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Last Used</th> */}
                                         <th className="text-left px-6 py-4 table-header-text dark:text-[#C1EEFA] text-sm font-medium">Actions</th>
                                     </tr>
                                 </thead>
@@ -274,37 +281,76 @@ export function SettingsPanel() {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <code className="px-2 py-1 bg-muted/50 dark:bg-[#1A2C53] rounded text-sm font-mono text-heading dark:text-[#C1EEFA]">
-                                                    {token.prefix}••••••
-                                                </code>
+                                                <div className="flex items-center gap-2">
+                                                    <code className="px-2 py-1 bg-muted/50 dark:bg-[#1A2C53] rounded text-xs font-mono text-heading dark:text-[#C1EEFA] max-w-[200px] truncate">
+                                                        {visibleTokenIds.has(token.id) && token.raw_token
+                                                            ? token.raw_token
+                                                            : `${token.prefix}${'•'.repeat(20)}`}
+                                                    </code>
+                                                    {token.raw_token && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newSet = new Set(visibleTokenIds)
+                                                                    if (newSet.has(token.id)) {
+                                                                        newSet.delete(token.id)
+                                                                    } else {
+                                                                        newSet.add(token.id)
+                                                                    }
+                                                                    setVisibleTokenIds(newSet)
+                                                                }}
+                                                                className="p-1 hover:bg-muted/50 rounded transition-colors"
+                                                                title={visibleTokenIds.has(token.id) ? "Hide token" : "Show token"}
+                                                            >
+                                                                {visibleTokenIds.has(token.id) ? (
+                                                                    <EyeOff className="w-3.5 h-3.5 text-muted-light dark:text-[#99BFD1]" />
+                                                                ) : (
+                                                                    <Eye className="w-3.5 h-3.5 text-muted-light dark:text-[#99BFD1]" />
+                                                                )}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => copyToClipboard(token.raw_token!)}
+                                                                className="p-1 hover:bg-muted/50 rounded transition-colors"
+                                                                title="Copy token"
+                                                            >
+                                                                <Copy className="w-3.5 h-3.5 text-muted-light dark:text-[#99BFD1]" />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className="text-heading dark:text-[#C1EEFA] text-sm">{token.merchant_id}</span>
                                             </td>
                                             <td className="px-6 py-4">
                                                 {token.is_active ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30">
+                                                    <span
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold shadow-sm"
+                                                        style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.4)' }}
+                                                    >
                                                         <CheckCircle className="w-3 h-3" />
                                                         Active
                                                     </span>
                                                 ) : (
-                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">
+                                                    <span
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold shadow-sm"
+                                                        style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.4)' }}
+                                                    >
                                                         <AlertTriangle className="w-3 h-3" />
                                                         Revoked
                                                     </span>
                                                 )}
                                             </td>
                                             <td className="px-6 py-4">
-                                                <div className="flex items-center gap-1.5 text-sm text-muted-light dark:text-[#99BFD1]">
-                                                    <Clock className="w-3.5 h-3.5" />
+                                                <div className="text-sm text-muted-light dark:text-[#99BFD1]">
                                                     {formatDate(token.created_at)}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            {/* <td className="px-6 py-4">
                                                 <div className="text-sm text-muted-light dark:text-[#99BFD1]">
                                                     {formatDate(token.last_used_at)}
                                                 </div>
-                                            </td>
+                                            </td> */}
                                             <td className="px-6 py-4">
                                                 {token.is_active ? (
                                                     <button
@@ -334,8 +380,7 @@ export function SettingsPanel() {
                     <div className="text-[#3B82F6] text-sm space-y-1">
                         <p className="font-medium">API Token Security</p>
                         <p className="opacity-80">
-                            Tokens are hashed and stored securely. The raw token is only shown once when created — make sure
-                            to copy it immediately. Revoked tokens cannot be reactivated.
+                            Tokens are stored securely and can be viewed at any time using the eye icon. Use the copy button to copy a token. Revoked tokens cannot be reactivated.
                         </p>
                     </div>
                 </div>
@@ -343,9 +388,36 @@ export function SettingsPanel() {
 
             {/* Create Token Modal */}
             {showCreateModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all duration-200">
-                    <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border w-full max-w-lg shadow-2xl transform transition-all scale-100">
-                        <div className="p-6 border-b border-border flex items-center justify-between">
+                <div style={{
+                    position: 'fixed',
+                    inset: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 50,
+                    padding: '1rem'
+                }}>
+                    <div style={{
+                        backgroundColor: 'var(--background)',
+                        borderRadius: '0.75rem',
+                        border: '1px solid var(--border)',
+                        width: '100%',
+                        maxWidth: '48rem',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column' as const,
+                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+                    }} className="dark:!bg-[#223560]">
+                        {/* Header */}
+                        <div style={{
+                            padding: '1.25rem 1.5rem',
+                            borderBottom: '1px solid var(--border)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexShrink: 0
+                        }}>
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center shadow-sm">
                                     <Plus className="w-5 h-5 text-[#10B981]" />
@@ -360,7 +432,8 @@ export function SettingsPanel() {
                             </button>
                         </div>
 
-                        <div className="p-6 space-y-5">
+                        {/* Body */}
+                        <div style={{ padding: '1.5rem' }} className="space-y-5">
                             <div>
                                 <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">
                                     Token Name <span className="text-destructive">*</span>
@@ -375,9 +448,13 @@ export function SettingsPanel() {
                             </div>
 
                             <div>
-                                <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">
+                                <label
+                                    className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium"
+                                    style={{ paddingTop: "10px" }}
+                                >
                                     Merchant ID <span className="text-destructive">*</span>
                                 </label>
+
                                 <input
                                     type="text"
                                     value={formData.merchantId}
@@ -388,9 +465,13 @@ export function SettingsPanel() {
                             </div>
 
                             <div>
-                                <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">
+                                <label
+                                    className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium"
+                                    style={{ paddingTop: "10px" }}
+                                >
                                     Description
                                 </label>
+
                                 <textarea
                                     value={formData.description}
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -401,18 +482,33 @@ export function SettingsPanel() {
                             </div>
                         </div>
 
-                        <div className="p-6 border-t border-border flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+                        {/* Footer */}
+                        <div style={{
+                            padding: '1.25rem 1.5rem',
+                            borderTop: '1px solid var(--border)',
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            gap: '0.75rem',
+                            flexShrink: 0
+                        }}>
                             <button
                                 onClick={() => setShowCreateModal(false)}
-                                className="px-5 py-2.5 border border-border rounded-xl text-heading dark:text-[#C1EEFA] hover:bg-muted/50 active:bg-muted/70 active:scale-95 transition-all text-sm font-medium shadow-sm w-full sm:w-auto"
+                                style={{ paddingLeft: "8px", paddingRight: "8px" }}
+                                className="py-2.5 border border-border rounded-xl text-heading dark:text-[#C1EEFA] hover:bg-muted/50 active:bg-muted/70 active:scale-95 transition-all text-sm font-medium shadow-sm"
                             >
                                 Cancel
                             </button>
+
                             <button
                                 onClick={handleCreateToken}
                                 disabled={isCreating || !formData.name.trim() || !formData.merchantId.trim()}
-                                style={{ border: "2px solid white", borderRadius: "12px" }}
-                                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-md w-full sm:w-auto"
+                                style={{
+                                    border: "2px solid white",
+                                    borderRadius: "12px",
+                                    paddingLeft: "10px",
+                                    paddingRight: "10px"
+                                }}
+                                className="flex items-center justify-center gap-2 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-md"
                             >
                                 {isCreating ? (
                                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -429,9 +525,32 @@ export function SettingsPanel() {
 
             {/* Newly Created Token Modal */}
             {newlyCreatedToken && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border w-full max-w-lg shadow-2xl">
-                        <div className="p-6 border-b border-border">
+                <div style={{
+                    position: 'fixed',
+                    inset: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 50,
+                    padding: '1rem'
+                }}>
+                    <div style={{
+                        backgroundColor: 'var(--background)',
+                        borderRadius: '0.75rem',
+                        border: '1px solid var(--border)',
+                        width: '100%',
+                        maxWidth: '48rem',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column' as const,
+                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+                    }} className="dark:!bg-[#223560]">
+                        <div style={{
+                            padding: '1.25rem 1.5rem',
+                            borderBottom: '1px solid var(--border)',
+                            flexShrink: 0
+                        }}>
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center">
                                     <CheckCircle className="w-5 h-5 text-[#10B981]" />
@@ -444,11 +563,11 @@ export function SettingsPanel() {
                         </div>
 
                         <div className="p-6 space-y-4">
-                            {/* Warning */}
-                            <div className="flex items-start gap-3 p-4 bg-[#F59E0B]/10 dark:bg-[#F59E0B]/20 border border-[#F59E0B]/30 rounded-xl">
-                                <AlertTriangle className="w-5 h-5 text-[#F59E0B] mt-0.5 shrink-0" />
-                                <p className="text-[#F59E0B] text-sm font-medium">
-                                    Copy this token now. It will not be shown again after you close this dialog.
+                            {/* Info */}
+                            <div className="flex items-start gap-3 p-4 bg-[#10B981]/10 dark:bg-[#10B981]/20 border border-[#10B981]/30 rounded-xl">
+                                <CheckCircle className="w-5 h-5 text-[#10B981] mt-0.5 shrink-0" />
+                                <p className="text-[#10B981] text-sm font-medium">
+                                    You can always view this token later from the token list using the eye icon.
                                 </p>
                             </div>
 
@@ -488,7 +607,13 @@ export function SettingsPanel() {
                             </div>
                         </div>
 
-                        <div className="p-6 border-t border-border flex justify-end">
+                        <div style={{
+                            padding: '1.25rem 1.5rem',
+                            borderTop: '1px solid var(--border)',
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            flexShrink: 0
+                        }}>
                             <button
                                 onClick={() => {
                                     setNewlyCreatedToken(null)
@@ -498,7 +623,7 @@ export function SettingsPanel() {
                                 style={{ border: "2px solid white" }}
                                 className="px-6 py-2.5 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg active:scale-95 transition-all text-sm font-semibold shadow-md w-full sm:w-auto"
                             >
-                                I have copied the token
+                                Done
                             </button>
 
                         </div>

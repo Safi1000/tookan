@@ -2515,7 +2515,7 @@ export function FinancialPanel() {
                         >
                           <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.id}</td>
                           <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
-                          <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${(driver.balance || 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {(driver.balance || 0).toFixed(2)}</td>
                           <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{driver.phone || ''}</td>
                           <td className="px-4 py-3">
                             <div className="flex gap-2">
@@ -2648,7 +2648,7 @@ export function FinancialPanel() {
                           >
                             <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.id}</td>
                             <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.name}</td>
-                            <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">${((merchant as any).balance || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 text-green-600 dark:text-green-400 font-semibold">{(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'} {((merchant as any).balance || 0).toFixed(2)}</td>
                             <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{(merchant as any).phone || ''}</td>
                             <td className="px-4 py-3">
                               <div className="flex gap-2">

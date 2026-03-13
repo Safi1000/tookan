@@ -5583,7 +5583,7 @@ app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
       const { data, error } = await supabase.rpc('get_driver_statistics_v2', {
         p_fleet_id: driver.id,
         p_date_from: dateFrom || null,
-        p_date_to: dateTo || null,
+        p_date_to: dateTo ? dateTo + 'T23:59:59' : null,
         p_status: status ? parseInt(status, 10) : null
       });
 
@@ -5595,19 +5595,39 @@ app.get('/api/reports/driver-performance', authenticate, async (req, res) => {
           total_orders: 0,
           cod_total: 0,
           order_fees: 0,
-          avg_delivery_time: 0
+          avg_delivery_time: 0,
+          paid_total: 0,
+          balance_total: 0
         };
       }
 
       console.log(`ðŸ” RPC response for driver ${driver.id}:`, JSON.stringify(data));
       const stats = data && data[0] ? data[0] : { total_orders: 0, cod_total: 0, order_fees: 0, avg_delivery_time_minutes: 0 };
+
+      // Get payment stats using the get_driver_payment_stats RPC function
+      const { data: paymentData, error: paymentError } = await supabase.rpc('get_driver_payment_stats', {
+        p_fleet_id: driver.id,
+        p_date_from: dateFrom ? dateFrom : null,
+        p_date_to: dateTo ? dateTo + 'T23:59:59' : null
+      });
+
+      let paidTotal = 0;
+      let balanceTotal = 0;
+
+      if (!paymentError && paymentData && paymentData[0]) {
+        paidTotal = parseFloat(paymentData[0].paid_total || 0);
+        balanceTotal = parseFloat(paymentData[0].balance_total || 0);
+      }
+
       return {
         fleet_id: driver.id,
         name: driver.name,
         total_orders: parseInt(stats.total_orders || 0),
         cod_total: parseFloat(stats.cod_total || 0),
         order_fees: parseFloat(stats.order_fees || 0),
-        avg_delivery_time: parseFloat(stats.avg_delivery_time_minutes || 0)
+        avg_delivery_time: parseFloat(stats.avg_delivery_time_minutes || 0),
+        paid_total: paidTotal,
+        balance_total: balanceTotal
       };
     }));
 
@@ -9726,6 +9746,7 @@ app.post('/api/tokens/create', authenticate, requireSuperadmin(), async (req, re
         name,
         description: description || null,
         token_hash: tokenHash,
+        raw_token: rawToken,
         prefix,
         created_by: req.user?.email || req.user?.id || null,
         is_active: true
@@ -9761,7 +9782,7 @@ app.get('/api/tokens/list', authenticate, requireSuperadmin(), async (req, res) 
 
     const { data, error } = await supabase
       .from('api_tokens')
-      .select('id, name, description, prefix, is_active, created_by, created_at, last_used_at, revoked_at, merchant_id')
+      .select('id, name, description, prefix, raw_token, is_active, created_by, created_at, last_used_at, revoked_at, merchant_id')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
