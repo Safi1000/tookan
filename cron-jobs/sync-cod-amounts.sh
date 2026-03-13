@@ -1,0 +1,2 @@
+#!/bin/sh
+cd /home/u386004739/domains/api.bhdt.live/nodejs && /opt/alt/alt-nodejs24/root/usr/bin/node -r dotenv/config sync-cod-amounts.js --today >> /home/u386004739/domains/api.bhdt.live/nodejs/cron-jobs/logs/cod.log 2>&1
