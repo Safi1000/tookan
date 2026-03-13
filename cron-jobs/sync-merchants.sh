@@ -1,2 +1,2 @@
 #!/bin/sh
-cd /home/u386004739/domains/api.bhdt.live/nodejs && /opt/alt/alt-nodejs24/root/usr/bin/node -r dotenv/config sync-merchants.js >> /home/u386004739/domains/api.bhdt.live/nodejs/cron-jobs/logs/merchants.log 2>&1
+cd /home/u386004739/domains/api.bhdt.live/nodejs && /opt/alt/alt-nodejs24/root/usr/bin/node --env-file=/home/u386004739/.env sync-merchants.js >> /home/u386004739/cron-jobs/logs/merchants.log 2>&1
