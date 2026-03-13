@@ -281,14 +281,14 @@ export function SettingsPanel() {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-3">
                                                     <code className="px-2 py-1 bg-muted/50 dark:bg-[#1A2C53] rounded text-xs font-mono text-heading dark:text-[#C1EEFA] max-w-[200px] truncate">
                                                         {visibleTokenIds.has(token.id) && token.raw_token
                                                             ? token.raw_token
                                                             : `${token.prefix}${'•'.repeat(20)}`}
                                                     </code>
                                                     {token.raw_token && (
-                                                        <>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '8px' }}>
                                                             <button
                                                                 onClick={() => {
                                                                     const newSet = new Set(visibleTokenIds)
@@ -299,23 +299,25 @@ export function SettingsPanel() {
                                                                     }
                                                                     setVisibleTokenIds(newSet)
                                                                 }}
-                                                                className="p-1 hover:bg-muted/50 rounded transition-colors"
+                                                                className="hover:bg-muted/50 rounded-md transition-colors"
+                                                                style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                                                                 title={visibleTokenIds.has(token.id) ? "Hide token" : "Show token"}
                                                             >
                                                                 {visibleTokenIds.has(token.id) ? (
-                                                                    <EyeOff className="w-3.5 h-3.5 text-muted-light dark:text-[#99BFD1]" />
+                                                                    <EyeOff className="w-4 h-4 text-muted-light dark:text-[#99BFD1]" />
                                                                 ) : (
-                                                                    <Eye className="w-3.5 h-3.5 text-muted-light dark:text-[#99BFD1]" />
+                                                                    <Eye className="w-4 h-4 text-muted-light dark:text-[#99BFD1]" />
                                                                 )}
                                                             </button>
                                                             <button
                                                                 onClick={() => copyToClipboard(token.raw_token!)}
-                                                                className="p-1 hover:bg-muted/50 rounded transition-colors"
+                                                                className="hover:bg-muted/50 rounded-md transition-colors"
+                                                                style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                                                                 title="Copy token"
                                                             >
-                                                                <Copy className="w-3.5 h-3.5 text-muted-light dark:text-[#99BFD1]" />
+                                                                <Copy className="w-4 h-4 text-muted-light dark:text-[#99BFD1]" />
                                                             </button>
-                                                        </>
+                                                        </div>
                                                     )}
                                                 </div>
                                             </td>
@@ -580,27 +582,27 @@ export function SettingsPanel() {
                                             {showToken ? newlyCreatedToken.token : newlyCreatedToken.token.substring(0, 12) + "•".repeat(40)}
                                         </span>
                                     </div>
-                                    <div className="absolute top-3 right-3 flex gap-1">
+                                    <div className="absolute top-3 right-3 flex" style={{ gap: '10px' }}>
                                         <button
                                             onClick={() => setShowToken(!showToken)}
-                                            className="p-1.5 bg-[#2A3C63] rounded-lg hover:bg-[#3A4C73] transition-colors"
+                                            className="p-2.5 bg-[#2A3C63] rounded-lg hover:bg-[#3A4C73] transition-colors"
                                             title={showToken ? "Hide token" : "Show token"}
                                         >
                                             {showToken ? (
-                                                <EyeOff className="w-4 h-4 text-[#99BFD1]" />
+                                                <EyeOff className="w-5 h-5 text-[#99BFD1]" />
                                             ) : (
-                                                <Eye className="w-4 h-4 text-[#99BFD1]" />
+                                                <Eye className="w-5 h-5 text-[#99BFD1]" />
                                             )}
                                         </button>
                                         <button
                                             onClick={() => copyToClipboard(newlyCreatedToken.token)}
-                                            className={`p-1.5 rounded-lg transition-colors ${tokenCopied
+                                            className={`p-2.5 rounded-lg transition-colors ${tokenCopied
                                                 ? "bg-[#10B981]/20 text-[#10B981]"
                                                 : "bg-[#2A3C63] text-[#99BFD1] hover:bg-[#3A4C73]"
                                                 }`}
                                             title="Copy to clipboard"
                                         >
-                                            {tokenCopied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                            {tokenCopied ? <CheckCircle className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
                                         </button>
                                     </div>
                                 </div>
