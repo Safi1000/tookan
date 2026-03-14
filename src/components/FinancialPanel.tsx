@@ -1166,7 +1166,8 @@ export function FinancialPanel() {
             const walletResult = await createFleetWalletTransaction(
               fleetId,
               totalSettled,
-              `COD Settlement ${dateFrom || date} to ${date}`
+              `COD Settlement ${dateFrom || date} to ${date}`,
+              'debit'
             );
             if (walletResult.status === 'success') {
               console.log('[WALLET TX] Fleet wallet transaction created:', totalSettled);
@@ -1325,7 +1326,8 @@ export function FinancialPanel() {
             const walletResult = await createFleetWalletTransaction(
               fleetId,
               newlySettledAmount,
-              `COD Settlement via View Tasks ${taskModalDate}`
+              `COD Settlement via View Tasks ${taskModalDate}`,
+              'debit'
             );
             if (walletResult.status === 'success') {
               console.log('[WALLET TX] Fleet wallet transaction created:', newlySettledAmount);
@@ -2832,7 +2834,7 @@ export function FinancialPanel() {
                               response = await createFleetWalletTransaction(
                                 driver.fleet_id || driver.id,
                                 amount,
-                                balanceNote.trim(),
+                                balanceNote.trim() || 'Manual adjustment',
                                 txType
                               );
                             } else {
