@@ -9584,11 +9584,11 @@ app.post('/api/tookan/update-task-status', authenticate, requirePermission('perf
       return res.status(400).json({ status: 'error', message: 'Job ID is required' });
     }
     const numericStatus = parseInt(status);
-    if (![2, 3, 9].includes(numericStatus)) {
-      return res.status(400).json({ status: 'error', message: 'Status must be 2 (Successful), 3 (Failed), or 9 (Deleted)' });
+    if (![2, 3, 6, 9].includes(numericStatus)) {
+      return res.status(400).json({ status: 'error', message: 'Status must be 2 (Successful), 3 (Failed), 6 (Unassigned), or 9 (Deleted)' });
     }
 
-    const statusLabels = { 2: 'Successful', 3: 'Failed', 9: 'Deleted' };
+    const statusLabels = { 2: 'Successful', 3: 'Failed', 6: 'Unassigned', 9: 'Deleted' };
     console.log(`Updating task ${jobId} to status: ${numericStatus} (${statusLabels[numericStatus]})`);
 
     // Fetch task details from DB to find connected task

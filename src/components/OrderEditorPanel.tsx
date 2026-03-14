@@ -319,7 +319,7 @@ export function OrderEditorPanel() {
     try {
       const result = await updateTaskStatus(order.jobId, newStatus);
       if (result.status === 'success') {
-        const statusLabels: Record<number, string> = { 2: 'Successful', 3: 'Failed', 9: 'Deleted' };
+        const statusLabels: Record<number, string> = { 2: 'Successful', 3: 'Failed', 6: 'Unassigned', 9: 'Deleted' };
         toast.success(`Status updated to ${statusLabels[newStatus]}`);
         setShowStatusConfirm(false);
         if (newStatus === 9) {
@@ -547,6 +547,7 @@ export function OrderEditorPanel() {
                   <option value="" disabled>Select new status</option>
                   <option value="2">✅ Successful</option>
                   <option value="3">❌ Failed</option>
+                  <option value="6">⏳ Unassigned</option>
                   <option value="9">🗑️ Deleted</option>
                 </select>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -632,10 +633,11 @@ export function OrderEditorPanel() {
                 }`}>
                 {editStatus === '9' ? <Trash2 className="w-5 h-5 sm:w-6 sm:h-6" />
                   : editStatus === '3' ? <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6" />
+                    : editStatus === '6' ? <RefreshCw className="w-5 h-5 sm:w-6 sm:h-6" />
                     : <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6" />}
               </div>
               <h2 className="text-lg font-bold text-heading">
-                {editStatus === '2' ? 'Mark as Successful?' : editStatus === '3' ? 'Mark as Failed?' : 'Delete Task?'}
+                {editStatus === '2' ? 'Mark as Successful?' : editStatus === '3' ? 'Mark as Failed?' : editStatus === '6' ? 'Mark as Unassigned?' : 'Delete Task?'}
               </h2>
             </div>
 
@@ -647,8 +649,8 @@ export function OrderEditorPanel() {
                 </p>
                 <p>
                   <span className="font-semibold text-heading">New Status:</span>{' '}
-                  <span className={editStatus === '2' ? 'text-green-600 dark:text-green-400' : editStatus === '3' ? 'text-orange-600 dark:text-orange-400' : 'text-red-600 dark:text-red-400'}>
-                    {editStatus === '2' ? 'Successful' : editStatus === '3' ? 'Failed' : 'Deleted'}
+                  <span className={editStatus === '2' ? 'text-green-600 dark:text-green-400' : editStatus === '3' ? 'text-orange-600 dark:text-orange-400' : editStatus === '6' ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}>
+                    {editStatus === '2' ? 'Successful' : editStatus === '3' ? 'Failed' : editStatus === '6' ? 'Unassigned' : 'Deleted'}
                   </span>
                 </p>
                 {order.connectedTaskId && (
@@ -678,10 +680,11 @@ export function OrderEditorPanel() {
                 disabled={isUpdatingStatus}
                 className={`w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-white rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm ${editStatus === '9' ? 'bg-red-600 hover:bg-red-700'
                     : editStatus === '3' ? 'bg-orange-500 hover:bg-orange-600'
+                      : editStatus === '6' ? 'bg-blue-600 hover:bg-blue-700'
                       : 'bg-green-600 hover:bg-green-700'
                   }`}
               >
-                {isUpdatingStatus ? <RefreshCw className="w-4 h-4 animate-spin" /> : editStatus === '9' ? <Trash2 className="w-4 h-4" /> : editStatus === '3' ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                {isUpdatingStatus ? <RefreshCw className="w-4 h-4 animate-spin" /> : editStatus === '9' ? <Trash2 className="w-4 h-4" /> : editStatus === '3' ? <AlertTriangle className="w-4 h-4" /> : editStatus === '6' ? <RefreshCw className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                 {isUpdatingStatus ? 'Updating...' : 'Confirm'}
               </button>
             </div>
