@@ -2890,101 +2890,90 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
     console.log('\n=== REORDER REQUEST (2 TASKS) ===');
     console.log('Request body:', JSON.stringify(req.body, null, 2));
 
+    const { orderId, originalOrderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, codAmount, orderFees, assignedDriver, notes } = req.body;
+    const orderIdToUse = orderId || originalOrderId;
     const apiKey = getApiKey();
-    const { orderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, codAmount, orderFees, assignedDriver, notes } = req.body;
 
-    if (!orderId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Original order ID is required',
-        data: {}
-      });
+    if (!orderIdToUse) {
+      return res.status(400).json({ status: 'error', message: 'Original order ID is required' });
     }
 
-    // If order data is not provided, fetch it from Tookan
-    let orderData = {
-      customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, codAmount, orderFees, assignedDriver, notes
-    };
-    let originalPickup = {};
-    let originalDelivery = {};
+    if (!isConfigured()) {
+      return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
+    }
 
-    // Check if we need to fetch order data
-    if (!customerName || !customerPhone || !pickupAddress || !deliveryAddress) {
-      console.log('📋 Fetching order data from Tookan...');
+    // Fetch original task from Supabase
+    const { data: dbTasks, error: dbError } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('job_id', orderIdToUse);
 
-      if (!isConfigured()) {
-        return res.status(500).json({ status: 'error', message: 'Supabase not configured' });
-      }
+    if (dbError || !dbTasks || dbTasks.length === 0) {
+      console.error('Failed to fetch original task from DB:', dbError);
+      return res.status(404).json({ status: 'error', message: 'Original order not found in database' });
+    }
 
-      // Fetch original task from Supabase
-      const { data: dbTasks, error: dbError } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('job_id', orderId);
+    const original = dbTasks[0];
+    const rawData = original.raw_data || {};
 
-      if (dbError || !dbTasks || dbTasks.length === 0) {
-        console.error('Failed to fetch original task from DB:', dbError);
-        return res.status(404).json({ status: 'error', message: 'Original order not found in database' });
-      }
+    let originalPickup = original;
+    let originalDelivery = original;
 
-      const original = dbTasks[0];
-      const rawData = original.raw_data || {};
+    // Check relationships in raw_data
+    const relationshipId = rawData.pickup_delivery_relationship;
 
-      const currentTask = original;
-      originalPickup = original;
-      originalDelivery = original;
+    if (relationshipId) {
+      try {
+        const { data: relatedTasks, error: relatedError } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('raw_data->>pickup_delivery_relationship', relationshipId);
 
-      const relationshipId = rawData.pickup_delivery_relationship;
+        if (!relatedError && relatedTasks && relatedTasks.length > 0) {
+          const foundPickup = relatedTasks.find(t => {
+            const rd = t.raw_data || {};
+            return rd.job_type === 0 || (rd.has_pickup === 1 && rd.has_delivery === 0);
+          });
+          const foundDelivery = relatedTasks.find(t => {
+            const rd = t.raw_data || {};
+            return rd.job_type === 1 || (rd.has_pickup === 0 && rd.has_delivery === 1);
+          });
 
-      if (relationshipId) {
-        try {
-          const { data: relatedTasks, error: relatedError } = await supabase
-            .from('tasks')
-            .select('*')
-            .eq('raw_data->>pickup_delivery_relationship', relationshipId);
+          if (foundPickup) originalPickup = foundPickup;
+          if (foundDelivery) originalDelivery = foundDelivery;
 
-          if (!relatedError && relatedTasks && relatedTasks.length > 0) {
-            const foundPickup = relatedTasks.find(t => {
-              const rd = t.raw_data || {};
-              return rd.job_type === 0 || (rd.has_pickup === 1 && rd.has_delivery === 0);
-            });
-            const foundDelivery = relatedTasks.find(t => {
-              const rd = t.raw_data || {};
-              return rd.job_type === 1 || (rd.has_pickup === 0 && rd.has_delivery === 1);
-            });
-
-            if (foundPickup) originalPickup = foundPickup;
-            if (foundDelivery) originalDelivery = foundDelivery;
-          }
-        } catch (err) {
-          console.error('Failed to fetch related tasks from DB:', err.message);
+          console.log('Fetched related tasks from DB:', {
+            pickupId: foundPickup?.job_id,
+            deliveryId: foundDelivery?.job_id
+          });
         }
+      } catch (err) {
+        console.error('Failed to fetch related tasks from DB:', err.message);
       }
-
-      // Populate orderData from DB records
-      const effectiveNotes = (notes && notes.trim()) ? notes.trim() : (original.notes || rawData.customer_comments || rawData.job_description || '');
-      const ordAmt = parseFloat(original.order_fees || rawData.order_payment || 0);
-
-      orderData = {
-        customerName: customerName || original.customer_name || rawData.customer_username || rawData.job_pickup_name || 'Customer',
-        customerPhone: customerPhone || original.customer_phone || rawData.customer_phone || rawData.job_pickup_phone || '+97300000000',
-        customerEmail: customerEmail || original.customer_email || rawData.customer_email || rawData.job_pickup_email || '',
-        pickupAddress: pickupAddress || original.pickup_address || rawData.job_pickup_address || rawData.pickup_address || '',
-        deliveryAddress: deliveryAddress || original.delivery_address || rawData.customer_address || rawData.job_address || rawData.delivery_address || '',
-        codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0,
-        orderFees: orderFees !== undefined ? parseFloat(orderFees) : ordAmt,
-        assignedDriver: assignedDriver !== undefined ? assignedDriver : null,
-        notes: effectiveNotes,
-        customerId: original.vendor_id || rawData.customer_id || rawData.vendor_id || rawData.user_id,
-        // Coordinates extracted from original tasks
-        job_pickup_latitude: originalPickup.job_pickup_latitude || original.job_pickup_latitude || rawData.job_pickup_latitude || null,
-        job_pickup_longitude: originalPickup.job_pickup_longitude || original.job_pickup_longitude || rawData.job_pickup_longitude || null,
-        job_latitude: originalDelivery.job_latitude || original.job_latitude || rawData.job_latitude || rawData.latitude || null,
-        job_longitude: originalDelivery.job_longitude || original.job_longitude || rawData.job_longitude || rawData.longitude || null
-      };
-
-      console.log('📋 Merged order data from DB:', JSON.stringify(orderData, null, 2));
     }
+
+    // Use original notes if new notes not provided
+    const originalNotes = original.notes || rawData.customer_comments || rawData.job_description || '';
+    // User requested empty notes by default unless entered
+    const effectiveNotes = (notes && notes.trim()) ? notes.trim() : '';
+
+    // Build order data with fallbacks using DB columns and raw_data
+    const orderData = {
+      customerName: customerName || original.customer_name || rawData.customer_username || rawData.job_pickup_name || 'Customer',
+      customerPhone: customerPhone || original.customer_phone || rawData.customer_phone || rawData.job_pickup_phone || '+97300000000',
+      customerEmail: customerEmail || original.customer_email || rawData.customer_email || rawData.job_pickup_email || '',
+      pickupAddress: pickupAddress || original.pickup_address || rawData.job_pickup_address || rawData.pickup_address || '',
+      deliveryAddress: deliveryAddress || original.delivery_address || rawData.customer_address || rawData.job_address || rawData.delivery_address || '',
+      codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0, // Default to 0 for reorder
+      orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(original.order_fees || rawData.order_payment) || 0),
+      assignedDriver: assignedDriver !== undefined ? assignedDriver : null, // Default unassigned
+      notes: effectiveNotes,
+      // Coordinates extracted from original tasks
+      job_pickup_latitude: originalPickup.job_pickup_latitude || original.job_pickup_latitude || rawData.job_pickup_latitude || null,
+      job_pickup_longitude: originalPickup.job_pickup_longitude || original.job_pickup_longitude || rawData.job_pickup_longitude || null,
+      job_latitude: originalDelivery.job_latitude || original.job_latitude || rawData.job_latitude || rawData.latitude || null,
+      job_longitude: originalDelivery.job_longitude || original.job_longitude || rawData.job_longitude || rawData.longitude || null
+    };
 
     // Validate required fields
     if (!orderData.pickupAddress || !orderData.deliveryAddress) {
@@ -2997,8 +2986,8 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
 
     // Task times
     const now = new Date();
-    const pickupTime = new Date(now.getTime() + 1 * 60 * 60 * 1000); // +1 hour
-    const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours
+    const pickupTime = new Date(now.getTime() + 1 * 60 * 60 * 1000); // +1 hour for pickup
+    const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours for delivery
     const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
     const timezone = '-180';
 
@@ -3105,25 +3094,25 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
             customer_phone: customerPhone || originalPickup.customer_phone || (originalPickup.raw_data && (originalPickup.raw_data.customer_phone || originalPickup.raw_data.job_pickup_phone)) || '+97300000000',
             customer_email: customerEmail || originalPickup.customer_email || (originalPickup.raw_data && (originalPickup.raw_data.customer_email || originalPickup.raw_data.job_pickup_email)) || '',
             pickup_address: orderData.pickupAddress,
-            delivery_address: orderData.pickupAddress,
+            delivery_address: orderData.pickupAddress, // Same as pickup for pickup task
             cod_amount: orderData.codAmount,
             order_fees: orderData.orderFees,
-            notes: orderData.notes || '',
+            notes: orderData.notes,
             fleet_id: orderData.assignedDriver || null,
             status: 0,
             creation_datetime: new Date().toISOString(),
             source: 'reorder_pickup',
             job_pickup_latitude: parseFloat(orderData.job_pickup_latitude) || null,
             job_pickup_longitude: parseFloat(orderData.job_pickup_longitude) || null,
-            job_latitude: parseFloat(orderData.job_pickup_latitude) || null,
-            job_longitude: parseFloat(orderData.job_pickup_longitude) || null,
-            tags: originalPickup.tags || (originalPickup.raw_data && originalPickup.raw_data.tags) || tags || null,
+            job_latitude: parseFloat(orderData.job_pickup_latitude) || null, // Matches pickup latitude if pickup
+            job_longitude: parseFloat(orderData.job_pickup_longitude) || null, // Matches pickup longitude if pickup
             last_synced_at: new Date().toISOString(),
             job_hash: pickupResponseData.job_hash || null,
             job_token: pickupResponseData.job_token || null,
             tracking_link: pickupResponseData.tracking_link || null,
             vendor_id: pickupResponseData.customer_id || originalPickup.vendor_id || (originalPickup.raw_data && (originalPickup.raw_data.customer_id || originalPickup.raw_data.vendor_id || originalPickup.raw_data.user_id)) || null,
-            raw_data: { ...pickupPayload, ...pickupResponseData, job_status: 0 }
+            tags: originalPickup.tags || (originalPickup.raw_data && originalPickup.raw_data.tags) || tags || null,
+            raw_data: { ...combinedPayload, ...pickupResponseData, job_status: 0 }
           });
           console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
         }
@@ -3139,7 +3128,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
             delivery_address: orderData.deliveryAddress,
             cod_amount: orderData.codAmount,
             order_fees: orderData.orderFees,
-            notes: orderData.notes || '',
+            notes: orderData.notes,
             fleet_id: orderData.assignedDriver || null,
             status: 0,
             creation_datetime: new Date().toISOString(),
@@ -3148,13 +3137,13 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
             job_pickup_longitude: parseFloat(orderData.job_pickup_longitude) || null,
             job_latitude: parseFloat(orderData.job_latitude) || null,
             job_longitude: parseFloat(orderData.job_longitude) || null,
-            tags: originalDelivery.tags || (originalDelivery.raw_data && originalDelivery.raw_data.tags) || tags || null,
             last_synced_at: new Date().toISOString(),
             job_hash: deliveryResponseData.job_hash || null,
             job_token: deliveryResponseData.job_token || null,
             tracking_link: deliveryResponseData.tracking_link || null,
             vendor_id: deliveryResponseData.customer_id || originalDelivery.vendor_id || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_id || originalDelivery.raw_data.vendor_id || originalDelivery.raw_data.user_id)) || null,
-            raw_data: { ...deliveryPayload, ...deliveryResponseData, job_status: 0 }
+            tags: originalDelivery.tags || (originalDelivery.raw_data && originalDelivery.raw_data.tags) || tags || null,
+            raw_data: { ...combinedPayload, ...deliveryResponseData, job_status: 0 }
           });
           console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);
         }
@@ -3195,10 +3184,11 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       data: {
         pickupOrderId,
         deliveryOrderId,
-        originalOrderId: orderId,
+        originalOrderId: orderIdToUse,
         tasksCreated: 2
       }
     });
+
   } catch (error) {
     console.error('❌ Re-order error:', error);
     res.status(500).json({
