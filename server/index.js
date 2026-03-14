@@ -3232,9 +3232,36 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
       notes: notes || ''
     };
 
-    // Only fetch from Tookan if addresses not provided
-    if (!orderData.pickupAddress || !orderData.deliveryAddress) {
-      console.log('ðŸ“‹ Fetching order data from Tookan for return...');
+    // Always attempt to fetch original coordinates from DB first to prevent geocoding hallucinations
+    let originalCoordinatesFound = false;
+    
+    if (isConfigured()) {
+      try {
+        const { data: dbTasks, error: dbError } = await supabase
+          .from('tasks')
+          .select('job_latitude, job_longitude, job_pickup_latitude, job_pickup_longitude, raw_data')
+          .eq('job_id', orderId)
+          .single();
+          
+        if (!dbError && dbTasks) {
+          orderData.job_pickup_latitude = dbTasks.job_pickup_latitude || (dbTasks.raw_data && dbTasks.raw_data.job_pickup_latitude) || null;
+          orderData.job_pickup_longitude = dbTasks.job_pickup_longitude || (dbTasks.raw_data && dbTasks.raw_data.job_pickup_longitude) || null;
+          orderData.job_latitude = dbTasks.job_latitude || (dbTasks.raw_data && (dbTasks.raw_data.job_latitude || dbTasks.raw_data.latitude)) || null;
+          orderData.job_longitude = dbTasks.job_longitude || (dbTasks.raw_data && (dbTasks.raw_data.job_longitude || dbTasks.raw_data.longitude)) || null;
+          
+          if (orderData.job_latitude && orderData.job_longitude) {
+            originalCoordinatesFound = true;
+            console.log('✅ Found original coordinates in DB for return order');
+          }
+        }
+      } catch (err) {
+        console.error('⚠️ Failed to fetch coordinates from DB:', err.message);
+      }
+    }
+
+    // Fetch from Tookan if missing addresses OR missing coordinates
+    if (!orderData.pickupAddress || !orderData.deliveryAddress || !originalCoordinatesFound) {
+      console.log('📋 Fetching order data/coordinates from Tookan for return...');
       const getTaskPayload = {
         api_key: apiKey,
         job_id: orderId
@@ -3270,7 +3297,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
 
       const currentTask = getData.data || {};
 
-      // Merge with fetched data
+      // Merge with fetched data (only override if currently empty)
       orderData.customerName = orderData.customerName || currentTask.customer_name || currentTask.customer_username || 'Customer';
       orderData.customerPhone = orderData.customerPhone || currentTask.customer_phone || '';
       orderData.customerEmail = orderData.customerEmail || currentTask.customer_email || '';
@@ -3278,11 +3305,13 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
       orderData.deliveryAddress = orderData.deliveryAddress || currentTask.customer_address || currentTask.job_address || currentTask.delivery_address || '';
       orderData.notes = orderData.notes || currentTask.customer_comments || '';
       
-      // Extract coordinates from Tookan response
-      orderData.job_pickup_latitude = currentTask.job_pickup_latitude || null;
-      orderData.job_pickup_longitude = currentTask.job_pickup_longitude || null;
-      orderData.job_latitude = currentTask.job_latitude || currentTask.latitude || null;
-      orderData.job_longitude = currentTask.job_longitude || currentTask.longitude || null;
+      // Extract coordinates if they weren't found in the DB
+      if (!originalCoordinatesFound) {
+        orderData.job_pickup_latitude = currentTask.job_pickup_latitude || null;
+        orderData.job_pickup_longitude = currentTask.job_pickup_longitude || null;
+        orderData.job_latitude = currentTask.job_latitude || currentTask.latitude || null;
+        orderData.job_longitude = currentTask.job_longitude || currentTask.longitude || null;
+      }
     }
 
     // Get tags for return order
