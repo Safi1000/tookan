@@ -30,7 +30,15 @@ const showStatus = args.includes('--status') || args.includes('-s');
 const forceSync = args.includes('--force') || args.includes('-f');
 const showHelp = args.includes('--help') || args.includes('-h');
 const isToday = args.includes('--today') || args.includes('-t');
-const todayStr = new Date().toISOString().split('T')[0];
+// Calculate current date in Bahrain time (UTC+3)
+const getBahrainDateString = () => {
+  const now = new Date();
+  // Add 3 hours to UTC time to get Bahrain time
+  const bahrainTime = new Date(now.getTime() + (3 * 60 * 60 * 1000));
+  return bahrainTime.toISOString().split('T')[0];
+};
+
+const todayStr = getBahrainDateString();
 const dateFromArg = args.find(a => a.startsWith('--dateFrom=')) || args.find(a => a.startsWith('--from='));
 const dateToArg = args.find(a => a.startsWith('--dateTo=')) || args.find(a => a.startsWith('--to='));
 const dateFrom = isToday ? todayStr : (dateFromArg ? dateFromArg.split('=')[1] : null);
