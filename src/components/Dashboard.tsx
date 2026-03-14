@@ -13,7 +13,7 @@ import {
   Users
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
-import { fetchAnalytics, fetchAllOrders, fetchDriverPerformance, type AnalyticsData } from '../services/tookanApi';
+import { fetchAnalytics, fetchAllOrders, fetchDriverPerformance, fetchAllDrivers, type AnalyticsData } from '../services/tookanApi';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 
@@ -34,21 +34,33 @@ export function Dashboard() {
     setError(null);
 
     try {
-      const [analyticsResult, perfResult] = await Promise.all([
-        fetchAnalytics(),
-        fetchDriverPerformance('') // Empty search matches all drivers
-      ]);
+      const result = await fetchAnalytics();
 
-      if (analyticsResult.status === 'success' && analyticsResult.data) {
-        setAnalytics(analyticsResult.data);
+      if (result.status === 'success' && result.data) {
+        setAnalytics(result.data);
         setLastUpdated(new Date());
       } else {
-        setError(analyticsResult.message || 'Failed to load analytics');
-        toast.error(analyticsResult.message || 'Failed to load analytics');
+        setError(result.message || 'Failed to load analytics');
+        toast.error(result.message || 'Failed to load analytics');
       }
 
-      if (perfResult.status === 'success' && perfResult.data) {
-        setDriverPerformanceData(perfResult.data);
+      // Fetch global COD totals
+      const driversRes = await fetchAllDrivers();
+      if (driversRes.status === 'success' && driversRes.data?.fleets) {
+        const fleets = driversRes.data.fleets;
+        const promises = fleets.map((fleet: any) => {
+          const fleetId = fleet.fleet_id || fleet.id || '';
+          return fetchDriverPerformance(String(fleetId)).then(res => {
+            if (res.status === 'success' && res.data && res.data.length > 0) {
+              return res.data;
+            }
+            return [];
+          });
+        });
+        const perfResults = await Promise.all(promises);
+        const allPerformance: any[] = [];
+        perfResults.forEach(data => allPerformance.push(...data));
+        setDriverPerformanceData(allPerformance);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load analytics';
