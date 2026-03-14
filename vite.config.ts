@@ -79,7 +79,6 @@
       port: 3000,
       open: true,
       // Proxy API calls to the local Express server during development
-      // so that requests to /api mirror the Vercel routing setup.
       proxy: {
         '/api': {
           target: 'http://localhost:3001',

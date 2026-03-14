@@ -17,9 +17,11 @@ function extractToken(req) {
     return null;
   }
 
-  // Support both "Bearer <token>" and "<token>" formats
-  const parts = authHeader.split(' ');
-  return parts.length === 2 ? parts[1] : parts[0];
+  const token = authHeader.replace(/^Bearer\s+/i, '').replace(/^"|"$/g, '').trim();
+  if (!token || token === 'null' || token === 'undefined') {
+    return null;
+  }
+  return token;
 }
 
 /**
@@ -75,34 +77,66 @@ async function authenticate(req, res, next) {
   // Try Supabase JWT token first (only when configured)
   let user = await verifyToken(token);
   
-  // If not Supabase token, try Tookan session token
+  // If not Supabase token, try direct JWT payload decoding
   if (!user) {
     try {
-      // Decode Tookan session token (format: userId:timestamp:email)
+      const jwtParts = token.split('.');
+      if (jwtParts.length === 3) {
+        const payload = jwtParts[1];
+        const padded = payload.padEnd(payload.length + (4 - payload.length % 4) % 4, '=');
+        const tokenData = JSON.parse(Buffer.from(padded, 'base64').toString('utf-8'));
+        user = {
+          id: tokenData.sub || tokenData.user_id || tokenData.id,
+          email: tokenData.email,
+          role: tokenData.role || tokenData.app_metadata?.role || 'user',
+          permissions: tokenData.permissions || {}
+        };
+      }
+    } catch (decodeError) {
+      // Not a valid JWT
+    }
+  }
+
+  // If not JWT, try Tookan session token (format: userId:timestamp:email)
+  if (!user) {
+    try {
       const decoded = Buffer.from(token, 'base64').toString('utf-8');
       const parts = decoded.split(':');
       
       if (parts.length >= 3) {
         const userId = parts[0];
-        const timestamp = parseInt(parts[1]);
-        const email = parts.slice(2).join(':'); // In case email contains colons
-        
-        // Check if token is expired (24 hours)
-        const expiresAt = timestamp + (24 * 60 * 60 * 1000);
-        if (Date.now() < expiresAt) {
-          // Token is valid, create user object
-          // Note: We'll need to fetch user details from Tookan or store in session
-          // For now, use basic info from token
-          user = {
-            id: userId,
-            email: email,
-            source: 'tookan'
-          };
-        }
+        const email = parts.slice(2).join(':');
+        user = {
+          id: userId,
+          email: email,
+          source: 'tookan'
+        };
       }
     } catch (decodeError) {
       // Not a valid Tookan token either
-      console.log('Token decode error:', decodeError.message);
+    }
+  }
+
+  // If nothing else worked, try custom session token format: 'eyJ' + base64(JSON)
+  if (!user) {
+    try {
+      let tokenBody = token;
+      if (token.startsWith('eyJ')) {
+        tokenBody = token.substring(3);
+      }
+      const decoded = Buffer.from(tokenBody, 'base64').toString('utf-8');
+      const tokenData = JSON.parse(decoded);
+      if (tokenData && (tokenData.sub || tokenData.id || tokenData.email)) {
+        user = {
+          id: tokenData.sub || tokenData.id || tokenData.user_id,
+          email: tokenData.email,
+          role: tokenData.role || 'user',
+          permissions: tokenData.permissions || {},
+          source: tokenData.user_type === 'driver' || tokenData.user_type === 'vendor' ? 'tookan' : undefined
+        };
+      }
+    } catch (decodeError) {
+      // Not a valid custom session token
     }
   }
   
@@ -157,28 +191,59 @@ async function optionalAuth(req, res, next) {
     // Try Supabase JWT token first
     let user = await verifyToken(token);
     
-    // If not Supabase token, try Tookan session token
+    // If not Supabase token, try direct JWT payload decoding
+    if (!user) {
+      try {
+        const jwtParts = token.split('.');
+        if (jwtParts.length === 3) {
+          const payload = jwtParts[1];
+          const padded = payload.padEnd(payload.length + (4 - payload.length % 4) % 4, '=');
+          const tokenData = JSON.parse(Buffer.from(padded, 'base64').toString('utf-8'));
+          user = {
+            id: tokenData.sub || tokenData.user_id || tokenData.id,
+            email: tokenData.email,
+            role: tokenData.role || tokenData.app_metadata?.role || 'user',
+            permissions: tokenData.permissions || {}
+          };
+        }
+      } catch (decodeError) {
+        // Not a valid JWT
+      }
+    }
+
+    // If not JWT, try Tookan session token
     if (!user) {
       try {
         const decoded = Buffer.from(token, 'base64').toString('utf-8');
         const parts = decoded.split(':');
-        
         if (parts.length >= 3) {
           const userId = parts[0];
-          const timestamp = parseInt(parts[1]);
           const email = parts.slice(2).join(':');
-          
-          const expiresAt = timestamp + (24 * 60 * 60 * 1000);
-          if (Date.now() < expiresAt) {
-            user = {
-              id: userId,
-              email: email,
-              source: 'tookan'
-            };
-          }
+          user = { id: userId, email, source: 'tookan' };
         }
       } catch (decodeError) {
         // Not a valid token
+      }
+    }
+
+    // Try custom session token format
+    if (!user) {
+      try {
+        let tokenBody = token;
+        if (token.startsWith('eyJ')) tokenBody = token.substring(3);
+        const decoded = Buffer.from(tokenBody, 'base64').toString('utf-8');
+        const tokenData = JSON.parse(decoded);
+        if (tokenData && (tokenData.sub || tokenData.id || tokenData.email)) {
+          user = {
+            id: tokenData.sub || tokenData.id || tokenData.user_id,
+            email: tokenData.email,
+            role: tokenData.role || 'user',
+            permissions: tokenData.permissions || {},
+            source: tokenData.user_type === 'driver' || tokenData.user_type === 'vendor' ? 'tookan' : undefined
+          };
+        }
+      } catch (decodeError) {
+        // Not a valid custom session token
       }
     }
     

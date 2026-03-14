@@ -633,7 +633,7 @@ export async function addCustomerWalletPayment(
 
 export async function fetchDriverCODQueue(driverId?: string): Promise<TookanApiResponse<CODEntry[]>> {
   try {
-    let url = `${API_BASE_URL}/api/tookan/cod-queue`;
+    let url = `${API_BASE_URL}/api/cod/queue`;
     if (driverId) {
       url += `?driverId=${driverId}`;
     }
@@ -656,7 +656,7 @@ export async function fetchDriverCODQueue(driverId?: string): Promise<TookanApiR
 
 export async function getOldestPendingCOD(): Promise<TookanApiResponse<CODEntry | null>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/tookan/cod-queue/oldest`, {
+    const response = await fetch(`${API_BASE_URL}/api/cod/queue/oldest`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
@@ -679,7 +679,7 @@ export async function settleCODTransaction(
   userId?: string
 ): Promise<TookanApiResponse<any>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/tookan/cod-queue/settle`, {
+    const response = await fetch(`${API_BASE_URL}/api/cod/queue/settle`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
@@ -703,7 +703,7 @@ export async function settleCODTransaction(
 
 export async function fetchCODConfirmations(): Promise<TookanApiResponse<CODConfirmation[]>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/tookan/cod-queue/confirmations`, {
+    const response = await fetch(`${API_BASE_URL}/api/cod/confirmations`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
@@ -724,7 +724,7 @@ export async function fetchCODCalendar(
   endDate?: string
 ): Promise<TookanApiResponse<CODCalendarEntry[]>> {
   try {
-    let url = `${API_BASE_URL}/api/tookan/cod-queue/calendar`;
+    let url = `${API_BASE_URL}/api/cod/calendar`;
     const params = new URLSearchParams();
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
@@ -965,9 +965,10 @@ export async function deleteOrder(
   orderId: string
 ): Promise<TookanApiResponse<any>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/tookan/order/${orderId}`, {
-      method: 'DELETE',
+    const response = await fetch(`${API_BASE_URL}/api/tookan/delete-task`, {
+      method: 'POST',
       headers: getAuthHeaders(),
+      body: JSON.stringify({ jobId: orderId }),
     });
 
     const data = await response.json();

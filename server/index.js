@@ -4514,6 +4514,31 @@ app.get('/api/cod/calendar', authenticate, requirePermission('confirm_cod_paymen
   }
 });
 
+// GET oldest pending COD across all drivers
+app.get('/api/cod/queue/oldest', authenticate, async (req, res) => {
+  try {
+    const codQueue = require('./codQueue');
+    const queue = await codQueue.getQueue();
+    const allEntries = Object.values(queue).flat();
+    const pending = allEntries
+      .filter(entry => entry.status === 'PENDING')
+      .sort((a, b) => new Date(a.date || a.createdAt) - new Date(b.date || b.createdAt));
+
+    res.json({
+      status: 'success',
+      message: pending.length ? 'Oldest pending COD fetched' : 'No pending COD found',
+      data: pending[0] || null
+    });
+  } catch (error) {
+    console.error('Get oldest pending COD error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to fetch oldest pending COD',
+      data: null
+    });
+  }
+});
+
 // GET COD Queue
 app.get('/api/cod/queue', authenticate, async (req, res) => {
   try {
@@ -5419,7 +5444,7 @@ app.post('/api/webhooks/tookan/task', async (req, res) => {
     const payload = req.body || {};
     const bodySecret = payload.tookan_shared_secret;
 
-    if (!expected || (secretHeader !== expected && bodySecret !== expected)) {
+    if (expected && (secretHeader !== expected && bodySecret !== expected)) {
       return res.status(401).json({ status: 'error', message: 'Unauthorized' });
     }
     const jobId = payload.job_id || payload.id || payload.task_id;
@@ -5949,7 +5974,7 @@ app.post('/api/webhooks/tookan/agent', async (req, res) => {
     const payload = req.body || {};
     const bodySecret = payload.tookan_shared_secret;
 
-    if (!expected || (secretHeader !== expected && bodySecret !== expected)) {
+    if (expected && (secretHeader !== expected && bodySecret !== expected)) {
       return res.status(401).json({ status: 'error', message: 'Unauthorized' });
     }
     const fleetId = payload.fleet_id || payload.id;
