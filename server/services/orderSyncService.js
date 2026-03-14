@@ -355,6 +355,11 @@ function transformTaskToRecord(task) {
     pickup_phone: truncateString(task.job_pickup_phone, 100),
     pickup_address: task.job_pickup_address || null,
 
+    job_pickup_latitude: parseFloat(task.job_pickup_latitude) || null,
+    job_pickup_longitude: parseFloat(task.job_pickup_longitude) || null,
+    job_latitude: parseFloat(task.job_latitude || task.latitude) || null,
+    job_longitude: parseFloat(task.job_longitude || task.longitude) || null,
+
     // Financial
     total_amount: parseFloat(task.total_amount || task.order_payment || task.cod || 0),
     // NOTE: cod_amount is handled separately below to avoid overwriting existing values

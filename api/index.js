@@ -4197,7 +4197,12 @@ function getApp() {
           codAmount: codAmount !== undefined ? parseFloat(codAmount) : 0, // Default to 0 for reorder
           orderFees: orderFees !== undefined ? parseFloat(orderFees) : (parseFloat(original.order_fees || rawData.order_payment) || 0),
           assignedDriver: assignedDriver !== undefined ? assignedDriver : null, // Default unassigned
-          notes: effectiveNotes
+          notes: effectiveNotes,
+          // Coordinates extracted from original tasks
+          job_pickup_latitude: originalPickup.job_pickup_latitude || original.job_pickup_latitude || rawData.job_pickup_latitude || null,
+          job_pickup_longitude: originalPickup.job_pickup_longitude || original.job_pickup_longitude || rawData.job_pickup_longitude || null,
+          job_latitude: originalDelivery.job_latitude || original.job_latitude || rawData.job_latitude || rawData.latitude || null,
+          job_longitude: originalDelivery.job_longitude || original.job_longitude || rawData.job_longitude || rawData.longitude || null
         };
 
         // Task times
@@ -4237,17 +4242,18 @@ function getApp() {
               data: String(orderData.codAmount)
             }
           ],
-          // Common fields
-          has_pickup: 1,
-          has_delivery: 1,
-          layout_type: 0,
-          timezone: '-180',
-          auto_assignment: 0,
-          job_description: orderData.notes,
-          tracking_link: 1,
-          notify: 1,
           geofence: 0
         };
+
+        // Attach coordinates if they exist
+        if (orderData.job_pickup_latitude && orderData.job_pickup_longitude) {
+          combinedPayload.job_pickup_latitude = String(orderData.job_pickup_latitude);
+          combinedPayload.job_pickup_longitude = String(orderData.job_pickup_longitude);
+        }
+        if (orderData.job_latitude && orderData.job_longitude) {
+          combinedPayload.latitude = String(orderData.job_latitude);
+          combinedPayload.longitude = String(orderData.job_longitude);
+        }
 
         if (orderData.assignedDriver) {
           combinedPayload.fleet_id = orderData.assignedDriver;
@@ -4299,6 +4305,10 @@ function getApp() {
                 status: 0,
                 creation_datetime: new Date().toISOString(),
                 source: 'reorder_pickup',
+                job_pickup_latitude: parseFloat(orderData.job_pickup_latitude) || null,
+                job_pickup_longitude: parseFloat(orderData.job_pickup_longitude) || null,
+                job_latitude: parseFloat(orderData.job_pickup_latitude) || null,
+                job_longitude: parseFloat(orderData.job_pickup_longitude) || null,
                 last_synced_at: new Date().toISOString(),
                 job_hash: pickupResponseData.job_hash || null,
                 job_token: pickupResponseData.job_token || null,
@@ -4327,6 +4337,10 @@ function getApp() {
                 status: 0,
                 creation_datetime: new Date().toISOString(),
                 source: 'reorder_delivery',
+                job_pickup_latitude: parseFloat(orderData.job_pickup_latitude) || null,
+                job_pickup_longitude: parseFloat(orderData.job_pickup_longitude) || null,
+                job_latitude: parseFloat(orderData.job_latitude) || null,
+                job_longitude: parseFloat(orderData.job_longitude) || null,
                 last_synced_at: new Date().toISOString(),
                 job_hash: deliveryResponseData.job_hash || null,
                 job_token: deliveryResponseData.job_token || null,
@@ -4430,6 +4444,12 @@ function getApp() {
           orderData.pickupAddress = orderData.pickupAddress || original.job_pickup_address || original.pickup_address || '';
           orderData.deliveryAddress = orderData.deliveryAddress || original.customer_address || original.job_address || original.delivery_address || '';
           orderData.notes = orderData.notes || original.customer_comments || '';
+
+          // Extract coordinates from Tookan response
+          orderData.job_pickup_latitude = original.job_pickup_latitude || null;
+          orderData.job_pickup_longitude = original.job_pickup_longitude || null;
+          orderData.job_latitude = original.job_latitude || original.latitude || null;
+          orderData.job_longitude = original.job_longitude || original.longitude || null;
         }
 
         // Get original addresses
@@ -4493,6 +4513,18 @@ function getApp() {
           geofence: 0
         };
 
+        // Attach reversed coordinates if they exist
+        if (orderData.job_latitude && orderData.job_longitude) {
+          // Original delivery coordinates (customer) become the NEW pickup coordinates
+          combinedPayload.job_pickup_latitude = String(orderData.job_latitude);
+          combinedPayload.job_pickup_longitude = String(orderData.job_longitude);
+        }
+        if (orderData.job_pickup_latitude && orderData.job_pickup_longitude) {
+          // Original pickup coordinates (merchant) become the NEW delivery coordinates
+          combinedPayload.latitude = String(orderData.job_pickup_latitude);
+          combinedPayload.longitude = String(orderData.job_pickup_longitude);
+        }
+
         if (assignedDriver) {
           combinedPayload.fleet_id = assignedDriver;
         }
@@ -4541,6 +4573,10 @@ function getApp() {
                 status: 0,
                 creation_datetime: new Date().toISOString(),
                 source: 'return_pickup',
+                job_pickup_latitude: combinedPayload.job_pickup_latitude ? parseFloat(combinedPayload.job_pickup_latitude) : null,
+                job_pickup_longitude: combinedPayload.job_pickup_longitude ? parseFloat(combinedPayload.job_pickup_longitude) : null,
+                job_latitude: combinedPayload.job_pickup_latitude ? parseFloat(combinedPayload.job_pickup_latitude) : null,
+                job_longitude: combinedPayload.job_pickup_longitude ? parseFloat(combinedPayload.job_pickup_longitude) : null,
                 last_synced_at: new Date().toISOString()
               }, { onConflict: 'job_id' });
               console.log('✅ Pickup task saved to Supabase:', pickupOrderId);
@@ -4562,6 +4598,10 @@ function getApp() {
                 status: 0,
                 creation_datetime: new Date().toISOString(),
                 source: 'return_delivery',
+                job_pickup_latitude: combinedPayload.job_pickup_latitude ? parseFloat(combinedPayload.job_pickup_latitude) : null,
+                job_pickup_longitude: combinedPayload.job_pickup_longitude ? parseFloat(combinedPayload.job_pickup_longitude) : null,
+                job_latitude: combinedPayload.latitude ? parseFloat(combinedPayload.latitude) : null,
+                job_longitude: combinedPayload.longitude ? parseFloat(combinedPayload.longitude) : null,
                 last_synced_at: new Date().toISOString()
               }, { onConflict: 'job_id' });
               console.log('✅ Delivery task saved to Supabase:', deliveryOrderId);
@@ -5894,6 +5934,10 @@ function getApp() {
           completed_datetime: completedTime,
           tags: tagsFromApi || sourceData.tags || sourceData.job_tags || payload.tags || '',
           raw_data: { ...payload, ...(freshTask || {}) },
+          job_pickup_latitude: parseFloat(sourceData.job_pickup_latitude || payload.job_pickup_latitude) || null,
+          job_pickup_longitude: parseFloat(sourceData.job_pickup_longitude || payload.job_pickup_longitude) || null,
+          job_latitude: parseFloat(sourceData.job_latitude || sourceData.latitude || payload.job_latitude || payload.latitude) || null,
+          job_longitude: parseFloat(sourceData.job_longitude || sourceData.longitude || payload.job_longitude || payload.longitude) || null,
           last_synced_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };

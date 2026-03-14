@@ -2975,7 +2975,12 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
         orderFees: orderFees !== undefined ? parseFloat(orderFees) : ordAmt,
         assignedDriver: assignedDriver !== undefined ? assignedDriver : null,
         notes: effectiveNotes,
-        customerId: original.vendor_id || rawData.customer_id || rawData.vendor_id || rawData.user_id
+        customerId: original.vendor_id || rawData.customer_id || rawData.vendor_id || rawData.user_id,
+        // Coordinates extracted from original tasks
+        job_pickup_latitude: originalPickup.job_pickup_latitude || original.job_pickup_latitude || rawData.job_pickup_latitude || null,
+        job_pickup_longitude: originalPickup.job_pickup_longitude || original.job_pickup_longitude || rawData.job_pickup_longitude || null,
+        job_latitude: originalDelivery.job_latitude || original.job_latitude || rawData.job_latitude || rawData.latitude || null,
+        job_longitude: originalDelivery.job_longitude || original.job_longitude || rawData.job_longitude || rawData.longitude || null
       };
 
       console.log('📋 Merged order data from DB:', JSON.stringify(orderData, null, 2));
@@ -3050,6 +3055,16 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
       geofence: 0
     };
 
+    // Attach coordinates if they exist
+    if (orderData.job_pickup_latitude && orderData.job_pickup_longitude) {
+      combinedPayload.job_pickup_latitude = String(orderData.job_pickup_latitude);
+      combinedPayload.job_pickup_longitude = String(orderData.job_pickup_longitude);
+    }
+    if (orderData.job_latitude && orderData.job_longitude) {
+      combinedPayload.latitude = String(orderData.job_latitude);
+      combinedPayload.longitude = String(orderData.job_longitude);
+    }
+
     if (tags && tags.length > 0) combinedPayload.tags = tags;
     if (orderData.assignedDriver) combinedPayload.fleet_id = orderData.assignedDriver;
 
@@ -3098,6 +3113,10 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
             status: 0,
             creation_datetime: new Date().toISOString(),
             source: 'reorder_pickup',
+            job_pickup_latitude: parseFloat(orderData.job_pickup_latitude) || null,
+            job_pickup_longitude: parseFloat(orderData.job_pickup_longitude) || null,
+            job_latitude: parseFloat(orderData.job_pickup_latitude) || null,
+            job_longitude: parseFloat(orderData.job_pickup_longitude) || null,
             tags: originalPickup.tags || (originalPickup.raw_data && originalPickup.raw_data.tags) || tags || null,
             last_synced_at: new Date().toISOString(),
             job_hash: pickupResponseData.job_hash || null,
@@ -3125,6 +3144,10 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
             status: 0,
             creation_datetime: new Date().toISOString(),
             source: 'reorder_delivery',
+            job_pickup_latitude: parseFloat(orderData.job_pickup_latitude) || null,
+            job_pickup_longitude: parseFloat(orderData.job_pickup_longitude) || null,
+            job_latitude: parseFloat(orderData.job_latitude) || null,
+            job_longitude: parseFloat(orderData.job_longitude) || null,
             tags: originalDelivery.tags || (originalDelivery.raw_data && originalDelivery.raw_data.tags) || tags || null,
             last_synced_at: new Date().toISOString(),
             job_hash: deliveryResponseData.job_hash || null,
@@ -3264,6 +3287,12 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
       orderData.pickupAddress = orderData.pickupAddress || currentTask.job_pickup_address || currentTask.pickup_address || '';
       orderData.deliveryAddress = orderData.deliveryAddress || currentTask.customer_address || currentTask.job_address || currentTask.delivery_address || '';
       orderData.notes = orderData.notes || currentTask.customer_comments || '';
+      
+      // Extract coordinates from Tookan response
+      orderData.job_pickup_latitude = currentTask.job_pickup_latitude || null;
+      orderData.job_pickup_longitude = currentTask.job_pickup_longitude || null;
+      orderData.job_latitude = currentTask.job_latitude || currentTask.latitude || null;
+      orderData.job_longitude = currentTask.job_longitude || currentTask.longitude || null;
     }
 
     // Get tags for return order
@@ -3349,6 +3378,18 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
       geofence: 0
     };
 
+    // Attach reversed coordinates if they exist
+    if (orderData.job_latitude && orderData.job_longitude) {
+      // Original delivery coordinates (customer) become the NEW pickup coordinates
+      combinedPayload.job_pickup_latitude = String(orderData.job_latitude);
+      combinedPayload.job_pickup_longitude = String(orderData.job_longitude);
+    }
+    if (orderData.job_pickup_latitude && orderData.job_pickup_longitude) {
+      // Original pickup coordinates (merchant) become the NEW delivery coordinates
+      combinedPayload.latitude = String(orderData.job_pickup_latitude);
+      combinedPayload.longitude = String(orderData.job_pickup_longitude);
+    }
+
     if (assignedDriver) {
       combinedPayload.fleet_id = assignedDriver;
     }
@@ -3415,6 +3456,10 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
             status: 0,
             creation_datetime: new Date().toISOString(),
             source: 'return_pickup',
+            job_pickup_latitude: combinedPayload.job_pickup_latitude ? parseFloat(combinedPayload.job_pickup_latitude) : null,
+            job_pickup_longitude: combinedPayload.job_pickup_longitude ? parseFloat(combinedPayload.job_pickup_longitude) : null,
+            job_latitude: combinedPayload.job_pickup_latitude ? parseFloat(combinedPayload.job_pickup_latitude) : null,
+            job_longitude: combinedPayload.job_pickup_longitude ? parseFloat(combinedPayload.job_pickup_longitude) : null,
             tags: tags || null,
             last_synced_at: new Date().toISOString()
           };
@@ -3439,6 +3484,10 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
             status: 0,
             creation_datetime: new Date().toISOString(),
             source: 'return_delivery',
+            job_pickup_latitude: combinedPayload.job_pickup_latitude ? parseFloat(combinedPayload.job_pickup_latitude) : null,
+            job_pickup_longitude: combinedPayload.job_pickup_longitude ? parseFloat(combinedPayload.job_pickup_longitude) : null,
+            job_latitude: combinedPayload.latitude ? parseFloat(combinedPayload.latitude) : null,
+            job_longitude: combinedPayload.longitude ? parseFloat(combinedPayload.longitude) : null,
             tags: tags || null,
             last_synced_at: new Date().toISOString()
           };
@@ -5434,6 +5483,10 @@ app.post('/api/webhooks/tookan/task', async (req, res) => {
       completed_datetime: payload.completed_datetime || payload.job_delivered_datetime || payload.acknowledged_datetime || payload.completed_date_time || payload.delivery_datetime || null,
       tags: payload.tags || payload.job_tags || '',
       raw_data: payload,
+      job_pickup_latitude: parseFloat(payload.job_pickup_latitude) || null,
+      job_pickup_longitude: parseFloat(payload.job_pickup_longitude) || null,
+      job_latitude: parseFloat(payload.job_latitude || payload.latitude) || null,
+      job_longitude: parseFloat(payload.job_longitude || payload.longitude) || null,
       last_synced_at: new Date().toISOString()
     };
 
