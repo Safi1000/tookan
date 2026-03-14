@@ -5443,23 +5443,26 @@ function getApp() {
           return res.json({ status: 'success', data: { hasRelatedTask: false } });
         }
 
+        // Find the OPPOSITE task (the one that is NOT the current task)
         const relatedTasks = relatedTasksData.data;
-        const deliveryTask = relatedTasks.find(task =>
-          String(task.job_id) !== String(jobId) && task.job_type === 1
-        ) || relatedTasks.find(task => String(task.job_id) !== String(jobId));
+        const oppositeTask = relatedTasks.find(task =>
+          String(task.job_id) !== String(jobId)
+        );
 
-        if (deliveryTask) {
+        if (oppositeTask) {
+          console.log(`Found connected task (Type: ${oppositeTask.job_type === 0 ? 'Pickup' : 'Delivery'}):`, oppositeTask.job_id, 'Address:', oppositeTask.job_address);
           return res.json({
             status: 'success',
             data: {
               hasRelatedTask: true,
-              deliveryAddress: deliveryTask.job_address || '',
-              deliveryJobId: deliveryTask.job_id,
-              deliveryCustomerName: deliveryTask.customer_username || deliveryTask.customer_name || ''
+              deliveryAddress: oppositeTask.job_address || '',
+              deliveryJobId: oppositeTask.job_id,
+              deliveryCustomerName: oppositeTask.customer_username || oppositeTask.customer_name || ''
             }
           });
         }
 
+        console.log('No connected task found in related tasks');
         return res.json({ status: 'success', data: { hasRelatedTask: false } });
       } catch (error) {
         console.error('Get related address error:', error);

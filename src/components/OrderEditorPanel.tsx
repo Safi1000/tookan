@@ -137,18 +137,22 @@ export function OrderEditorPanel() {
       // Determine task type BEFORE modifying addresses (original addresses comparison)
       const isPickupTask = pickupAddr.trim().toLowerCase() === deliveryAddr.trim().toLowerCase();
 
-      // If pickup === delivery (pickup task), fetch the related delivery address for display
-      if (isPickupTask && first.jobId) {
-        console.log('Pickup task detected, fetching related delivery address...');
+      // If we have a jobId, fetch the related task to know its ID for status updates
+      if (first.jobId) {
+        console.log('Task detected, fetching connected task details...');
         const relatedResult = await fetchRelatedDeliveryAddress(first.jobId);
         if (relatedResult.status === 'success' && relatedResult.hasRelatedTask) {
-          if (relatedResult.deliveryAddress) {
-            console.log('Found related delivery address:', relatedResult.deliveryAddress);
-            deliveryAddr = relatedResult.deliveryAddress;
-          }
+          // Identify the connected task
           if (relatedResult.deliveryJobId) {
             connectedTaskId = relatedResult.deliveryJobId;
             console.log('Found connected task ID:', connectedTaskId);
+          }
+
+          // ONLY overwrite the delivery address if THIS task is a pickup task
+          // (Because a pickup task's own "deliveryAddress" in DB/Tookan usually points back to merchant)
+          if (isPickupTask && relatedResult.deliveryAddress) {
+            console.log('Pickup task: setting actual customer delivery address:', relatedResult.deliveryAddress);
+            deliveryAddr = relatedResult.deliveryAddress;
           }
         }
       }

@@ -5755,26 +5755,26 @@ app.get('/api/tookan/job/:jobId/related-address', authenticate, async (req, res)
       return res.json({ status: 'success', data: { hasRelatedTask: false } });
     }
 
-    // Find the delivery task (the one that is NOT the current pickup task)
+    // Find the OPPOSITE task (the one that is NOT the current task)
     const relatedTasks = relatedTasksData.data;
-    const deliveryTask = relatedTasks.find(task =>
-      String(task.job_id) !== String(jobId) && task.job_type === 1 // job_type 1 = delivery
-    ) || relatedTasks.find(task => String(task.job_id) !== String(jobId));
+    const oppositeTask = relatedTasks.find(task =>
+      String(task.job_id) !== String(jobId)
+    );
 
-    if (deliveryTask) {
-      console.log('Found delivery task:', deliveryTask.job_id, 'Address:', deliveryTask.job_address);
+    if (oppositeTask) {
+      console.log(`Found connected task (Type: ${oppositeTask.job_type === 0 ? 'Pickup' : 'Delivery'}):`, oppositeTask.job_id, 'Address:', oppositeTask.job_address);
       return res.json({
         status: 'success',
         data: {
           hasRelatedTask: true,
-          deliveryAddress: deliveryTask.job_address || '',
-          deliveryJobId: deliveryTask.job_id,
-          deliveryCustomerName: deliveryTask.customer_username || deliveryTask.customer_name || ''
+          deliveryAddress: oppositeTask.job_address || '', // Might be pickup address if opposite is pickup
+          deliveryJobId: oppositeTask.job_id,
+          deliveryCustomerName: oppositeTask.customer_username || oppositeTask.customer_name || ''
         }
       });
     }
 
-    console.log('No delivery task found in related tasks');
+    console.log('No connected task found in related tasks');
     return res.json({ status: 'success', data: { hasRelatedTask: false } });
 
   } catch (error) {
