@@ -3007,98 +3007,77 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
     };
     const tags = tagService.getTagsForTask(taskDataForTags);
 
-    // ========== TASK 1: PICKUP from merchant/warehouse ==========
-    const pickupPayload = {
+    // ========== SINGLE API CALL: Combined Pickup + Delivery ==========
+    // Using Tookan's create_task API with has_pickup=1 and has_delivery=1
+    // This creates both tasks atomically in a single request
+    const combinedPayload = {
       api_key: apiKey,
+      // Pickup fields (from merchant/warehouse)
       job_pickup_name: orderData.customerName,
       job_pickup_phone: orderData.customerPhone,
-      job_pickup_email: orderData.customerEmail || '',
+      job_pickup_email: orderData.customerEmail,
       job_pickup_address: orderData.pickupAddress,
       job_pickup_datetime: formatDateTime(pickupTime),
-      has_pickup: 1,
-      has_delivery: 0,
-      layout_type: 0,
-      timezone: timezone,
-      cod: orderData.codAmount,
-      order_payment: orderData.orderFees,
-      job_description: orderData.notes || '',
-      auto_assignment: 0,
       pickup_custom_field_template: 'Same_day',
       pickup_meta_data: [
         {
           label: 'COD_Amount',
           data: String(orderData.codAmount)
         }
-      ]
-    };
-
-    if (tags && tags.length > 0) pickupPayload.tags = tags;
-    if (orderData.assignedDriver) pickupPayload.fleet_id = orderData.assignedDriver;
-
-    console.log('Creating PICKUP task for reorder...');
-    const pickupResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(pickupPayload)
-    });
-
-    const pickupData = await pickupResponse.json();
-    if (pickupData.status !== 200) {
-      return res.status(500).json({
-        status: 'error',
-        message: pickupData.message || 'Failed to create pickup task for reorder'
-      });
-    }
-
-    const pickupOrderId = pickupData.data?.job_id || null;
-    console.log('✅ Pickup task created:', pickupOrderId);
-
-    // ========== TASK 2: DELIVERY to customer ==========
-    const deliveryPayload = {
-      api_key: apiKey,
+      ],
+      // Delivery fields (to customer)
       customer_username: orderData.customerName,
       customer_phone: orderData.customerPhone,
-      customer_email: orderData.customerEmail || '',
+      customer_email: orderData.customerEmail,
       customer_address: orderData.deliveryAddress,
       job_delivery_datetime: formatDateTime(deliveryTime),
-      has_pickup: 0,
-      has_delivery: 1,
-      layout_type: 0,
-      timezone: timezone,
-      cod: orderData.codAmount,
-      order_payment: orderData.orderFees,
-      job_description: orderData.notes || '',
-      auto_assignment: 0,
       custom_field_template: 'Same_day',
       meta_data: [
         {
           label: 'COD_Amount',
           data: String(orderData.codAmount)
         }
-      ]
+      ],
+      // Common fields
+      has_pickup: 1,
+      has_delivery: 1,
+      layout_type: 0,
+      timezone: timezone,
+      auto_assignment: 0,
+      job_description: orderData.notes,
+      tracking_link: 1,
+      notify: 1,
+      geofence: 0
     };
 
-    if (tags && tags.length > 0) deliveryPayload.tags = tags;
-    if (orderData.assignedDriver) deliveryPayload.fleet_id = orderData.assignedDriver;
+    if (tags && tags.length > 0) combinedPayload.tags = tags;
+    if (orderData.assignedDriver) combinedPayload.fleet_id = orderData.assignedDriver;
 
-    console.log('Creating DELIVERY task for reorder...');
-    const deliveryResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
+    console.log('Creating combined PICKUP + DELIVERY task for reorder (single API call)...');
+    const createResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(deliveryPayload)
+      body: JSON.stringify(combinedPayload)
     });
 
-    const deliveryData = await deliveryResponse.json();
-    if (deliveryData.status !== 200) {
+    const createData = await createResponse.json();
+
+    if (createData.status !== 200) {
       return res.status(500).json({
         status: 'error',
-        message: deliveryData.message || 'Failed to create delivery task for reorder'
+        message: createData.message || 'Failed to create reorder task'
       });
     }
 
-    const deliveryOrderId = deliveryData.data?.job_id || null;
-    console.log('✅ Delivery task created:', deliveryOrderId);
-    console.log('✅ Reorder complete - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
+    // Extract both job IDs from response
+    const responseData = createData.data || {};
+    const pickupOrderId = responseData.pickup_job_id || responseData.job_id || null;
+    const deliveryOrderId = responseData.delivery_job_id || responseData.job_id || null;
+    const pickupData = { data: responseData };
+    const deliveryData = { data: responseData };
+
+    console.log('✅ Combined task created - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
+    console.log('✅ Reorder complete (single API call) - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
 
     // Save BOTH tasks to Supabase
     if (isConfigured()) {
@@ -3341,130 +3320,80 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('perform_re
     // Get assigned driver
     const assignedDriver = orderData.assignedDriver || null;
 
-    // ========== TASK 1: PICKUP from customer ==========
-    // PICKUP tasks use job_pickup_* fields, not customer_* fields
-    const pickupPayload = {
+    // ========== SINGLE API CALL: Combined Pickup + Delivery ==========
+    // Using Tookan's create_task API with has_pickup=1 and has_delivery=1
+    // For return order: pickup from customer, deliver to merchant
+    const combinedPayload = {
       api_key: apiKey,
+      // Pickup fields (from customer location - original delivery address)
       job_pickup_name: orderData.customerName || 'Customer',
       job_pickup_phone: orderData.customerPhone || '',
       job_pickup_email: orderData.customerEmail || '',
       job_pickup_address: returnPickupAddr,
       job_pickup_datetime: formatDateTime(pickupTime),
-      has_pickup: 1,
-      has_delivery: 0,
-      layout_type: 0,
-      timezone: timezone,
-      cod: 0, // COD removed for returns
-      order_payment: parseFloat(orderData.orderFees) || 0,
-      job_description: orderData.notes || '',
-      auto_assignment: 0,
-    };
-
-    // Assign agent to pickup task
-    if (assignedDriver) {
-      pickupPayload.fleet_id = assignedDriver;
-    }
-
-    // Add tags if any
-    if (tags && tags.length > 0) {
-      pickupPayload.tags = tags;
-    }
-
-    console.log('Creating PICKUP task...');
-    console.log('Pickup payload:', JSON.stringify({ ...pickupPayload, api_key: '***HIDDEN***' }, null, 2));
-
-    const pickupResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(pickupPayload),
-    });
-
-    const pickupTextResponse = await pickupResponse.text();
-    let pickupData;
-    try {
-      pickupData = JSON.parse(pickupTextResponse);
-    } catch (parseError) {
-      return res.status(500).json({
-        status: 'error',
-        message: `Pickup task API returned non-JSON response: ${pickupTextResponse.substring(0, 200)}`,
-        data: {}
-      });
-    }
-
-    if (!pickupResponse.ok || pickupData.status !== 200) {
-      return res.status(pickupResponse.status || 500).json({
-        status: 'error',
-        message: pickupData.message || 'Failed to create pickup return task',
-        data: {}
-      });
-    }
-
-    const pickupOrderId = pickupData.data?.job_id || pickupData.data?.jobId || null;
-    console.log('âœ… Pickup task created:', pickupOrderId);
-
-    // ========== TASK 2: DELIVERY to merchant ==========
-    // DELIVERY tasks only need customer_address
-    const deliveryPayload = {
-      api_key: apiKey,
+      // Delivery fields (to merchant location - original pickup address)
       customer_username: orderData.customerName || 'Customer',
       customer_phone: orderData.customerPhone || '',
       customer_email: orderData.customerEmail || '',
       customer_address: returnDeliveryAddr,
       job_delivery_datetime: formatDateTime(deliveryTime),
-      has_pickup: 0,
+      // Common fields
+      has_pickup: 1,
       has_delivery: 1,
       layout_type: 0,
       timezone: timezone,
-      cod: 0, // COD removed for returns
-      order_payment: parseFloat(orderData.orderFees) || 0,
-      job_description: orderData.notes || '',
       auto_assignment: 0,
+      job_description: orderData.notes || '',
+      tracking_link: 1,
+      notify: 1,
+      geofence: 0
     };
 
-    // Assign SAME agent to delivery task
     if (assignedDriver) {
-      deliveryPayload.fleet_id = assignedDriver;
+      combinedPayload.fleet_id = assignedDriver;
     }
 
     // Add tags if any
     if (tags && tags.length > 0) {
-      deliveryPayload.tags = tags;
+      combinedPayload.tags = tags;
     }
 
-    console.log('Creating DELIVERY task...');
-    console.log('Delivery payload:', JSON.stringify({ ...deliveryPayload, api_key: '***HIDDEN***' }, null, 2));
+    console.log('Creating combined PICKUP + DELIVERY task for return order (single API call)...');
+    console.log('Combined return payload:', JSON.stringify({ ...combinedPayload, api_key: '***HIDDEN***' }, null, 2));
 
-    const response = await fetch('https://api.tookanapp.com/v2/create_task', {
+    const createResponse = await fetch('https://api.tookanapp.com/v2/create_task', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(deliveryPayload),
+      body: JSON.stringify(combinedPayload)
     });
 
-    const textResponse = await response.text();
-    let data;
-
+    const createTextResponse = await createResponse.text();
+    let createData;
     try {
-      data = JSON.parse(textResponse);
+      createData = JSON.parse(createTextResponse);
     } catch (parseError) {
       return res.status(500).json({
         status: 'error',
-        message: `API returned non-JSON response: ${textResponse.substring(0, 200)}`,
+        message: `API returned non-JSON response: ${createTextResponse.substring(0, 200)}`,
         data: {}
       });
     }
 
-    if (!response.ok || data.status !== 200) {
-      return res.status(response.status || 500).json({
+    if (!createResponse.ok || createData.status !== 200) {
+      return res.status(createResponse.status || 500).json({
         status: 'error',
-        message: data.message || 'Failed to create return order',
+        message: createData.message || 'Failed to create return order task',
         data: {}
       });
     }
 
-    const deliveryOrderId = data.data?.job_id || data.data?.jobId || null;
+    // Extract both job IDs from response
+    const responseData = createData.data || {};
+    const pickupOrderId = responseData.pickup_job_id || responseData.job_id || null;
+    const deliveryOrderId = responseData.delivery_job_id || responseData.job_id || null;
 
-    console.log('âœ… Delivery task created:', deliveryOrderId);
-    console.log('âœ… Return order complete - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
+    console.log('âœ… Combined task created - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
+    console.log('âœ… Return order complete (single API call) - Pickup:', pickupOrderId, 'Delivery:', deliveryOrderId);
 
     // Save BOTH return tasks to Supabase for caching
     if (isConfigured()) {
