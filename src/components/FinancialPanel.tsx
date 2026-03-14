@@ -2502,16 +2502,16 @@ export function FinancialPanel() {
                       </tr>
                     </thead>
                     <tbody>
-                      {drivers.map((driver, index) => (
+                      {drivers.filter(driver => {
+                        if (!driverWalletSearch.trim() || driverWalletValidation !== 'valid') return true;
+                        const searchTerm = driverWalletSearch.toLowerCase().trim();
+                        return driver.name.toLowerCase().includes(searchTerm) ||
+                               driver.id.toLowerCase().includes(searchTerm) ||
+                               (driver.phone && driver.phone.includes(driverWalletSearch));
+                      }).map((driver, index) => (
                         <tr
                           key={driver.id}
-                          className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${driverWalletValidation === 'valid' &&
-                            (driver.name.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
-                              driver.id.toLowerCase().includes(driverWalletSearch.toLowerCase()) ||
-                              (driver.phone && driver.phone.includes(driverWalletSearch)))
-                            ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)]'
-                            : ''
-                            }`}
+                          className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}
                         >
                           <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.id}</td>
                           <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{driver.name}</td>
@@ -2631,20 +2631,20 @@ export function FinancialPanel() {
                         balance: m.balance || 0,
                         pending: m.pending || 0,
                         vendor_id: m.vendor_id
-                      }))).map((merchant, index) => {
+                      })))
+                      .filter(merchant => {
+                        if (!merchantWalletSearch.trim() || merchantWalletValidation !== 'valid') return true;
                         const searchTerm = merchantWalletSearch.toLowerCase().trim();
-                        const isHighlighted = merchantWalletValidation === 'valid' && (
-                          merchant.name.toLowerCase().includes(searchTerm) ||
-                          merchant.id.toLowerCase().includes(searchTerm) ||
-                          ((merchant as any).vendor_id && (merchant as any).vendor_id.toString().includes(searchTerm)) ||
-                          ((merchant as any).phone && (merchant as any).phone.includes(merchantWalletSearch))
-                        );
-
+                        return merchant.name.toLowerCase().includes(searchTerm) ||
+                               merchant.id.toLowerCase().includes(searchTerm) ||
+                               ((merchant as any).vendor_id && (merchant as any).vendor_id.toString().includes(searchTerm)) ||
+                               ((merchant as any).phone && (merchant as any).phone.includes(merchantWalletSearch));
+                      })
+                      .map((merchant, index) => {
                         return (
                           <tr
                             key={merchant.id}
-                            className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''} ${isHighlighted ? 'shadow-[0_0_12px_rgba(193,238,250,0.3)] dark:shadow-[0_0_12px_rgba(193,238,250,0.3)] bg-[#C1EEFA]/10' : ''
-                              }`}
+                            className={`border-b border-border dark:border-[#2A3C63] hover:bg-table-row-hover dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}
                           >
                             <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.id}</td>
                             <td className="px-4 py-3 text-heading dark:text-[#C1EEFA]">{merchant.name}</td>
