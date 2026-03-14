@@ -13,7 +13,7 @@ import {
   Users
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
-import { fetchAnalytics, fetchAllOrders, type AnalyticsData } from '../services/tookanApi';
+import { fetchAnalytics, fetchAllOrders, fetchDriverPerformance, type AnalyticsData } from '../services/tookanApi';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 
@@ -22,6 +22,7 @@ export function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [driverPerformanceData, setDriverPerformanceData] = useState<any[]>([]);
 
   // Fetch analytics on mount
   useEffect(() => {
@@ -33,14 +34,21 @@ export function Dashboard() {
     setError(null);
 
     try {
-      const result = await fetchAnalytics();
+      const [analyticsResult, perfResult] = await Promise.all([
+        fetchAnalytics(),
+        fetchDriverPerformance('') // Empty search matches all drivers
+      ]);
 
-      if (result.status === 'success' && result.data) {
-        setAnalytics(result.data);
+      if (analyticsResult.status === 'success' && analyticsResult.data) {
+        setAnalytics(analyticsResult.data);
         setLastUpdated(new Date());
       } else {
-        setError(result.message || 'Failed to load analytics');
-        toast.error(result.message || 'Failed to load analytics');
+        setError(analyticsResult.message || 'Failed to load analytics');
+        toast.error(analyticsResult.message || 'Failed to load analytics');
+      }
+
+      if (perfResult.status === 'success' && perfResult.data) {
+        setDriverPerformanceData(perfResult.data);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load analytics';
@@ -99,9 +107,7 @@ export function Dashboard() {
   ] : [];
 
   // Get chart data from analytics
-  const codData = analytics?.codStatus || [];
-  const orderVolumeData = analytics?.orderVolume || [];
-  const driverPerformanceData = analytics?.driverPerformance || [];
+  const topDriversData = analytics?.driverPerformance || [];
 
 
 
@@ -125,8 +131,8 @@ export function Dashboard() {
   };
 
   // Calculate max deliveries for progress bar
-  const maxDeliveries = driverPerformanceData.length > 0
-    ? Math.max(...driverPerformanceData.map(d => d.deliveries), 1)
+  const maxDeliveries = topDriversData.length > 0
+    ? Math.max(...topDriversData.map(d => d.deliveries), 1)
     : 1;
 
   const exportOrders = async (range: 'daily' | 'monthly') => {
@@ -295,49 +301,41 @@ export function Dashboard() {
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* COD vs Settled COD - Pie Chart */}
+        {/* COD vs Settled COD - Grid Summary */}
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm transition-colors duration-300">
           <h3 className="text-heading dark:text-foreground mb-6 font-semibold">COD Collection Status</h3>
           {isLoading ? (
             <div className="h-[300px] flex items-center justify-center">
               <Loader2 className="w-8 h-8 animate-spin text-primary dark:text-[#C1EEFA]" />
             </div>
-          ) : codData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={codData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                  style={{ fontSize: '12px', fontWeight: 500 }}
-                >
-                  {codData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--card)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '12px',
-                    color: 'var(--heading-color)',
-                    boxShadow: 'var(--shadow-md)',
-                    fontSize: '14px',
-                    fontWeight: 500
-                  }}
-                  formatter={(value: number) => `$${value.toLocaleString()}`}
-                  labelStyle={{ color: 'var(--heading-color)', fontWeight: 600 }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
           ) : (
-            <div className="h-[300px] flex items-center justify-center text-muted-light dark:text-[#99BFD1]">
-              No COD data available
+            <div className="grid grid-rows-3 gap-4 h-[300px]">
+              {/* Total COD Received */}
+              <div className="flex flex-col justify-center items-center p-4 bg-muted/30 dark:bg-[#1A2C53] rounded-xl border border-border dark:border-[#2A3C63]">
+                <p className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total COD Received</p>
+                <p className="text-heading dark:text-[#C1EEFA] text-3xl font-semibold">
+                  {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'}{' '}
+                  {driverPerformanceData.reduce((sum, p) => sum + (p.cod_total || 0), 0).toFixed(2)}
+                </p>
+              </div>
+
+              {/* Total Paid */}
+              <div className="flex flex-col justify-center items-center p-4 bg-green-500/10 dark:bg-green-500/5 rounded-xl border border-green-500/20 dark:border-green-500/10">
+                <p className="text-green-600 dark:text-green-500 text-sm mb-1">Total Paid</p>
+                <p className="text-green-600 dark:text-green-400 text-3xl font-semibold">
+                  {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'}{' '}
+                  {driverPerformanceData.reduce((sum, p) => sum + (p.paid_total || 0), 0).toFixed(2)}
+                </p>
+              </div>
+
+              {/* Total Balance */}
+              <div className="flex flex-col justify-center items-center p-4 bg-red-500/10 dark:bg-red-500/5 rounded-xl border border-red-500/20 dark:border-red-500/10">
+                <p className="text-[#DE3544] dark:text-[#DE3544] text-sm mb-1">Total Balance</p>
+                <p className="text-[#DE3544] dark:text-[#DE3544] text-3xl font-semibold">
+                  {(localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$'}{' '}
+                  {driverPerformanceData.reduce((sum, p) => sum + (p.balance_total || 0), 0).toFixed(2)}
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -353,7 +351,7 @@ export function Dashboard() {
             </div>
           ) : driverPerformanceData.length > 0 ? (
             <div className="space-y-4">
-              {driverPerformanceData.map((driver, index) => (
+              {topDriversData.map((driver, index) => (
                 <div key={driver.name} className="flex items-center gap-4 p-2 rounded-lg hover:bg-[var(--bg-hover)] dark:hover:bg-[#2A3C63]/50 transition-colors">
                   <div className={`
                     w-8 h-8 rounded-lg flex items-center justify-center font-semibold text-sm
