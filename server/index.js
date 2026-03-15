@@ -36,10 +36,10 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../dist')));
-app.get('/api/health', (req, res) => res.status(200).json({ ok: true }));
-app.use(killSwitch);
 
-// Mount EDI Routes (Self-authenticated via tokens)
+app.use(killSwitch);
+app.get('/api/health', (req, res) => res.status(200).json({ ok: true }));
+
 app.use('/api/edi', ediRoutes);
 
 
