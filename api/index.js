@@ -6615,7 +6615,7 @@ function getApp() {
         if (updateError) {
           console.error('Failed to update status in Supabase:', updateError);
         } else {
-          console.log(`✅ Status set to 10 (Deleted) for tasks: ${connectedJobIds.join(', ')}`);
+          console.log(`\u2705 Status set to 10 (Deleted) for tasks: ${connectedJobIds.join(', ')}`);
         }
 
         console.log('✅ Delete operation completed');

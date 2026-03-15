@@ -9165,14 +9165,14 @@ app.post('/api/tookan/delete-task', authenticate, requirePermission('panel_order
       results.push({ id, status: data.status, message: data.message });
     }
 
-    // 4. Delete from Supabase
-    const { error: deleteError } = await supabase
+    // 4. Update status to 10 in Supabase (Soft Delete)
+    const { error: updateError } = await supabase
       .from('tasks')
-      .delete()
+      .update({ status: 10 })
       .in('job_id', connectedJobIds);
 
-    if (deleteError) {
-      console.error('Failed to delete from Supabase:', deleteError);
+    if (updateError) {
+      console.error('Failed to update status to 10 in Supabase:', updateError);
     }
 
     console.log('âœ… Delete operation completed');
