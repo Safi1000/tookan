@@ -39,8 +39,8 @@ const PaymentWall: React.FC<PaymentWallProps> = ({ amount }) => {
             </div>
             <p style={{ color: '#888' }}>
                 To restore access, contact:{' '}
-                <a href="mailto:your@email.com" style={{ color: '#4a9eff' }}>
-                    your@email.com
+                <a href="mailto:wdasafi@gmail.com" style={{ color: '#4a9eff' }}>
+                    wdasafi@gmail.com
                 </a>
             </p>
         </div>
