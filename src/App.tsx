@@ -32,17 +32,42 @@ export default function App() {
   const [suspendedAmount, setSuspendedAmount] = useState('');
   const isSuperadmin = user?.email?.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
   useEffect(() => {
-    fetch('https://api.bhdt.live/api/health')
-      .then(async (res) => {
-        if (res.status === 402) {
-          const data = await res.json();
+    const checkService = () => {
+      fetch('https://api.bhdt.live/api/health')
+        .then(async (res) => {
+          if (res.status === 402) {
+            const data = await res.json();
+
+
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user');
+            localStorage.removeItem(LAST_ACTIVITY_KEY);
+
+
+            setUser(null);
+            setIsAuthenticated(false);
+            setActiveMenu('dashboard');
+            setVisitedPanels(new Set(['dashboard']));
+
+
+            setSuspended(true);
+            setSuspendedAmount(data.amount || '');
+          }
+        })
+        .catch(() => {
+
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('user');
+          localStorage.removeItem(LAST_ACTIVITY_KEY);
+          setUser(null);
+          setIsAuthenticated(false);
           setSuspended(true);
-          setSuspendedAmount(data.amount || '');
-        }
-      })
-      .catch(() => {
-        setSuspended(true);
-      });
+        });
+    };
+
+    checkService();
+    const interval = setInterval(checkService, 30 * 1000);
+    return () => clearInterval(interval);
   }, []);
   // Update visited panels when activeMenu changes
   useEffect(() => {
