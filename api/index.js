@@ -484,15 +484,11 @@ function getApp() {
     // PERMISSION CONSTANTS (per SRS)
     // ============================================
     const PERMISSIONS = {
-      EDIT_ORDER_FINANCIALS: 'edit_order_financials',
-      MANAGE_WALLETS: 'manage_wallets',
-      PERFORM_REORDER: 'perform_reorder',
-      PERFORM_RETURN: 'perform_return',
-      DELETE_ONGOING_ORDERS: 'delete_ongoing_orders',
-      EXPORT_REPORTS: 'export_reports',
-      ADD_COD: 'add_cod',
-      CONFIRM_COD_PAYMENTS: 'confirm_cod_payments',
-      MANAGE_USERS: 'manage_users' // Superadmin only
+      PANEL_REPORTS: 'panel_reports',
+      PANEL_FINANCIAL: 'panel_financial',
+      PANEL_ORDER_EDITOR: 'panel_order_editor',
+      PANEL_WITHDRAWALS: 'panel_withdrawals',
+      PANEL_MERCHANT_PLANS: 'panel_merchant_plans'
     };
 
 
@@ -2683,7 +2679,7 @@ function getApp() {
 
     // Customer wallet endpoint
     // Wallet management requires permission
-    app.post('/api/tookan/customer-wallet/payment', authenticate, requirePermission(PERMISSIONS.MANAGE_WALLETS), async (req, res) => {
+    app.post('/api/tookan/customer-wallet/payment', authenticate, requirePermission('panel_financial'), async (req, res) => {
       try {
         const apiKey = getApiKey();
         const { vendor_id, amount, description, transaction_type } = req.body;
@@ -2751,7 +2747,7 @@ function getApp() {
 
     // Driver wallet transaction
     // Driver wallet management requires permission
-    app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermission(PERMISSIONS.MANAGE_WALLETS), async (req, res) => {
+    app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermission('panel_financial'), async (req, res) => {
       try {
         const apiKey = getApiKey();
         const { fleet_id, amount, description, transaction_type } = req.body;
@@ -2987,15 +2983,11 @@ function getApp() {
               let userPermissions = userProfile?.permissions || {};
               if (userRole === 'admin') {
                 userPermissions = {
-                  edit_order_financials: true,
-                  manage_wallets: true,
-                  perform_reorder: true,
-                  perform_return: true,
-                  delete_ongoing_orders: true,
-                  export_reports: true,
-                  add_cod: true,
-                  confirm_cod_payments: true,
-                  manage_users: true
+                  panel_reports: true,
+                  panel_financial: true,
+                  panel_order_editor: true,
+                  panel_withdrawals: true,
+                  panel_merchant_plans: true
                 };
               }
 
@@ -3108,14 +3100,11 @@ function getApp() {
           if (Object.keys(userPermissions).length === 0 && userRole !== 'admin') {
             // Default permissions for staff (Tookan users)
             userPermissions = {
-              export_reports: false,      // Staff can view but not export by default
-              add_cod: false,             // Staff can enter COD only if granted
-              confirm_cod_payments: false,
-              edit_order_financials: false,
-              manage_wallets: false,
-              perform_reorder: false,
-              perform_return: false,
-              delete_ongoing_orders: false
+              panel_reports: false,
+              panel_financial: false,
+              panel_order_editor: false,
+              panel_withdrawals: false,
+              panel_merchant_plans: false
             };
           }
 
@@ -3758,7 +3747,7 @@ function getApp() {
 
     // POST Export Orders Report
     // Export requires permission
-    app.post('/api/reports/orders/export', authenticate, requirePermission(PERMISSIONS.EXPORT_REPORTS), async (req, res) => {
+    app.post('/api/reports/orders/export', authenticate, requirePermission('panel_reports'), async (req, res) => {
       try {
         const { dateFrom, dateTo, format } = req.body;
         const apiKey = getApiKey();
@@ -3917,7 +3906,7 @@ function getApp() {
 
     // POST Add COD to queue
     // Add COD requires permission
-    app.post('/api/cod/queue/add', authenticate, requirePermission(PERMISSIONS.ADD_COD), async (req, res) => {
+    app.post('/api/cod/queue/add', authenticate, requirePermission('panel_financial'), async (req, res) => {
       try {
         const { driverId, amount, notes, orderId } = req.body;
 
@@ -3941,7 +3930,7 @@ function getApp() {
 
     // POST Settle COD
     // Settle COD requires permission
-    app.post('/api/cod/queue/settle', authenticate, requirePermission(PERMISSIONS.CONFIRM_COD_PAYMENTS), async (req, res) => {
+    app.post('/api/cod/queue/settle', authenticate, requirePermission('panel_financial'), async (req, res) => {
       try {
         const { driverId, amount, paymentMethod, notes } = req.body;
 
@@ -3965,7 +3954,7 @@ function getApp() {
 
     // PUT Settle specific COD entry
     // Confirm COD requires permission
-    app.put('/api/cod/settle/:codId', authenticate, requirePermission(PERMISSIONS.CONFIRM_COD_PAYMENTS), async (req, res) => {
+    app.put('/api/cod/settle/:codId', authenticate, requirePermission('panel_financial'), async (req, res) => {
       try {
         const { codId } = req.params;
         const { paymentMethod, notes } = req.body;
@@ -4026,7 +4015,7 @@ function getApp() {
     });
 
     // PUT Update Order (Custom Fields, Description, etc.)
-    app.put('/api/tookan/order/:orderId', authenticate, requirePermission(PERMISSIONS.EDIT_ORDER_FINANCIALS), async (req, res) => {
+    app.put('/api/tookan/order/:orderId', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
       try {
         const { orderId } = req.params;
         const numericOrderId = parseInt(orderId);
@@ -4118,7 +4107,7 @@ function getApp() {
 
     // POST Reorder
     // Reorder requires permission
-    app.post('/api/tookan/order/reorder', authenticate, requirePermission(PERMISSIONS.PERFORM_REORDER), async (req, res) => {
+    app.post('/api/tookan/order/reorder', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
       try {
         const { orderId, originalOrderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, codAmount, orderFees, assignedDriver, notes } = req.body;
         const orderIdToUse = orderId || originalOrderId;
@@ -4404,7 +4393,7 @@ function getApp() {
 
     // POST Return Order
     // Return order requires permission
-    app.post('/api/tookan/order/return', authenticate, requirePermission(PERMISSIONS.PERFORM_REORDER), async (req, res) => {
+    app.post('/api/tookan/order/return', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
       try {
         const { orderId, originalOrderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, notes } = req.body;
         const orderIdToUse = orderId || originalOrderId;
@@ -4749,7 +4738,7 @@ function getApp() {
 
     // PUT Approve Withdrawal
     // Approve withdrawal requires wallet management permission
-    app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission(PERMISSIONS.MANAGE_WALLETS), async (req, res) => {
+    app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('panel_withdrawals'), async (req, res) => {
       try {
         const { id } = req.params;
 
@@ -4818,7 +4807,7 @@ function getApp() {
 
     // PUT Reject Withdrawal
     // Reject withdrawal requires wallet management permission
-    app.put('/api/withdrawal/request/:id/reject', authenticate, requirePermission(PERMISSIONS.MANAGE_WALLETS), async (req, res) => {
+    app.put('/api/withdrawal/request/:id/reject', authenticate, requirePermission('panel_withdrawals'), async (req, res) => {
       try {
         const { id } = req.params;
 
@@ -6203,7 +6192,7 @@ function getApp() {
     // ============================================
 
     // PUT Assign Driver to Order
-    app.put('/api/orders/:jobId/assign', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+    app.put('/api/orders/:jobId/assign', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
       try {
         console.log('\n=== ASSIGN DRIVER (Vercel) ===');
         const { jobId } = req.params;
@@ -6366,7 +6355,7 @@ function getApp() {
     });
 
     // PUT Update Task COD
-    app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+    app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
       try {
         console.log('\n=== UPDATE TASK COD (Vercel) ===');
         const { jobId } = req.params;
@@ -6449,7 +6438,7 @@ function getApp() {
     // ============================================
 
     // UPDATE Task Status (Successful=2, Failed=3, Deleted=9) — also updates connected task
-    app.post('/api/tookan/update-task-status', authenticate, requirePermission('perform_reorder'), async (req, res) => {
+    app.post('/api/tookan/update-task-status', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
       try {
         console.log('\n=== UPDATE TASK STATUS REQUEST ===');
         const { jobId, status } = req.body;
@@ -6555,7 +6544,7 @@ function getApp() {
     });
 
     // DELETE Task (and connected task)
-    app.post('/api/tookan/delete-task', authenticate, requirePermission('perform_reorder'), async (req, res) => {
+    app.post('/api/tookan/delete-task', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
       try {
         console.log('\n=== DELETE TASK REQUEST ===');
         const { jobId } = req.body;
@@ -6681,7 +6670,7 @@ function getApp() {
     // ========== AGENT PAYMENT ENDPOINTS ==========
 
     // Record agent payment
-    app.post('/api/agents/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+    app.post('/api/agents/payment', authenticate, requirePermission('panel_financial'), async (req, res) => {
       try {
         const { fleet_id, payment_amount } = req.body;
         // Note: cod_total from frontend is IGNORED - we calculate lifetime COD from database
@@ -6777,7 +6766,7 @@ function getApp() {
     });
 
     // Update agent balance
-    app.put('/api/agents/:fleetId/balance', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+    app.put('/api/agents/:fleetId/balance', authenticate, requirePermission('panel_financial'), async (req, res) => {
       try {
         const { fleetId } = req.params;
         const { cod_total } = req.body;
@@ -6944,7 +6933,7 @@ function getApp() {
     });
 
     // Update task payment (paid amount and cod_collected status)
-    app.put('/api/tasks/:jobId/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+    app.put('/api/tasks/:jobId/payment', authenticate, requirePermission('panel_financial'), async (req, res) => {
       try {
         const { jobId } = req.params;
         const { paid, cod_collected } = req.body;

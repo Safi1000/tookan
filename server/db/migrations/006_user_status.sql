@@ -36,14 +36,14 @@ VALUES (
     'ahmedhassan123.ah83@gmail.com',
     'Super Admin',
     'admin',
-    '{"edit_order_financials": true, "manage_wallets": true, "perform_reorder": true, "perform_return": true, "delete_ongoing_orders": true, "export_reports": true, "add_cod": true, "confirm_cod_payments": true, "manage_users": true}'::jsonb,
+    '{"panel_reports": true, "panel_financial": true, "panel_order_editor": true, "panel_withdrawals": true, "panel_merchant_plans": true}'::jsonb,
     'active',
     NOW(),
     NOW()
 )
 ON CONFLICT (email) DO UPDATE SET
     role = 'admin',
-    permissions = '{"edit_order_financials": true, "manage_wallets": true, "perform_reorder": true, "perform_return": true, "delete_ongoing_orders": true, "export_reports": true, "add_cod": true, "confirm_cod_payments": true, "manage_users": true}'::jsonb,
+    permissions = '{"panel_reports": true, "panel_financial": true, "panel_order_editor": true, "panel_withdrawals": true, "panel_merchant_plans": true}'::jsonb,
     status = 'active',
     updated_at = NOW();
 

@@ -1031,7 +1031,7 @@ const getWebhookSecret = () => {
 // Driver Wallet - Create Transaction
 
 // Driver Wallet - Create Transaction
-app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermission('panel_financial'), async (req, res) => {
   try {
     console.log('\n=== DRIVER WALLET TRANSACTION REQUEST ===');
     console.log('Request received at:', new Date().toISOString());
@@ -1152,7 +1152,7 @@ app.post('/api/tookan/driver-wallet/transaction', authenticate, requirePermissio
 });
 
 // Agent Payment - Record payment and update balance in Supabase
-app.post('/api/agents/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+app.post('/api/agents/payment', authenticate, requirePermission('panel_financial'), async (req, res) => {
   try {
     console.log('\n=== RECORD AGENT PAYMENT ===');
     const { fleet_id, payment_amount, cod_total } = req.body;
@@ -1201,7 +1201,7 @@ app.post('/api/agents/payment', authenticate, requirePermission('manage_wallets'
 });
 
 // Agent Balance - Update balance based on COD total
-app.put('/api/agents/:fleetId/balance', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+app.put('/api/agents/:fleetId/balance', authenticate, requirePermission('panel_financial'), async (req, res) => {
   try {
     console.log('\n=== UPDATE AGENT BALANCE ===');
     const { fleetId } = req.params;
@@ -1431,7 +1431,7 @@ app.post('/api/tookan/driver-wallet/balance', authenticate, async (req, res) => 
 });
 
 // Customer Wallet - Add Payment
-app.post('/api/tookan/customer-wallet/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+app.post('/api/tookan/customer-wallet/payment', authenticate, requirePermission('panel_financial'), async (req, res) => {
   try {
     const apiKey = getApiKey();
     const { vendor_id, vendor_ids, amount, description, transaction_type } = req.body;
@@ -1593,7 +1593,7 @@ app.post('/api/tookan/customer-wallet/details', authenticate, async (req, res) =
 });
 
 // COD Queue - Add COD to driver queue (Step A)
-app.post('/api/cod/queue/add', authenticate, requirePermission('add_cod'), async (req, res) => {
+app.post('/api/cod/queue/add', authenticate, requirePermission('panel_financial'), async (req, res) => {
   try {
     console.log('\n=== ADD COD TO QUEUE REQUEST ===');
     console.log('Request body:', JSON.stringify(req.body, null, 2));
@@ -1704,7 +1704,7 @@ app.get('/api/cod/queue/pending/:driverId', authenticate, async (req, res) => {
 });
 
 // COD Queue - Settle COD transaction (Steps B & C)
-app.post('/api/cod/queue/settle', authenticate, requirePermission('confirm_cod_payments'), async (req, res) => {
+app.post('/api/cod/queue/settle', authenticate, requirePermission('panel_financial'), async (req, res) => {
   try {
     console.log('\n=== SETTLE COD TRANSACTION REQUEST ===');
     console.log('Request received at:', new Date().toISOString());
@@ -1945,7 +1945,7 @@ app.get('/api/reports/monthly', authenticate, async (req, res) => {
 });
 
 // Reports Panel - Export Orders (Excel/CSV)
-app.post('/api/reports/orders/export', authenticate, requirePermission('export_reports'), async (req, res) => {
+app.post('/api/reports/orders/export', authenticate, requirePermission('panel_reports'), async (req, res) => {
   try {
     console.log('\n=== ORDERS EXPORT REQUEST ===');
     console.log('Request received at:', new Date().toISOString());
@@ -2170,7 +2170,7 @@ app.post('/api/reports/orders/export', authenticate, requirePermission('export_r
 });
 
 // System Logs - Export Excel
-app.post('/api/logs/export', authenticate, requirePermission('export_reports'), async (req, res) => {
+app.post('/api/logs/export', authenticate, requirePermission('panel_reports'), async (req, res) => {
   try {
     console.log('\n=== SYSTEM LOGS EXPORT REQUEST ===');
     console.log('Request received at:', new Date().toISOString());
@@ -2553,7 +2553,7 @@ app.get('/api/tookan/order/:orderId', authenticate, async (req, res) => {
 });
 
 // UPDATE Order
-app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+app.put('/api/tookan/order/:orderId', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
   try {
     console.log('\n=== UPDATE ORDER REQUEST ===');
     console.log('Order ID:', req.params.orderId);
@@ -2879,7 +2879,7 @@ app.put('/api/tookan/order/:orderId', authenticate, requirePermission('edit_orde
 });
 
 // REORDER Order
-app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_reorder'), async (req, res) => {
+app.post('/api/tookan/order/reorder', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
   try {
     if (process.env.DISABLE_ORDER_CREATION === 'true') {
       return res.status(400).json({
@@ -3200,7 +3200,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('perform_r
 });
 
 // RETURN Order
-app.post('/api/tookan/order/return', authenticate, requirePermission('perform_reorder'), async (req, res) => {
+app.post('/api/tookan/order/return', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
   try {
     if (process.env.DISABLE_ORDER_CREATION === 'true') {
       return res.status(400).json({
@@ -4112,7 +4112,7 @@ app.get('/api/tookan/task/:jobId/history', authenticate, async (req, res) => {
 });
 
 // PUT Update COD in Tookan
-app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
   try {
     console.log('\n=== UPDATE COD REQUEST ===');
     console.log('Job ID:', req.params.jobId);
@@ -4331,7 +4331,7 @@ app.put('/api/tookan/task/:jobId/cod', authenticate, requirePermission('edit_ord
 // ============================================
 
 // GET COD Confirmations
-app.get('/api/cod/confirmations', authenticate, requirePermission('confirm_cod_payments'), async (req, res) => {
+app.get('/api/cod/confirmations', authenticate, requirePermission('panel_financial'), async (req, res) => {
   try {
     console.log('\n=== GET COD CONFIRMATIONS REQUEST ===');
     const { dateFrom, dateTo, driverId, merchantId, status } = req.query;
@@ -4435,7 +4435,7 @@ app.get('/api/cod/confirmations', authenticate, requirePermission('confirm_cod_p
 });
 
 // GET COD Calendar Data
-app.get('/api/cod/calendar', authenticate, requirePermission('confirm_cod_payments'), async (req, res) => {
+app.get('/api/cod/calendar', authenticate, requirePermission('panel_financial'), async (req, res) => {
   try {
     console.log('\n=== GET COD CALENDAR REQUEST ===');
     const { dateFrom, dateTo } = req.query;
@@ -4665,7 +4665,7 @@ app.get('/api/customers/wallets', authenticate, async (req, res) => {
 });
 
 // PUT COD Settlement (with wallet update)
-app.put('/api/cod/settle/:codId', authenticate, requirePermission('confirm_cod_payments'), async (req, res) => {
+app.put('/api/cod/settle/:codId', authenticate, requirePermission('panel_financial'), async (req, res) => {
   try {
     console.log('\n=== SETTLE COD REQUEST ===');
     const codId = req.params.codId;
@@ -4830,7 +4830,7 @@ app.get('/api/tookan/task/:jobId/metadata', optionalAuth, async (req, res) => {
 });
 
 // PUT Task Metadata
-app.put('/api/tookan/task/:jobId/metadata', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+app.put('/api/tookan/task/:jobId/metadata', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
   try {
     const jobId = req.params.jobId;
     const metadata = req.body;
@@ -4893,7 +4893,7 @@ app.get('/api/tookan/tags/config', authenticate, async (req, res) => {
 });
 
 // PUT Tag Configuration
-app.put('/api/tookan/tags/config', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+app.put('/api/tookan/tags/config', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
   try {
     const newConfig = req.body;
 
@@ -6177,7 +6177,7 @@ app.get('/api/agents/sync/status', authenticate, async (req, res) => {
 
 // PUT Assign Driver to Order
 // Updates both Tookan API and Supabase database
-app.put('/api/orders/:jobId/assign', authenticate, requirePermission('edit_order_financials'), async (req, res) => {
+app.put('/api/orders/:jobId/assign', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
   try {
     const { jobId } = req.params;
     const { fleet_id, notes } = req.body;
@@ -7432,7 +7432,7 @@ app.post('/api/withdrawal/request', authenticate, async (req, res) => {
 });
 
 // GET All Withdrawal Requests
-app.get('/api/withdrawal/requests', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+app.get('/api/withdrawal/requests', authenticate, requirePermission('panel_withdrawals'), async (req, res) => {
   try {
     const { status, type, dateFrom, dateTo, customerId } = req.query;
 
@@ -7505,7 +7505,7 @@ app.get('/api/withdrawal/requests', authenticate, requirePermission('manage_wall
 });
 
 // PUT Approve Withdrawal Request
-app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('panel_withdrawals'), async (req, res) => {
   try {
     console.log('\n=== APPROVE WITHDRAWAL REQUEST ===');
     const { id } = req.params;
@@ -7590,7 +7590,7 @@ app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('
 });
 
 // PUT Reject Withdrawal Request
-app.put('/api/withdrawal/request/:id/reject', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+app.put('/api/withdrawal/request/:id/reject', authenticate, requirePermission('panel_withdrawals'), async (req, res) => {
   try {
     const { id } = req.params;
     const requestId = id; // UUID string, do not parseInt
@@ -9103,7 +9103,7 @@ app.listen(PORT, async () => {
 
 
 // DELETE Task (and connected task)
-app.post('/api/tookan/delete-task', authenticate, requirePermission('perform_reorder'), async (req, res) => {
+app.post('/api/tookan/delete-task', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
   try {
     console.log('\n=== DELETE TASK REQUEST ===');
     const { jobId } = req.body;
@@ -9560,7 +9560,7 @@ app.put('/api/users/:userId/status', authenticate, requireSuperadmin(), async (r
 // ============================================
 
 // PUT /api/tasks/:jobId/payment — Update task payment (paid amount and cod_collected status)
-app.put('/api/tasks/:jobId/payment', authenticate, requirePermission('manage_wallets'), async (req, res) => {
+app.put('/api/tasks/:jobId/payment', authenticate, requirePermission('panel_financial'), async (req, res) => {
   try {
     const { jobId } = req.params;
     const { paid, cod_collected } = req.body;
@@ -9619,7 +9619,7 @@ app.put('/api/tasks/:jobId/payment', authenticate, requirePermission('manage_wal
 // ============================================
 
 // POST /api/tookan/update-task-status — Update task status (Successful=2, Failed=3, Deleted=9)
-app.post('/api/tookan/update-task-status', authenticate, requirePermission('perform_reorder'), async (req, res) => {
+app.post('/api/tookan/update-task-status', authenticate, requirePermission('panel_order_editor'), async (req, res) => {
   try {
     console.log('\n=== UPDATE TASK STATUS REQUEST ===');
     const { jobId, status } = req.body;
