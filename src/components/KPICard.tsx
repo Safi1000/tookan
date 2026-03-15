@@ -24,18 +24,7 @@ export function KPICard({ label, value, icon: Icon, trend }: KPICardProps) {
         </div>
       </div>
       
-      {trend && (
-        <div className="flex items-center gap-2">
-          <span className={`text-sm font-medium ${
-            isPositive ? 'text-green-600 dark:text-green-400' : 
-            isNegative ? 'text-[#DE3544] dark:text-[#DE3544]' : 
-            'text-subheading dark:text-[#99BFD1]'
-          }`}>
-            {trend}
-          </span>
-          <span className="text-muted-light dark:text-muted-foreground text-sm">vs last period</span>
-        </div>
-      )}
+
     </div>
   );
 }
