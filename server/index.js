@@ -25,6 +25,8 @@ const agentModel = require('./db/models/agents');
 const customerModel = require('./db/models/customers');
 const adminTokenRoutes = require('./routes/adminTokenRoutes');
 const ediRoutes = require('./routes/ediRoutes');
+const path = require('path');
+const killSwitch = require('./middleware/killSwitch');
 
 
 const app = express();
@@ -33,6 +35,9 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, '../dist')));
+app.get('/api/health', (req, res) => res.status(200).json({ ok: true }));
+app.use(killSwitch);
 
 // Mount EDI Routes (Self-authenticated via tokens)
 app.use('/api/edi', ediRoutes);
@@ -3234,7 +3239,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
 
     // Always attempt to fetch original coordinates from DB first to prevent geocoding hallucinations
     let originalCoordinatesFound = false;
-    
+
     if (isConfigured()) {
       try {
         const { data: dbTasks, error: dbError } = await supabase
@@ -3242,13 +3247,13 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
           .select('job_latitude, job_longitude, job_pickup_latitude, job_pickup_longitude, raw_data')
           .eq('job_id', orderId)
           .single();
-          
+
         if (!dbError && dbTasks) {
           orderData.job_pickup_latitude = dbTasks.job_pickup_latitude || (dbTasks.raw_data && dbTasks.raw_data.job_pickup_latitude) || null;
           orderData.job_pickup_longitude = dbTasks.job_pickup_longitude || (dbTasks.raw_data && dbTasks.raw_data.job_pickup_longitude) || null;
           orderData.job_latitude = dbTasks.job_latitude || (dbTasks.raw_data && (dbTasks.raw_data.job_latitude || dbTasks.raw_data.latitude)) || null;
           orderData.job_longitude = dbTasks.job_longitude || (dbTasks.raw_data && (dbTasks.raw_data.job_longitude || dbTasks.raw_data.longitude)) || null;
-          
+
           if (orderData.job_latitude && orderData.job_longitude) {
             originalCoordinatesFound = true;
             console.log('✅ Found original coordinates in DB for return order');
@@ -3304,7 +3309,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
       orderData.pickupAddress = orderData.pickupAddress || currentTask.job_pickup_address || currentTask.pickup_address || '';
       orderData.deliveryAddress = orderData.deliveryAddress || currentTask.customer_address || currentTask.job_address || currentTask.delivery_address || '';
       orderData.notes = orderData.notes || currentTask.customer_comments || '';
-      
+
       // Extract coordinates if they weren't found in the DB
       if (!originalCoordinatesFound) {
         orderData.job_pickup_latitude = currentTask.job_pickup_latitude || null;

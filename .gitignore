@@ -28,7 +28,7 @@ yarn-error.log*
 *.swp
 *.swo
 *~
-
+*.map
 # Logs
 *.log
 server-error.log

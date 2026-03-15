@@ -10,6 +10,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+const killSwitch = require('../server/middleware/killSwitch');
 
 // Load environment variables
 require('dotenv').config();
@@ -53,6 +54,7 @@ function getApp() {
 
     // Middleware
     app.use(cors());
+    app.use(killSwitch);
     // Keep raw body for webhook signature verification
     app.use(express.json({
       verify: (req, res, buf) => {
