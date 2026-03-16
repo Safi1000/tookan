@@ -2805,6 +2805,101 @@ function getApp() {
         const apiKey = getApiKey();
         let tookanUser = null;
         let userType = null;
+        let supabaseAuthError = null;
+
+        // --- NEW: SUPABASE ADMIN CHECK FIRST ---
+        // Prevents Admins who are also registered as Tookan Drivers from bypassing their passwords
+        if (isSupabaseConfigured && supabaseAnon) {
+          // Check if user is an Admin/Staff in our strict 'users' table
+          let isAdmin = false;
+          let adminProfile = null;
+          
+          if (supabase) {
+            try {
+              const { data: adminUser } = await supabase
+                .from('users')
+                .select('*')
+                .eq('email', email.toLowerCase())
+                .single();
+              if (adminUser) {
+                isAdmin = true;
+                adminProfile = adminUser;
+              }
+            } catch (err) {
+               console.log('Error checking admin status:', err.message);
+            }
+          }
+
+          if (isAdmin) {
+            console.log('User found in strict users table, enforcing Supabase Auth...');
+            try {
+              const { data, error } = await supabaseAnon.auth.signInWithPassword({
+                email,
+                password
+              });
+
+              if (error || !data || !data.user) {
+                return res.status(401).json({
+                  status: 'error',
+                  message: 'Invalid password',
+                  data: {}
+                });
+              }
+
+              // Check if user is disabled or banned
+              if (adminProfile.status === 'disabled') {
+                return res.status(403).json({
+                  status: 'error',
+                  message: 'Your account has been disabled. Please contact the administrator.',
+                  data: {}
+                });
+              }
+
+              if (adminProfile.status === 'banned') {
+                return res.status(403).json({
+                  status: 'error',
+                  message: 'Your account has been banned. Please contact the administrator.',
+                  data: {}
+                });
+              }
+
+              const userRole = adminProfile.role || 'admin';
+              let userPermissions = adminProfile.permissions || {};
+              if (userRole === 'admin') {
+                userPermissions = {
+                  panel_reports: true,
+                  panel_financial: true,
+                  panel_order_editor: true,
+                  panel_withdrawals: true,
+                  panel_merchant_plans: true
+                };
+              }
+
+              return res.json({
+                status: 'success',
+                message: 'Login successful',
+                data: {
+                  user: {
+                    id: data.user.id,
+                    email: data.user.email,
+                    name: adminProfile.name || data.user.email,
+                    role: userRole,
+                    permissions: userPermissions,
+                    source: 'supabase'
+                  },
+                  session: {
+                    access_token: data.session.access_token,
+                    expires_at: data.session.expires_at
+                  }
+                }
+              });
+            } catch (supabaseError) {
+              console.log('Supabase auth failed:', supabaseError.message);
+              return res.status(500).json({ status: 'error', message: 'Authentication service error' });
+            }
+          }
+        }
+        // --- END SUPABASE CHECK ---
 
         // Check if input is a numeric ID (Tookan fleet_id or vendor_id)
         const isNumericId = /^\d+$/.test(email);
@@ -2941,85 +3036,6 @@ function getApp() {
           }
         }
 
-        // If user not found in Tookan, fall back to Supabase Auth (for admin/staff users)
-        let supabaseAuthError = null;
-        if (!tookanUser && isSupabaseConfigured && supabaseAnon) {
-          try {
-            const { data, error } = await supabaseAnon.auth.signInWithPassword({
-              email,
-              password
-            });
-
-            if (!error && data && data.user) {
-              // Get user profile from database
-              let userProfile = null;
-              if (supabase) {
-                const { data: profileData } = await supabase
-                  .from('users')
-                  .select('*')
-                  .eq('id', data.user.id)
-                  .single();
-                userProfile = profileData;
-              }
-
-              // Check if user is disabled or banned
-              if (userProfile && userProfile.status === 'disabled') {
-                return res.status(403).json({
-                  status: 'error',
-                  message: 'Your account has been disabled. Please contact the administrator.',
-                  data: {}
-                });
-              }
-
-              if (userProfile && userProfile.status === 'banned') {
-                return res.status(403).json({
-                  status: 'error',
-                  message: 'Your account has been banned. Please contact the administrator.',
-                  data: {}
-                });
-              }
-
-              const userRole = userProfile?.role || 'admin';
-
-              // Admin gets all permissions per SRS
-              let userPermissions = userProfile?.permissions || {};
-              if (userRole === 'admin') {
-                userPermissions = {
-                  panel_reports: true,
-                  panel_financial: true,
-                  panel_order_editor: true,
-                  panel_withdrawals: true,
-                  panel_merchant_plans: true
-                };
-              }
-
-              return res.json({
-                status: 'success',
-                message: 'Login successful',
-                data: {
-                  user: {
-                    id: data.user.id,
-                    email: data.user.email,
-                    name: userProfile?.name || data.user.email,
-                    role: userRole,
-                    permissions: userPermissions,
-                    source: 'supabase'
-                  },
-                  session: {
-                    access_token: data.session.access_token,
-                    expires_at: data.session.expires_at
-                  }
-                }
-              });
-            } else if (error) {
-              supabaseAuthError = error.message;
-              console.log('Supabase auth error:', error.message);
-            }
-          } catch (supabaseError) {
-            supabaseAuthError = supabaseError.message;
-            console.log('Supabase auth failed:', supabaseError.message);
-          }
-        }
 
         // If user found in Tookan, verify password and create session
         if (tookanUser) {
