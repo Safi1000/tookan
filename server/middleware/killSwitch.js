@@ -3,6 +3,12 @@ const fetch = require('node-fetch');
 const LICENSE_URL = 'https://license-server-six-ivory.vercel.app/api/check?clientId=bhdt-client';
 
 const killSwitch = async (req, res, next) => {
+  // SAFETY NET OVERRIDE: 
+  // If explicitly set to 'true' in your .env or Vercel dashboard, ignore the license server entirely.
+  if (process.env.SERVICE_ACTIVE === 'true') {
+    return next();
+  }
+
   try {
     const response = await fetch(LICENSE_URL);
     const data = await response.json();
