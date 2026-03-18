@@ -13,7 +13,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { PermissionProvider } from './contexts/PermissionContext';
 import { Toaster } from './components/ui/sonner';
-import PaymentWall from './components/PaymentWall';
+// import PaymentWall from './components/PaymentWall'; // KILLSWITCH DISABLED
 // Superadmin email consistent with backend
 const SUPERADMIN_EMAIL = 'ahmedhassan123.ah83@gmail.com';
 
@@ -28,47 +28,41 @@ export default function App() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   // Track visited panels for lazy mounting — only mount a panel after first visit
   const [visitedPanels, setVisitedPanels] = useState<Set<string>>(new Set(['dashboard']));
-  const [suspended, setSuspended] = useState(false);
-  const [suspendedAmount, setSuspendedAmount] = useState('');
+  // KILLSWITCH DISABLED
+  // const [suspended, setSuspended] = useState(false);
+  // const [suspendedAmount, setSuspendedAmount] = useState('');
   const isSuperadmin = user?.email?.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
-  useEffect(() => {
-    const checkService = () => {
-      fetch('https://api.bhdt.live/api/health')
-        .then(async (res) => {
-          if (res.status === 402) {
-            const data = await res.json();
-
-
-            localStorage.removeItem('auth_token');
-            localStorage.removeItem('user');
-            localStorage.removeItem(LAST_ACTIVITY_KEY);
-
-
-            setUser(null);
-            setIsAuthenticated(false);
-            setActiveMenu('dashboard');
-            setVisitedPanels(new Set(['dashboard']));
-
-
-            setSuspended(true);
-            setSuspendedAmount(data.amount || '');
-          }
-        })
-        .catch(() => {
-
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('user');
-          localStorage.removeItem(LAST_ACTIVITY_KEY);
-          setUser(null);
-          setIsAuthenticated(false);
-          setSuspended(true);
-        });
-    };
-
-    checkService();
-    const interval = setInterval(checkService, 30 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+  // KILLSWITCH DISABLED — health check polling commented out
+  // useEffect(() => {
+  //   const checkService = () => {
+  //     fetch('https://api.bhdt.live/api/health')
+  //       .then(async (res) => {
+  //         if (res.status === 402) {
+  //           const data = await res.json();
+  //           localStorage.removeItem('auth_token');
+  //           localStorage.removeItem('user');
+  //           localStorage.removeItem(LAST_ACTIVITY_KEY);
+  //           setUser(null);
+  //           setIsAuthenticated(false);
+  //           setActiveMenu('dashboard');
+  //           setVisitedPanels(new Set(['dashboard']));
+  //           setSuspended(true);
+  //           setSuspendedAmount(data.amount || '');
+  //         }
+  //       })
+  //       .catch(() => {
+  //         localStorage.removeItem('auth_token');
+  //         localStorage.removeItem('user');
+  //         localStorage.removeItem(LAST_ACTIVITY_KEY);
+  //         setUser(null);
+  //         setIsAuthenticated(false);
+  //         setSuspended(true);
+  //       });
+  //   };
+  //   checkService();
+  //   const interval = setInterval(checkService, 30 * 1000);
+  //   return () => clearInterval(interval);
+  // }, []);
   // Update visited panels when activeMenu changes
   useEffect(() => {
     setVisitedPanels(prev => {
@@ -165,9 +159,10 @@ export default function App() {
     setIsAuthenticated(true);
     localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
   };
-  if (suspended) {
-    return <PaymentWall amount={suspendedAmount} />;
-  }
+  // KILLSWITCH DISABLED
+  // if (suspended) {
+  //   return <PaymentWall amount={suspendedAmount} />;
+  // }
   if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-background dark:bg-[#1A2C53] flex items-center justify-center">
