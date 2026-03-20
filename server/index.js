@@ -26,7 +26,7 @@ const customerModel = require('./db/models/customers');
 const adminTokenRoutes = require('./routes/adminTokenRoutes');
 const ediRoutes = require('./routes/ediRoutes');
 const path = require('path');
-const killSwitch = require('./middleware/killSwitch');
+// const killSwitch = require('./middleware/killSwitch'); // KILLSWITCH DISABLED
 
 
 const app = express();
@@ -37,8 +37,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../dist')));
 
-app.use(killSwitch);
-app.get('/api/health', (req, res) => res.status(200).json({ ok: true }));
+// app.use(killSwitch); // KILLSWITCH DISABLED
+// app.get('/api/health', (req, res) => res.status(200).json({ ok: true })); // HEALTH CHECK DISABLED
 
 app.use('/api/edi', ediRoutes);
 

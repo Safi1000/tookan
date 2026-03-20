@@ -10,7 +10,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
-const killSwitch = require('../server/middleware/killSwitch');
+// const killSwitch = require('../server/middleware/killSwitch'); // KILLSWITCH DISABLED
 
 // Load environment variables
 require('dotenv').config();
@@ -54,7 +54,7 @@ function getApp() {
 
     // Middleware
     app.use(cors());
-    app.use(killSwitch);
+    // app.use(killSwitch); // KILLSWITCH DISABLED
     // Keep raw body for webhook signature verification
     app.use(express.json({
       verify: (req, res, buf) => {
@@ -546,15 +546,15 @@ function getApp() {
       };
     };
 
-    // Health check
-    app.get('/api/health', (req, res) => {
-      res.json({
-        status: 'success',
-        message: 'Turbo Bahrain API is running',
-        timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development'
-      });
-    });
+    // HEALTH CHECK DISABLED
+    // app.get('/api/health', (req, res) => {
+    //   res.json({
+    //     status: 'success',
+    //     message: 'Turbo Bahrain API is running',
+    //     timestamp: new Date().toISOString(),
+    //     environment: process.env.NODE_ENV || 'development'
+    //   });
+    // });
 
     // Merchant Plans APIs
     app.get('/api/merchant-plans', authenticate, async (req, res) => {
@@ -8106,8 +8106,7 @@ function getApp() {
 
         // type 1 = Fleet (driver), type 2 = Vendor (merchant)
         const requestRecord = {
-          fleet_id: type === 1 ? (id || null) : null,
-          vendor_id: type === 2 ? (id || null) : null,
+          vendor_id: id || null,
           email: String(email),
           requested_amount: Number(requested_amount),
           tax_applied: Number(tax_applied) || 0,
