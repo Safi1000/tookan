@@ -8086,16 +8086,21 @@ function getApp() {
           return res.status(500).json({ status: 'error', message: 'Database not configured', data: {} });
         }
 
-        const { type, request_type, customerId, customer_id, merchantId, merchant_id, driverId, driver_id, vendor_id, vendorId, fleet_id, fleetId, amount } = req.body;
+        const { id, email, type, requested_amount, tax_applied, final_amount, iban_number } = req.body;
 
+        if (!email || !requested_amount || !final_amount || !iban_number) {
+          return res.status(400).json({ status: 'error', message: 'Missing required fields: email, requested_amount, final_amount, iban_number', data: {} });
+        }
+
+        // type 1 = Fleet (driver), type 2 = Vendor (merchant)
         const requestRecord = {
-          request_type: type || request_type,
-          customer_id: customerId || customer_id || null,
-          merchant_id: merchantId || merchant_id || null,
-          driver_id: driverId || driver_id || null,
-          vendor_id: vendor_id || vendorId || null,
-          fleet_id: fleet_id || fleetId || null,
-          amount: amount,
+          fleet_id: type === 1 ? (id || null) : null,
+          vendor_id: type === 2 ? (id || null) : null,
+          email: email,
+          requested_amount: Number(requested_amount),
+          tax_applied: Number(tax_applied) || 0,
+          final_amount: Number(final_amount),
+          iban: iban_number,
           status: 'pending'
         };
 
