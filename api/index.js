@@ -8081,14 +8081,26 @@ function getApp() {
 
     // POST create a withdrawal request
     app.post('/api/withdrawal/request', async (req, res) => {
+      console.log('[WITHDRAWAL POST] Handler entered');
+      console.log('[WITHDRAWAL POST] Body:', JSON.stringify(req.body));
       try {
         if (!isSupabaseConfigured || !supabase) {
+          console.log('[WITHDRAWAL POST] DB not configured');
           return res.status(500).json({ status: 'error', message: 'Database not configured', data: {} });
         }
 
-        const { id, email, type, requested_amount, tax_applied, final_amount, iban_number } = req.body;
+        const body = req.body || {};
+        const id = body.id;
+        const email = body.email;
+        const type = body.type;
+        const requested_amount = body.requested_amount;
+        const tax_applied = body.tax_applied;
+        const final_amount = body.final_amount;
+        const iban_number = body.iban_number;
 
-        if (!email || !requested_amount || !final_amount || !iban_number) {
+        console.log('[WITHDRAWAL POST] Parsed:', { id, email, type, requested_amount, tax_applied, final_amount, iban_number });
+
+        if (!email || requested_amount === undefined || final_amount === undefined || !iban_number) {
           return res.status(400).json({ status: 'error', message: 'Missing required fields: email, requested_amount, final_amount, iban_number', data: {} });
         }
 
@@ -8096,13 +8108,15 @@ function getApp() {
         const requestRecord = {
           fleet_id: type === 1 ? (id || null) : null,
           vendor_id: type === 2 ? (id || null) : null,
-          email: email,
+          email: String(email),
           requested_amount: Number(requested_amount),
           tax_applied: Number(tax_applied) || 0,
           final_amount: Number(final_amount),
-          iban: iban_number,
+          iban: String(iban_number),
           status: 'pending'
         };
+
+        console.log('[WITHDRAWAL POST] Insert record:', JSON.stringify(requestRecord));
 
         const { data, error } = await supabase
           .from('withdrawals')
@@ -8111,14 +8125,15 @@ function getApp() {
           .single();
 
         if (error) {
-          console.error('[WITHDRAWAL] Create error:', error);
-          return res.status(500).json({ status: 'error', message: error.message, data: {} });
+          console.error('[WITHDRAWAL POST] Supabase error:', JSON.stringify(error));
+          return res.status(500).json({ status: 'error', message: error.message || 'Database insert failed', data: {} });
         }
 
+        console.log('[WITHDRAWAL POST] Success:', JSON.stringify(data));
         return res.json({ status: 'success', message: 'Withdrawal request created', data });
       } catch (error) {
-        console.error('[WITHDRAWAL] Error:', error);
-        return res.status(500).json({ status: 'error', message: 'Internal server error', data: {} });
+        console.error('[WITHDRAWAL POST] Exception:', error.message, error.stack);
+        return res.status(500).json({ status: 'error', message: error.message || 'Internal server error', data: {} });
       }
     });
 
