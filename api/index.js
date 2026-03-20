@@ -8048,6 +8048,135 @@ function getApp() {
       }
     });
 
+    // ============================================
+    // WITHDRAWAL REQUESTS
+    // ============================================
+
+    // GET all withdrawal requests
+    app.get('/api/withdrawal/requests', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured', data: [] });
+        }
+
+        let query = supabase.from('withdrawals').select('*').order('created_at', { ascending: false });
+
+        if (req.query.status) {
+          query = query.eq('status', req.query.status);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error('[WITHDRAWAL] Fetch error:', error);
+          return res.status(500).json({ status: 'error', message: error.message, data: [] });
+        }
+
+        return res.json({ status: 'success', message: 'Withdrawal requests fetched', data: data || [] });
+      } catch (error) {
+        console.error('[WITHDRAWAL] Error:', error);
+        return res.status(500).json({ status: 'error', message: 'Internal server error', data: [] });
+      }
+    });
+
+    // POST create a withdrawal request
+    app.post('/api/withdrawal/request', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured', data: {} });
+        }
+
+        const { type, request_type, customerId, customer_id, merchantId, merchant_id, driverId, driver_id, vendor_id, vendorId, fleet_id, fleetId, amount } = req.body;
+
+        const requestRecord = {
+          request_type: type || request_type,
+          customer_id: customerId || customer_id || null,
+          merchant_id: merchantId || merchant_id || null,
+          driver_id: driverId || driver_id || null,
+          vendor_id: vendor_id || vendorId || null,
+          fleet_id: fleet_id || fleetId || null,
+          amount: amount,
+          status: 'pending'
+        };
+
+        const { data, error } = await supabase
+          .from('withdrawals')
+          .insert(requestRecord)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('[WITHDRAWAL] Create error:', error);
+          return res.status(500).json({ status: 'error', message: error.message, data: {} });
+        }
+
+        return res.json({ status: 'success', message: 'Withdrawal request created', data });
+      } catch (error) {
+        console.error('[WITHDRAWAL] Error:', error);
+        return res.status(500).json({ status: 'error', message: 'Internal server error', data: {} });
+      }
+    });
+
+    // POST approve a withdrawal request
+    app.post('/api/withdrawal/request/:id/approve', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured', data: {} });
+        }
+
+        const { id } = req.params;
+
+        const { data, error } = await supabase
+          .from('withdrawals')
+          .update({ status: 'approved' })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('[WITHDRAWAL] Approve error:', error);
+          return res.status(500).json({ status: 'error', message: error.message, data: {} });
+        }
+
+        return res.json({ status: 'success', message: 'Withdrawal request approved', data });
+      } catch (error) {
+        console.error('[WITHDRAWAL] Error:', error);
+        return res.status(500).json({ status: 'error', message: 'Internal server error', data: {} });
+      }
+    });
+
+    // POST reject a withdrawal request
+    app.post('/api/withdrawal/request/:id/reject', async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured', data: {} });
+        }
+
+        const { id } = req.params;
+        const { reason } = req.body;
+
+        const updateData = { status: 'rejected' };
+        if (reason) updateData.rejection_reason = reason;
+
+        const { data, error } = await supabase
+          .from('withdrawals')
+          .update(updateData)
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('[WITHDRAWAL] Reject error:', error);
+          return res.status(500).json({ status: 'error', message: error.message, data: {} });
+        }
+
+        return res.json({ status: 'success', message: 'Withdrawal request rejected', data });
+      } catch (error) {
+        console.error('[WITHDRAWAL] Error:', error);
+        return res.status(500).json({ status: 'error', message: 'Internal server error', data: {} });
+      }
+    });
+
     // Catch-all for other API routes
     app.all('/api/*', (req, res) => {
       res.status(404).json({
