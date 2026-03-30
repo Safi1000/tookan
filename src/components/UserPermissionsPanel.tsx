@@ -34,6 +34,7 @@ import { Listbox } from "@headlessui/react"
 const availablePermissions = [
   { id: "panel_reports", label: "Reports Panel", category: "Panels" },
   { id: "panel_financial", label: "Balance Panel", category: "Panels" },
+  { id: "panel_financial_readonly", label: "Balance Panel (View Only)", category: "Panels" },
   { id: "panel_order_editor", label: "Order Editor", category: "Panels" },
   { id: "panel_withdrawals", label: "Withdrawal Requests", category: "Panels" },
   { id: "panel_merchant_plans", label: "Merchant Plans", category: "Panels" },
@@ -374,7 +375,14 @@ export function UserPermissionsPanel() {
     if (selectedPermissions.includes(permissionId)) {
       setSelectedPermissions(selectedPermissions.filter((p) => p !== permissionId))
     } else {
-      setSelectedPermissions([...selectedPermissions, permissionId])
+      // Mutual exclusion: panel_financial and panel_financial_readonly cannot both be active
+      let newPerms = [...selectedPermissions, permissionId];
+      if (permissionId === 'panel_financial') {
+        newPerms = newPerms.filter((p) => p !== 'panel_financial_readonly');
+      } else if (permissionId === 'panel_financial_readonly') {
+        newPerms = newPerms.filter((p) => p !== 'panel_financial');
+      }
+      setSelectedPermissions(newPerms)
     }
     // Keep dropdown open for multiple selections
   }

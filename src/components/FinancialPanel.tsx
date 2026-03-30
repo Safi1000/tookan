@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { DollarSign, Wallet, CheckCircle, X, Search, Calendar, Save, Check, XCircle, Eye, Download, Loader2, AlertCircle, StickyNote } from 'lucide-react';
+import { DollarSign, Wallet, CheckCircle, X, Search, Calendar, Save, Check, XCircle, Eye, Download, Loader2, AlertCircle, StickyNote, ShieldAlert } from 'lucide-react';
 import { DatePicker } from './ui/date-picker';
 import {
   createFleetWalletTransaction,
@@ -66,6 +66,17 @@ interface Merchant {
 }
 
 export function FinancialPanel() {
+  // Determine if user has read-only access to Balance Panel
+  const isReadOnly = (() => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (!stored) return false;
+      const userData = JSON.parse(stored);
+      if (userData.role === 'admin') return false;
+      const perms = userData.permissions || {};
+      return perms.panel_financial_readonly === true && perms.panel_financial !== true;
+    } catch { return false; }
+  })();
   // Read settings from localStorage with state to trigger re-renders
   // COD Confirmation is hidden from UI but code remains intact
   const getShowCODSection = () => false; // Always return false - COD section hidden
@@ -228,22 +239,25 @@ export function FinancialPanel() {
     driver_name: string;
     fleet_id: number;
     amount: number;
-    settlement_type: 'calendar' | 'view_tasks' | 'merchant_calendar' | 'merchant_view_tasks';
+    settlement_type: 'calendar' | 'view_tasks' | 'merchant_calendar' | 'merchant_view_tasks' | 'driver_wallet_credit' | 'driver_wallet_debit' | 'merchant_wallet_credit' | 'merchant_wallet_debit';
     settlement_date_from: string | null;
     settlement_date_to: string | null;
     task_count: number;
     created_at: string;
     merchant_name?: string;
     vendor_id?: number;
+    notes?: string;
   }
   const [settlementLogs, setSettlementLogs] = useState<SettlementLog[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [logsDateFrom, setLogsDateFrom] = useState('');
   const [logsDateTo, setLogsDateTo] = useState('');
   const [logsDriverSearch, setLogsDriverSearch] = useState('');
+  const [logsMerchantSearch, setLogsMerchantSearch] = useState('');
+  const [logsTypeFilter, setLogsTypeFilter] = useState<string>('');
   const [logsTotal, setLogsTotal] = useState(0);
   const [logsPage, setLogsPage] = useState(0);
-  const LOGS_PER_PAGE = 20;
+  const LOGS_PER_PAGE = 50;
 
   // Fetch drivers on mount
   useEffect(() => {
@@ -1229,7 +1243,8 @@ export function FinancialPanel() {
                   return vid === Number(vendorId);
                 }).length,
                 merchantName: `Merchant ID ${vendorId}`,
-                vendorId: Number(vendorId)
+                vendorId: Number(vendorId),
+                notes: dailyNotes[date] || undefined
               });
             }
           }
@@ -1244,7 +1259,8 @@ export function FinancialPanel() {
           settlementType: 'calendar',
           dateFrom: dateFrom || date,
           dateTo: date,
-          taskCount: tasks.length
+          taskCount: tasks.length,
+          notes: dailyNotes[date] || undefined
         });
       }
 
@@ -1381,7 +1397,8 @@ export function FinancialPanel() {
                 dateTo: taskModalDate || undefined,
                 taskCount: changedTasks.filter(t => t.vendor_id === Number(vendorId) && t.balance_paid > t.db_paid).length,
                 merchantName: `Merchant ID ${vendorId}`,
-                vendorId: Number(vendorId)
+                vendorId: Number(vendorId),
+                notes: dailyNotes[taskModalDate || ''] || undefined
               });
             }
           }
@@ -1400,7 +1417,8 @@ export function FinancialPanel() {
             settlementType: 'view_tasks',
             dateFrom: dateFrom || taskModalDate || undefined,
             dateTo: taskModalDate || undefined,
-            taskCount: changedTasks.filter(t => t.balance_paid > t.db_paid).length
+            taskCount: changedTasks.filter(t => t.balance_paid > t.db_paid).length,
+            notes: dailyNotes[taskModalDate || ''] || undefined
           });
         }
       } else {
@@ -1540,12 +1558,13 @@ export function FinancialPanel() {
     driverName: string;
     fleetId: number;
     amount: number;
-    settlementType: 'calendar' | 'view_tasks' | 'merchant_calendar' | 'merchant_view_tasks';
+    settlementType: 'calendar' | 'view_tasks' | 'merchant_calendar' | 'merchant_view_tasks' | 'driver_wallet_credit' | 'driver_wallet_debit' | 'merchant_wallet_credit' | 'merchant_wallet_debit';
     dateFrom?: string;
     dateTo?: string;
     taskCount?: number;
     merchantName?: string;
     vendorId?: number;
+    notes?: string;
   }) {
     try {
       const storedUser = localStorage.getItem('user');
@@ -1563,6 +1582,7 @@ export function FinancialPanel() {
       };
       if (params.merchantName) body.merchant_name = params.merchantName;
       if (params.vendorId) body.vendor_id = params.vendorId;
+      if (params.notes) body.notes = params.notes;
 
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
       const response = await fetch(`${API_BASE_URL}/api/settlement-logs`, {
@@ -1591,9 +1611,14 @@ export function FinancialPanel() {
       if (logsDateFrom) params.set('date_from', logsDateFrom);
       if (logsDateTo) params.set('date_to', logsDateTo);
       if (logsDriverSearch.trim()) params.set('driver', logsDriverSearch.trim());
+      if (logsMerchantSearch.trim()) params.set('merchant', logsMerchantSearch.trim());
+      if (logsTypeFilter) params.set('type', logsTypeFilter);
 
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-      const response = await fetch(`${API_BASE_URL}/api/settlement-logs?${params.toString()}`);
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/settlement-logs?${params.toString()}`, {
+        headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+      });
       const result = await response.json();
 
       if (result.status === 'success') {
@@ -1609,7 +1634,69 @@ export function FinancialPanel() {
     } finally {
       setIsLoadingLogs(false);
     }
-  }, [logsDateFrom, logsDateTo, logsDriverSearch]);
+  }, [logsDateFrom, logsDateTo, logsDriverSearch, logsMerchantSearch, logsTypeFilter]);
+
+  // Helper: compute summary stats from current logs page
+  const logsSummary = (() => {
+    const totalAmount = settlementLogs.reduce((sum, l) => sum + Number(l.amount || 0), 0);
+    const reconciliationCount = settlementLogs.filter(l => l.settlement_type === 'calendar' || l.settlement_type === 'view_tasks').length;
+    const merchantSettlementCount = settlementLogs.filter(l => l.settlement_type === 'merchant_calendar' || l.settlement_type === 'merchant_view_tasks').length;
+    const driverWalletCount = settlementLogs.filter(l => l.settlement_type === 'driver_wallet_credit' || l.settlement_type === 'driver_wallet_debit').length;
+    const merchantWalletCount = settlementLogs.filter(l => l.settlement_type === 'merchant_wallet_credit' || l.settlement_type === 'merchant_wallet_debit').length;
+    const creditAmount = settlementLogs.filter(l => l.settlement_type?.includes('credit')).reduce((s, l) => s + Number(l.amount || 0), 0);
+    const debitAmount = settlementLogs.filter(l => l.settlement_type?.includes('debit') || l.settlement_type === 'calendar' || l.settlement_type === 'view_tasks').reduce((s, l) => s + Number(l.amount || 0), 0);
+    return { totalAmount, reconciliationCount, merchantSettlementCount, driverWalletCount, merchantWalletCount, creditAmount, debitAmount };
+  })();
+
+  // CSV export for settlement logs
+  const exportLogsToCSV = () => {
+    if (settlementLogs.length === 0) {
+      toast.info('No logs to export');
+      return;
+    }
+    const currency = localStorage.getItem('currency') || 'BHD';
+    let csv = 'Date & Time,Settled By,Email,Target,Target ID,Amount,Type,Date Range From,Date Range To,Tasks,Notes\n';
+    settlementLogs.forEach(log => {
+      const dateTime = new Date(log.created_at).toLocaleString('en-GB');
+      const settledBy = (log.settled_by_name || 'Unknown').replace(/,/g, ' ');
+      const email = (log.settled_by_email || '').replace(/,/g, ' ');
+      const isMerchant = log.settlement_type?.startsWith('merchant_') || log.settlement_type?.includes('merchant');
+      const target = isMerchant ? (log.merchant_name || 'Unknown Merchant').replace(/,/g, ' ') : (log.driver_name || 'Unknown').replace(/,/g, ' ');
+      const targetId = isMerchant ? `Vendor ${log.vendor_id || ''}` : `Fleet ${log.fleet_id || ''}`;
+      const amount = `${currency} ${Number(log.amount).toFixed(3)}`;
+      const typeLabel = log.settlement_type === 'calendar' ? 'Reconciliation (Calendar)' :
+        log.settlement_type === 'view_tasks' ? 'Reconciliation (Tasks)' :
+        log.settlement_type === 'merchant_calendar' ? 'Merchant (Calendar)' :
+        log.settlement_type === 'merchant_view_tasks' ? 'Merchant (Tasks)' :
+        log.settlement_type === 'driver_wallet_credit' ? 'Driver Wallet Credit' :
+        log.settlement_type === 'driver_wallet_debit' ? 'Driver Wallet Debit' :
+        log.settlement_type === 'merchant_wallet_credit' ? 'Merchant Wallet Credit' :
+        log.settlement_type === 'merchant_wallet_debit' ? 'Merchant Wallet Debit' :
+        log.settlement_type || '';
+      const dateFrom = log.settlement_date_from || '';
+      const dateTo = log.settlement_date_to || '';
+      const tasks = log.task_count || 0;
+      const notes = (log.notes || '').replace(/,/g, ' ').replace(/\n/g, ' ');
+      csv += `${dateTime},${settledBy},${email},${target},${targetId},${amount},${typeLabel},${dateFrom},${dateTo},${tasks},${notes}\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.setAttribute('href', URL.createObjectURL(blob));
+    link.setAttribute('download', `settlement-logs-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Exported ${settlementLogs.length} log entries`);
+  };
+
+  const clearLogsFilters = () => {
+    setLogsDateFrom('');
+    setLogsDateTo('');
+    setLogsDriverSearch('');
+    setLogsMerchantSearch('');
+    setLogsTypeFilter('');
+  };
 
   // Auto-fetch logs when switching to Logs tab
   useEffect(() => {
@@ -1623,8 +1710,20 @@ export function FinancialPanel() {
       {/* Header */}
       <div>
         <h1 className="text-heading text-3xl mb-2">Balance Panel</h1>
-        <p className="text-subheading dark:text-[#99BFD1] text-muted-light">Manage COD reconciliation for drivers and merchants</p>
+        <p className="text-subheading dark:text-[#99BFD1] text-muted-light">
+          {isReadOnly ? 'View-only access — You can view all data and edit notes' : 'Manage COD reconciliation for drivers and merchants'}
+        </p>
       </div>
+
+      {/* Read-Only Banner */}
+      {isReadOnly && (
+        <div className="flex items-center gap-3 px-5 py-3 bg-amber-500/10 dark:bg-amber-400/10 border border-amber-500/30 dark:border-amber-400/30 rounded-xl">
+          <ShieldAlert className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+          <p className="text-amber-700 dark:text-amber-300 text-sm font-medium">
+            You are in <span className="font-bold">View Only</span> mode. You can browse all data and edit notes, but cannot perform settlements, wallet transactions, or modify payment statuses.
+          </p>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border dark:border-[#2A3C63]">
@@ -2014,19 +2113,54 @@ export function FinancialPanel() {
                                 <p className="text-[#DE3544] dark:text-[#DE3544] font-medium">{currency} {codPending.toFixed(2)}</p>
                               </div>
 
-                              {/* Daily Note Button */}
-                              <button
-                                onClick={() => setNotePopupDate(item.date)}
-                                className={`w-full mt-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs transition-all font-medium ${dailyNotes[item.date]
-                                  ? 'bg-yellow-500/10 dark:bg-yellow-400/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30 dark:border-yellow-400/30 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20'
-                                  : 'bg-muted/20 dark:bg-[#2A3C63]/30 text-muted-light dark:text-[#99BFD1] border border-border dark:border-[#2A3C63] hover:bg-muted/30 dark:hover:bg-[#2A3C63]/50'
-                                  }`}
-                              >
-                                <StickyNote className="w-3 h-3" />
-                                {dailyNotes[item.date] ? 'View Note' : 'Add Note'}
-                              </button>
+                              {/* Daily Note Inline Editor */}
+                              {notePopupDate === item.date ? (
+                                <div className="mt-2 w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg p-2.5 animate-in fade-in duration-200">
+                                  <div className="flex items-center gap-1.5 mb-2">
+                                    <StickyNote className="w-3.5 h-3.5 text-yellow-500" />
+                                    <span className="text-xs font-semibold text-heading dark:text-[#C1EEFA]">Daily Note</span>
+                                  </div>
+                                  <textarea
+                                    value={dailyNotes[item.date] || ''}
+                                    onChange={(e) => setDailyNotes(prev => ({ ...prev, [item.date]: e.target.value }))}
+                                    placeholder="Add observations..."
+                                    rows={3}
+                                    autoFocus
+                                    className="w-full bg-transparent text-xs text-heading dark:text-[#C1EEFA] focus:outline-none resize-none placeholder-[#5B7894]/70"
+                                  />
+                                  <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-border dark:border-[#2A3C63]">
+                                    <button
+                                      onClick={() => setNotePopupDate(null)}
+                                      className="px-2 py-1 text-[10px] font-medium text-muted-light dark:text-[#99BFD1] hover:text-heading dark:hover:text-white transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        saveDriverNote(item.date, dailyNotes[item.date] || '');
+                                        setNotePopupDate(null);
+                                      }}
+                                      className="px-3 py-1 bg-[#10B981] text-white text-[10px] font-medium rounded hover:bg-[#059669] flex items-center gap-1 transition-all"
+                                    >
+                                      <Save className="w-3 h-3" /> Save
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setNotePopupDate(item.date)}
+                                  className={`w-full mt-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs transition-all font-medium ${dailyNotes[item.date]
+                                    ? 'bg-yellow-500/10 dark:bg-yellow-400/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30 dark:border-yellow-400/30 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20'
+                                    : 'bg-muted/20 dark:bg-[#2A3C63]/30 text-muted-light dark:text-[#99BFD1] border border-border dark:border-[#2A3C63] hover:bg-muted/30 dark:hover:bg-[#2A3C63]/50'
+                                    }`}
+                                >
+                                  <StickyNote className="w-3 h-3" />
+                                  {dailyNotes[item.date] ? 'View Note' : 'Add Note'}
+                                </button>
+                              )}
 
-                              {/* Edit/Save Button */}
+                              {/* Edit/Save Button — hidden in read-only mode */}
+                              {!isReadOnly && (
                               <button
                                 onClick={async () => {
                                   if (isEditing) {
@@ -2048,10 +2182,12 @@ export function FinancialPanel() {
                                   ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] hover:shadow-md dark:hover:shadow-[0_0_12px_rgba(193,238,250,0.4)]'
                                   : 'bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30 hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20'
                                   }`}
+                                style={isEditing ? { backgroundColor: '#DE3544', color: 'white' } : {}}
                               >
                                 <Save className="w-3 h-3" />
                                 {isEditing ? 'Confirm' : 'Edit'}
                               </button>
+                              )}
 
                               {/* View Tasks Button */}
                               <button
@@ -2069,56 +2205,7 @@ export function FinancialPanel() {
                   </>
                 )}
 
-                {/* Note Popup Modal */}
-                {notePopupDate && (
-                  <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center" style={{ padding: '16px' }}>
-                    <div className="bg-card dark:bg-[#223560] border border-border dark:border-[#2A3C63] rounded-2xl shadow-2xl" style={{ width: '100%', maxWidth: '400px' }}>
-                      <div className="flex items-center justify-between p-4 border-b border-border dark:border-[#2A3C63]">
-                        <div className="flex items-center gap-2">
-                          <StickyNote className="w-4 h-4 text-yellow-500" />
-                          <h3 className="text-heading dark:text-[#C1EEFA] text-sm font-semibold">
-                            Note — {new Date(notePopupDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                          </h3>
-                        </div>
-                        <button
-                          onClick={() => {
-                            saveDriverNote(notePopupDate, dailyNotes[notePopupDate] || '');
-                            setNotePopupDate(null);
-                          }}
-                          className="p-1 hover:bg-muted/20 rounded-lg transition-colors"
-                        >
-                          <X className="w-4 h-4 text-muted-light dark:text-[#99BFD1]" />
-                        </button>
-                      </div>
-                      <div className="p-4">
-                        <textarea
-                          value={dailyNotes[notePopupDate] || ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const date = notePopupDate;
-                            setDailyNotes(prev => ({ ...prev, [date]: val }));
-                          }}
-                          placeholder="Write your note here..."
-                          rows={4}
-                          autoFocus
-                          className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg px-3 py-2 text-heading dark:text-[#C1EEFA] text-sm focus:outline-none focus:border-[#C1EEFA] transition-all resize-none placeholder-[#5B7894]"
-                        />
-                      </div>
-                      <div className="p-4 pt-0 flex justify-end">
-                        <button
-                          onClick={() => {
-                            saveDriverNote(notePopupDate, dailyNotes[notePopupDate] || '');
-                            setNotePopupDate(null);
-                          }}
-                          className="flex items-center gap-2 px-4 py-2 bg-[#10B981] text-white rounded-lg hover:bg-[#059669] transition-all text-xs font-medium"
-                        >
-                          <Save className="w-3 h-3" />
-                          Save Note
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+
               </>
             )}
           </div>
@@ -2521,6 +2608,7 @@ export function FinancialPanel() {
                           <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{driver.phone || ''}</td>
                           <td className="px-4 py-3">
                             <div className="flex gap-2">
+                              {!isReadOnly && (
                               <button
                                 onClick={() => {
                                   setEditingBalance({ type: 'driver', id: driver.id });
@@ -2533,6 +2621,7 @@ export function FinancialPanel() {
                               >
                                 Credit/Debit
                               </button>
+                              )}
                               <button
                                 onClick={() => fetchTransactionHistory(driver.fleet_id || driver.id, driver.name)}
                                 className="px-4 py-2 bg-blue-500/10 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-500/20 dark:hover:bg-blue-400/20 transition-all text-sm font-medium"
@@ -2654,6 +2743,7 @@ export function FinancialPanel() {
                             <td className="px-4 py-3 text-muted-light dark:text-[#99BFD1]">{(merchant as any).phone || ''}</td>
                             <td className="px-4 py-3">
                               <div className="flex gap-2">
+                                {!isReadOnly && (
                                 <button
                                   onClick={() => {
                                     setEditingBalance({ type: 'merchant', id: merchant.id });
@@ -2666,6 +2756,7 @@ export function FinancialPanel() {
                                 >
                                   Credit/Debit
                                 </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -2857,7 +2948,7 @@ export function FinancialPanel() {
                             if (response.status === 'success') {
                               toast.success(`${txType === 'credit' ? 'Credited' : 'Debited'} ${currency} ${amount.toFixed(2)} successfully`);
 
-                              // Refresh balance locally
+                              // Log wallet transaction to settlement logs
                               if (editingBalance.type === 'driver') {
                                 const driver = drivers.find(d => d.id === editingBalance.id);
                                 if (driver) {
@@ -2867,14 +2958,39 @@ export function FinancialPanel() {
                                   setDrivers(prev => prev.map(d =>
                                     d.id === editingBalance.id ? { ...d, balance: newBal } : d
                                   ));
+
+                                  // Log driver wallet transaction
+                                  logSettlement({
+                                    driverName: driver.name || `Fleet ${driver.fleet_id}`,
+                                    fleetId: Number(driver.fleet_id || driver.id),
+                                    amount,
+                                    settlementType: txType === 'credit' ? 'driver_wallet_credit' : 'driver_wallet_debit',
+                                    notes: balanceNote.trim() || undefined
+                                  });
                                 }
                               } else {
                                 // Refresh merchant balance locally
+                                const merchant = merchantWallets.length > 0
+                                  ? merchantWallets.find(m => m.id === editingBalance.id)
+                                  : merchants.find(m => m.id === editingBalance.id);
                                 setMerchants(prev => prev.map(m =>
                                   m.id === editingBalance.id
                                     ? { ...m, balance: txType === 'credit' ? (m.balance || 0) + amount : (m.balance || 0) - amount }
                                     : m
                                 ));
+
+                                // Log merchant wallet transaction
+                                if (merchant) {
+                                  logSettlement({
+                                    driverName: '',
+                                    fleetId: 0,
+                                    amount,
+                                    settlementType: txType === 'credit' ? 'merchant_wallet_credit' : 'merchant_wallet_debit',
+                                    merchantName: merchant.name || `Merchant ${merchant.vendor_id || merchant.id}`,
+                                    vendorId: Number(merchant.vendor_id || merchant.id),
+                                    notes: balanceNote.trim() || undefined
+                                  });
+                                }
                               }
 
                               setEditingBalance(null);
@@ -2897,6 +3013,7 @@ export function FinancialPanel() {
                           ? 'bg-green-500 text-white hover:shadow-[0_0_16px_rgba(34,197,94,0.4)]'
                           : 'bg-red-500 text-white hover:shadow-[0_0_16px_rgba(239,68,68,0.4)]'
                           }`}
+                        style={{ backgroundColor: txType === 'credit' ? '#22c55e' : '#ef4444', color: '#ffffff' }}
                       >
                         {isProcessingWallet ? (
                           <>
@@ -3065,7 +3182,8 @@ export function FinancialPanel() {
                       minHeight: 0,
                       flex: 1
                     }}>
-                      {/* Action Buttons */}
+                      {/* Action Buttons — hidden in read-only mode */}
+                      {!isReadOnly && (
                       <div style={{
                         display: 'flex',
                         justifyContent: 'flex-end',
@@ -3113,6 +3231,7 @@ export function FinancialPanel() {
                           Mark All as Paid
                         </button>
                       </div>
+                      )}
 
                       {/* Tasks Table with Scroll */}
                       <div style={{
@@ -3175,7 +3294,7 @@ export function FinancialPanel() {
                                 }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.02)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
                                   <td style={{ padding: '0.5rem' }} className="table-cell">
                                     <button
-                                      onClick={() => toggleTaskPayment(task.job_id)}
+                                      onClick={() => { if (!isReadOnly) toggleTaskPayment(task.job_id); }}
                                       style={{
                                         width: '1.25rem',
                                         height: '1.25rem',
@@ -3185,10 +3304,12 @@ export function FinancialPanel() {
                                         justifyContent: 'center',
                                         backgroundColor: isComplete ? '#22c55e' : 'transparent',
                                         color: isComplete ? 'white' : 'transparent',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s'
+                                        cursor: isReadOnly ? 'default' : 'pointer',
+                                        transition: 'all 0.2s',
+                                        opacity: isReadOnly ? 0.6 : 1
                                       }}
                                       className={`border ${isComplete ? 'border-[#22c55e]' : 'border-muted-light dark:border-white'}`}
+                                      disabled={isReadOnly}
                                     >
                                       {isComplete && <CheckCircle style={{ width: '0.875rem', height: '0.875rem' }} />}
                                     </button>
@@ -3209,8 +3330,9 @@ export function FinancialPanel() {
                                       min="0"
                                       max={task.cod_amount}
                                       value={task.balance_paid || ''}
-                                      onChange={(e) => updateTaskPayment(task.job_id, 'balance_paid', parseFloat(e.target.value) || 0)}
+                                      onChange={(e) => { if (!isReadOnly) updateTaskPayment(task.job_id, 'balance_paid', parseFloat(e.target.value) || 0); }}
                                       placeholder="0.00"
+                                      readOnly={isReadOnly}
                                       style={{
                                         width: '5rem',
                                         backgroundColor: 'var(--input-bg)',
@@ -3219,7 +3341,9 @@ export function FinancialPanel() {
                                         color: '#16a34a',
                                         textAlign: 'right',
                                         fontWeight: 500,
-                                        fontSize: '0.875rem'
+                                        fontSize: '0.875rem',
+                                        opacity: isReadOnly ? 0.6 : 1,
+                                        cursor: isReadOnly ? 'default' : 'text'
                                       }} className="input-paid no-spinner border border-input-border dark:border-white"
                                     />
                                   </td>
@@ -3227,6 +3351,7 @@ export function FinancialPanel() {
                                     <select
                                       value={task.cod_collected ? 'COMPLETED' : 'PENDING'}
                                       onChange={(e) => {
+                                        if (isReadOnly) return;
                                         const isCompleted = e.target.value === 'COMPLETED';
                                         setTasksList(prev => prev.map(t =>
                                           t.job_id === task.job_id
@@ -3239,6 +3364,7 @@ export function FinancialPanel() {
                                             : t
                                         ));
                                       }}
+                                      disabled={isReadOnly}
                                       style={{
                                         backgroundColor: task.cod_collected ? '#dcfce7' : '#fef3c7',
                                         border: `1px solid ${task.cod_collected ? '#22c55e' : '#f59e0b'}`,
@@ -3246,8 +3372,9 @@ export function FinancialPanel() {
                                         padding: '0.375rem 0.5rem',
                                         color: task.cod_collected ? '#16a34a' : '#d97706',
                                         fontWeight: 600,
-                                        cursor: 'pointer',
-                                        fontSize: '0.75rem'
+                                        cursor: isReadOnly ? 'default' : 'pointer',
+                                        fontSize: '0.75rem',
+                                        opacity: isReadOnly ? 0.6 : 1
                                       }} className="select-status"
                                     >
                                       <option value="PENDING" style={{ backgroundColor: 'var(--card)', color: 'var(--heading-color)' }}>Pending</option>
@@ -3370,16 +3497,52 @@ export function FinancialPanel() {
                   justifyContent: 'space-between',
                   gap: '1rem'
                 }} className="modal-footer">
-                  <button
-                    onClick={() => { if (taskModalDate) setNotePopupDate(taskModalDate); }}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs transition-all font-medium ${dailyNotes[taskModalDate || '']
-                      ? 'bg-yellow-500/10 dark:bg-yellow-400/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30 dark:border-yellow-400/30 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20'
-                      : 'bg-muted/20 dark:bg-[#2A3C63]/30 text-muted-light dark:text-[#99BFD1] border border-border dark:border-[#2A3C63] hover:bg-muted/30 dark:hover:bg-[#2A3C63]/50'
-                      }`}
-                  >
-                    <StickyNote className="w-3 h-3" />
-                    {dailyNotes[taskModalDate || ''] ? 'View Note' : 'Add Note'}
-                  </button>
+                  {notePopupDate === taskModalDate ? (
+                    <div className="flex-1 max-w-sm bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-lg p-2 animate-in fade-in duration-200">
+                      <textarea
+                        value={dailyNotes[taskModalDate || ''] || ''}
+                        onChange={(e) => {
+                          if (taskModalDate) {
+                            setDailyNotes(prev => ({ ...prev, [taskModalDate]: e.target.value }));
+                          }
+                        }}
+                        placeholder="Type note for this date..."
+                        rows={2}
+                        autoFocus
+                        className="w-full bg-transparent text-sm text-heading dark:text-[#C1EEFA] focus:outline-none resize-none placeholder-[#5B7894]/70"
+                      />
+                      <div className="flex items-center justify-end gap-2 mt-1">
+                        <button
+                          onClick={() => setNotePopupDate(null)}
+                          className="text-xs font-medium text-muted-light dark:text-[#99BFD1] hover:text-heading dark:hover:text-white px-2 py-1 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (taskModalDate) {
+                              saveDriverNote(taskModalDate, dailyNotes[taskModalDate] || '');
+                              setNotePopupDate(null);
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-[#10B981] text-white text-xs font-medium rounded hover:bg-[#059669] flex items-center gap-1 transition-all"
+                        >
+                          <Save className="w-3 h-3" /> Save
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { if (taskModalDate) setNotePopupDate(taskModalDate); }}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs transition-all font-medium flex-shrink-0 ${dailyNotes[taskModalDate || '']
+                        ? 'bg-yellow-500/10 dark:bg-yellow-400/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30 dark:border-yellow-400/30 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20'
+                        : 'bg-muted/20 dark:bg-[#2A3C63]/30 text-muted-light dark:text-[#99BFD1] border border-border dark:border-[#2A3C63] hover:bg-muted/30 dark:hover:bg-[#2A3C63]/50'
+                        }`}
+                    >
+                      <StickyNote className="w-3 h-3" />
+                      {dailyNotes[taskModalDate || ''] ? 'View Note' : 'Add Note'}
+                    </button>
+                  )}
                   <div style={{ display: 'flex', gap: '0.75rem', flexShrink: 0 }}>
                     <button
                       onClick={closeTaskModal}
@@ -3396,6 +3559,7 @@ export function FinancialPanel() {
                     >
                       Cancel
                     </button>
+                    {!isReadOnly && (
                     <button
                       onClick={saveTaskPayments}
                       style={{
@@ -3414,6 +3578,7 @@ export function FinancialPanel() {
                       <Save style={{ width: '1rem', height: '1rem' }} />
                       Confirm
                     </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -3425,31 +3590,170 @@ export function FinancialPanel() {
       {/* Settlement Logs Tab */}
       {activeTab === 'logs' && (
         <div className="space-y-6">
-          {/* Filters */}
+          {/* Filters Card */}
           <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-6">
-            <h3 className="text-heading mb-2">Settlement Logs</h3>
-            <p className="text-sm text-muted-light dark:text-[#5B7894]">
-              {logsTotal} record{logsTotal !== 1 ? 's' : ''} found
-            </p>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-heading text-xl">Settlement Logs</h3>
+                <p className="text-sm text-muted-light dark:text-[#5B7894] mt-1">
+                  Audit trail for all reconciliation, wallet, and settlement activity
+                </p>
+              </div>
+              <button
+                onClick={exportLogsToCSV}
+                disabled={settlementLogs.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-[#C1EEFA]/10 dark:bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 dark:border-[#C1EEFA]/30 text-[#C1EEFA] rounded-lg hover:bg-[#C1EEFA]/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Download className="w-4 h-4" />
+                Export CSV
+              </button>
+            </div>
+
+            {/* Filter Row 1: Date Range + Type */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className="block text-heading text-sm mb-2">From Date</label>
+                <DatePicker
+                  value={logsDateFrom}
+                  onChange={setLogsDateFrom}
+                  placeholder="(YYYY-MM-DD)"
+                />
+              </div>
+              <div>
+                <label className="block text-heading text-sm mb-2">To Date</label>
+                <DatePicker
+                  value={logsDateTo}
+                  onChange={setLogsDateTo}
+                  placeholder="(YYYY-MM-DD)"
+                />
+              </div>
+              <div>
+                <label className="block text-heading text-sm mb-2">Type</label>
+                <select
+                  value={logsTypeFilter}
+                  onChange={(e) => setLogsTypeFilter(e.target.value)}
+                  className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-2.5 text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all appearance-none cursor-pointer"
+                >
+                  <option value="">All Types</option>
+                  <option value="reconciliation">Reconciliation</option>
+                  <option value="merchant_settlement">Merchant Settlement</option>
+                  <option value="driver_wallet">Driver Wallet</option>
+                  <option value="merchant_wallet">Merchant Wallet</option>
+                  <option value="calendar">Calendar Only</option>
+                  <option value="view_tasks">View Tasks Only</option>
+                  <option value="driver_wallet_credit">Driver Credit Only</option>
+                  <option value="driver_wallet_debit">Driver Debit Only</option>
+                  <option value="merchant_wallet_credit">Merchant Credit Only</option>
+                  <option value="merchant_wallet_debit">Merchant Debit Only</option>
+                </select>
+              </div>
+              <div className="flex items-end gap-2">
+                <button
+                  onClick={() => fetchSettlementLogs(0)}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-[#C1EEFA] text-[#1A2C53] rounded-xl hover:shadow-[0_0_16px_rgba(193,238,250,0.4)] transition-all font-medium"
+                >
+                  <Search className="w-4 h-4" />
+                  Search
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Row 2: Driver & Merchant Search */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-heading text-sm mb-2">Driver Name</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 icon-default dark:text-[#99BFD1]" />
+                  <input
+                    type="text"
+                    placeholder="Search driver..."
+                    value={logsDriverSearch}
+                    onChange={(e) => setLogsDriverSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && fetchSettlementLogs(0)}
+                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-2.5 pl-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-heading text-sm mb-2">Merchant Name</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 icon-default dark:text-[#99BFD1]" />
+                  <input
+                    type="text"
+                    placeholder="Search merchant..."
+                    value={logsMerchantSearch}
+                    onChange={(e) => setLogsMerchantSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && fetchSettlementLogs(0)}
+                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-2.5 pl-10 text-heading dark:text-[#C1EEFA] placeholder-[#8F8F8F] dark:placeholder-[#5B7894] focus:outline-none focus:border-[#DE3544] dark:focus:border-[#C1EEFA] transition-all"
+                  />
+                </div>
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={() => {
+                    clearLogsFilters();
+                    // Delay fetch to let state clear
+                    setTimeout(() => fetchSettlementLogs(0), 50);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-muted/20 dark:bg-[#2A3C63]/30 border border-border dark:border-[#2A3C63] text-muted-light dark:text-[#99BFD1] rounded-xl hover:bg-muted/40 dark:hover:bg-[#2A3C63]/50 transition-all text-sm"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-4">
+              <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Total Records</p>
+              <p className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{logsTotal}</p>
+              <p className="text-xs text-muted-light dark:text-[#5B7894] mt-1">
+                {(localStorage.getItem('currency') || 'BHD')} {logsSummary.totalAmount.toFixed(3)} total
+              </p>
+            </div>
+            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-4">
+              <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Reconciliation</p>
+              <p className="text-blue-500 dark:text-blue-400 text-2xl font-bold">{logsSummary.reconciliationCount}</p>
+              <p className="text-xs text-muted-light dark:text-[#5B7894] mt-1">Calendar & Tasks</p>
+            </div>
+            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-4">
+              <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Merchant Settlement</p>
+              <p className="text-orange-500 dark:text-orange-400 text-2xl font-bold">{logsSummary.merchantSettlementCount}</p>
+              <p className="text-xs text-muted-light dark:text-[#5B7894] mt-1">Merchant Calendar & Tasks</p>
+            </div>
+            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-4">
+              <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Driver Wallet</p>
+              <p className="text-cyan-500 dark:text-cyan-400 text-2xl font-bold">{logsSummary.driverWalletCount}</p>
+              <p className="text-xs text-muted-light dark:text-[#5B7894] mt-1">Credits & Debits</p>
+            </div>
+            <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] p-4">
+              <p className="text-muted-light dark:text-[#99BFD1] text-xs mb-1">Merchant Wallet</p>
+              <p className="text-purple-500 dark:text-purple-400 text-2xl font-bold">{logsSummary.merchantWalletCount}</p>
+              <p className="text-xs text-muted-light dark:text-[#5B7894] mt-1">Credits & Debits</p>
+            </div>
           </div>
 
           {/* Logs Table */}
           <div className="bg-card dark:bg-[#223560] rounded-2xl border border-border dark:border-[#2A3C63] overflow-hidden">
             {isLoadingLogs ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="w-8 h-8 animate-spin text-[#DE3544]" />
-                <span className="ml-3 text-muted-light dark:text-[#99BFD1]">Loading logs...</span>
+              <div className="flex flex-col items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-[#DE3544] mb-3" />
+                <span className="text-muted-light dark:text-[#99BFD1]">Loading settlement logs...</span>
               </div>
             ) : settlementLogs.length === 0 ? (
               <div className="text-center py-16 text-muted-light dark:text-[#5B7894]">
                 <AlertCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>No settlement logs found</p>
+                <p className="text-heading dark:text-[#C1EEFA] font-medium mb-1">No settlement logs found</p>
+                <p className="text-sm">Try adjusting your filters or date range</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border dark:border-[#2A3C63] bg-hover-bg-light dark:bg-[#1A2C53]">
+                      <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">#</th>
                       <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Date & Time</th>
                       <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Settled By</th>
                       <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Target</th>
@@ -3457,14 +3761,21 @@ export function FinancialPanel() {
                       <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Type</th>
                       <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Date Range</th>
                       <th className="text-center px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Tasks</th>
+                      <th className="text-left px-4 py-3 text-sm font-semibold text-heading dark:text-[#C1EEFA]">Notes</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {settlementLogs.map((log) => {
-                      const isMerchant = log.settlement_type?.startsWith('merchant_');
+                    {settlementLogs.map((log, index) => {
+                      const isMerchant = log.settlement_type?.startsWith('merchant_') || log.settlement_type?.includes('merchant');
+                      const isCredit = log.settlement_type?.includes('credit');
+                      const isDebit = log.settlement_type?.includes('debit') || log.settlement_type === 'calendar' || log.settlement_type === 'view_tasks';
+                      const currency = (localStorage.getItem('currency') || 'BHD') === 'BHD' ? 'BHD' : '$';
                       return (
-                        <tr key={log.id} className="border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53] transition-colors">
-                          <td className="px-4 py-3 text-sm text-heading dark:text-[#C1EEFA]">
+                        <tr key={log.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53] transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
+                          <td className="px-4 py-3 text-xs text-muted-light dark:text-[#5B7894] font-mono">
+                            {logsPage * LOGS_PER_PAGE + index + 1}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] whitespace-nowrap">
                             {new Date(log.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                             <br />
                             <span className="text-xs text-muted-light dark:text-[#5B7894]">
@@ -3481,12 +3792,12 @@ export function FinancialPanel() {
                                 <div className="text-heading dark:text-[#C1EEFA] font-medium">{log.merchant_name || 'Unknown Merchant'}</div>
                                 <div className="text-xs text-muted-light dark:text-[#5B7894]">
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 mr-1">Merchant</span>
-                                  Merchant ID: {log.vendor_id}
+                                  ID: {log.vendor_id}
                                 </div>
                               </>
                             ) : (
                               <>
-                                <div className="text-heading dark:text-[#C1EEFA] font-medium">{log.driver_name}</div>
+                                <div className="text-heading dark:text-[#C1EEFA] font-medium">{log.driver_name || '—'}</div>
                                 <div className="text-xs text-muted-light dark:text-[#5B7894]">
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300 mr-1">Driver</span>
                                   Fleet #{log.fleet_id}
@@ -3494,21 +3805,31 @@ export function FinancialPanel() {
                               </>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-green-600 dark:text-green-400">
-                            BHD {Number(log.amount).toFixed(3)}
+                          <td className={`px-4 py-3 text-sm text-right font-semibold whitespace-nowrap ${isCredit ? 'text-green-600 dark:text-green-400' : isDebit ? 'text-red-500 dark:text-red-400' : 'text-heading dark:text-[#C1EEFA]'}`}>
+                            {isCredit ? '+' : isDebit ? '-' : ''}{currency} {Number(log.amount).toFixed(3)}
                           </td>
                           <td className="px-4 py-3 text-sm">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${log.settlement_type === 'calendar' || log.settlement_type === 'merchant_calendar'
-                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                              : 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                              log.settlement_type === 'calendar' || log.settlement_type === 'merchant_calendar'
+                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                                : log.settlement_type === 'view_tasks' || log.settlement_type === 'merchant_view_tasks'
+                                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
+                                  : log.settlement_type?.includes('credit')
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                                    : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
                               }`}>
-                              {log.settlement_type === 'calendar' ? 'Calendar' :
-                                log.settlement_type === 'view_tasks' ? 'View Tasks' :
-                                  log.settlement_type === 'merchant_calendar' ? 'Calendar' :
-                                    'View Tasks'}
+                              {log.settlement_type === 'calendar' ? 'Reconciliation (Calendar)' :
+                                log.settlement_type === 'view_tasks' ? 'Reconciliation (Tasks)' :
+                                  log.settlement_type === 'merchant_calendar' ? 'Merchant (Calendar)' :
+                                    log.settlement_type === 'merchant_view_tasks' ? 'Merchant (Tasks)' :
+                                      log.settlement_type === 'driver_wallet_credit' ? 'Driver Wallet Credit' :
+                                        log.settlement_type === 'driver_wallet_debit' ? 'Driver Wallet Debit' :
+                                          log.settlement_type === 'merchant_wallet_credit' ? 'Merchant Wallet Credit' :
+                                            log.settlement_type === 'merchant_wallet_debit' ? 'Merchant Wallet Debit' :
+                                              log.settlement_type}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-heading dark:text-[#C1EEFA]">
+                          <td className="px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] whitespace-nowrap">
                             {log.settlement_date_from && log.settlement_date_to ? (
                               <>{log.settlement_date_from} → {log.settlement_date_to}</>
                             ) : log.settlement_date_to ? (
@@ -3518,7 +3839,16 @@ export function FinancialPanel() {
                             )}
                           </td>
                           <td className="px-4 py-3 text-sm text-center text-heading dark:text-[#C1EEFA] font-medium">
-                            {log.task_count}
+                            {log.task_count || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-muted-light dark:text-[#99BFD1] max-w-[200px]">
+                            {log.notes ? (
+                              <span className="truncate" title={log.notes}>
+                                {log.notes}
+                              </span>
+                            ) : (
+                              <span className="text-muted-light dark:text-[#5B7894]">—</span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -3540,14 +3870,17 @@ export function FinancialPanel() {
                     onClick={() => fetchSettlementLogs(logsPage - 1)}
                     className="px-4 py-1.5 rounded-lg text-sm border border-border dark:border-[#2A3C63] text-heading dark:text-[#C1EEFA] disabled:opacity-30 hover:bg-hover-bg-light dark:hover:bg-[#1A2C53] transition-all"
                   >
-                    Previous
+                    ← Previous
                   </button>
+                  <span className="px-3 py-1.5 text-sm text-heading dark:text-[#C1EEFA] font-medium">
+                    Page {logsPage + 1} of {Math.ceil(logsTotal / LOGS_PER_PAGE)}
+                  </span>
                   <button
                     disabled={(logsPage + 1) * LOGS_PER_PAGE >= logsTotal}
                     onClick={() => fetchSettlementLogs(logsPage + 1)}
                     className="px-4 py-1.5 rounded-lg text-sm border border-border dark:border-[#2A3C63] text-heading dark:text-[#C1EEFA] disabled:opacity-30 hover:bg-hover-bg-light dark:hover:bg-[#1A2C53] transition-all"
                   >
-                    Next
+                    Next →
                   </button>
                 </div>
               </div>
@@ -3772,6 +4105,8 @@ export function FinancialPanel() {
           </div>
         </>
       )}
+
+
 
     </div>
   );

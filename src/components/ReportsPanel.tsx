@@ -390,20 +390,27 @@ export function ReportsPanel() {
 
       // 2. Order List sheet (if there are filtered orders)
       if (filteredOrders.length > 0) {
-        const ordersData = filteredOrders.map((order: any) => ({
-          'Order ID': order.order_id || order.jobId || order.job_id || '',
-          'Merchant ID': order.order_id || '',
-          'Date/Time Delivered': order.completed_datetime || '',
-          'Driver Name': order.fleet_name || order.assignedDriverName || '',
-          'Customer Name': order.customer_name || order.customerName || '',
-          'Customer Phone': order.customer_phone || order.customerPhone || '',
-          'Pickup Address': order.pickup_address || order.pickupAddress || '',
-          'Delivery Address': order.delivery_address || order.deliveryAddress || '',
-          'COD': typeof (order.cod_amount || order.codAmount) === 'number' ? (order.cod_amount || order.codAmount).toFixed(2) : '0.00',
-          'Order Fees': typeof (order.order_fees || order.orderFees) === 'number' ? (order.order_fees || order.orderFees).toFixed(2) : '0.00',
-          'Tookan Fees': tookanFeeRate.toFixed(2),
-          'Status': mapStatus(order.status)
-        }));
+        const ordersData = filteredOrders.map((order: any) => {
+          const merchantId = order.order_id || '';
+          const merchantInfo = merchantId ? merchantInfoMap[String(merchantId)] : null;
+          return {
+            'Order ID': order.jobId || order.job_id || '',
+            'Merchant ID': merchantId,
+            'Merchant Name': merchantInfo?.name || '',
+            'Merchant Phone': merchantInfo?.phone || '',
+            'Date/Time Delivered': order.completed_datetime || '',
+            'Driver Name': order.fleet_name || order.assignedDriverName || '',
+            'Customer Name': order.customer_name || order.customerName || '',
+            'Customer Phone': order.customer_phone || order.customerPhone || '',
+            'Pickup Address': order.pickup_address || order.pickupAddress || '',
+            'Delivery Address': order.delivery_address || order.deliveryAddress || '',
+            'COD': typeof (order.cod_amount || order.codAmount) === 'number' ? (order.cod_amount || order.codAmount).toFixed(2) : '0.00',
+            'Order Fees': typeof (order.order_fees || order.orderFees) === 'number' ? (order.order_fees || order.orderFees).toFixed(2) : '0.00',
+            'Tookan Fees': tookanFeeRate.toFixed(2),
+            'Status': mapStatus(order.status),
+            'Tags': order.tags || ''
+          };
+        });
         const ordersSheet = XLSX.utils.json_to_sheet(ordersData);
         XLSX.utils.book_append_sheet(workbook, ordersSheet, 'Order List');
       }
@@ -455,7 +462,7 @@ export function ReportsPanel() {
       console.error('Export error:', error);
       toast.error('Failed to export data');
     }
-  }, [driverPerformanceData, customerPerformanceData, filteredOrders, mapStatus, tookanFeeRate]);
+  }, [driverPerformanceData, customerPerformanceData, filteredOrders, mapStatus, tookanFeeRate, merchantInfoMap]);
 
   // Mock validation states for auto-suggest
   const getValidationColor = (value: string) => {
@@ -662,7 +669,7 @@ export function ReportsPanel() {
           <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{totals.drivers || drivers.length}</div>
         </div>
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Customers</div>
+          <div className="text-muted-light dark:text-[#99BFD1] text-sm mb-1">Total Merchants</div>
           <div className="text-heading dark:text-[#C1EEFA] text-2xl font-bold">{totals.merchants || customers.length}</div>
         </div>
         <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">

@@ -232,6 +232,7 @@ export function SystemLogsPanel() {
           <button 
             onClick={() => handleExport('excel')}
             className="flex items-center gap-2 px-6 py-3 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all font-semibold"
+            style={{ backgroundColor: '#DE3544', color: 'white' }}
           >
             <Download className="w-5 h-5" />
             Export Excel

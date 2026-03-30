@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 export const PERMISSIONS = {
   PANEL_REPORTS: 'panel_reports',
   PANEL_FINANCIAL: 'panel_financial',
+  PANEL_FINANCIAL_READONLY: 'panel_financial_readonly',
   PANEL_ORDER_EDITOR: 'panel_order_editor',
   PANEL_WITHDRAWALS: 'panel_withdrawals',
   PANEL_MERCHANT_PLANS: 'panel_merchant_plans',

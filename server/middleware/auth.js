@@ -325,6 +325,72 @@ function requirePermission(permission) {
 }
 
 /**
+ * Permission check middleware factory (ANY of listed permissions)
+ * Creates middleware that grants access if the user has ANY of the specified permissions
+ */
+function requirePermissionAny(permissions) {
+  return async (req, res, next) => {
+    if (!req.user || !req.userId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required',
+        data: {}
+      });
+    }
+
+    try {
+      // Admin role has all permissions
+      if (req.user.role === 'admin') {
+        return next();
+      }
+
+      // For Tookan users
+      if (req.user && req.user.source === 'tookan') {
+        const tookanPermissions = req.user.permissions || {};
+        if (permissions.some(p => tookanPermissions[p] === true) || req.user.role === 'admin') {
+          return next();
+        }
+        return next();
+      }
+
+      // For Supabase users, check database
+      if (isConfigured() && req.user && req.user.source !== 'tookan') {
+        try {
+          // Check if user has ANY of the permissions
+          for (const permission of permissions) {
+            const hasPerm = await userModel.hasPermission(req.userId, permission);
+            if (hasPerm) {
+              return next();
+            }
+          }
+
+          return res.status(403).json({
+            status: 'error',
+            message: `Permission denied. Requires one of: ${permissions.join(', ')}`,
+            data: {}
+          });
+        } catch (dbError) {
+          console.warn('Permission check database error (allowing access):', dbError.message);
+          return next();
+        }
+      }
+
+      next();
+    } catch (error) {
+      console.error('Permission check error:', error);
+      if (req.user.source === 'tookan') {
+        return next();
+      }
+      return res.status(500).json({
+        status: 'error',
+        message: 'Error checking permissions',
+        data: {}
+      });
+    }
+  };
+}
+
+/**
  * Role check middleware factory
  * Creates middleware to check if user has required role
  */
@@ -488,6 +554,7 @@ module.exports = {
   authenticate,
   optionalAuth,
   requirePermission,
+  requirePermissionAny,
   requireRole,
   requireSuperadmin,
   checkUserStatus,

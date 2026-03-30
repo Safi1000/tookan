@@ -1,0 +1,2 @@
+#!/bin/sh
+cd /home/u386004739/domains/api.bhdt.live/nodejs && /opt/alt/alt-nodejs24/root/usr/bin/node --env-file=/home/u386004739/.env sync-tags-backfill.js --today >> /home/u386004739/cron-jobs/logs/tags-backfill.log 2>&1

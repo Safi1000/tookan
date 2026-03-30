@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, X, Search, Calendar, CheckCircle, XCircle, RefreshCw, DollarSign } from 'lucide-react';
+import { Check, X, Search, Calendar, CheckCircle, XCircle, RefreshCw, DollarSign, Landmark, Clock } from 'lucide-react';
 import { DatePicker } from './ui/date-picker';
 import { toast } from 'sonner';
 import { fetchWithdrawalRequests, approveWithdrawalRequest, rejectWithdrawalRequest, type WithdrawalRequest } from '../services/tookanApi';
@@ -69,9 +69,19 @@ export function WithdrawalRequestsPanel() {
   const [withdrawalFee, setWithdrawalFee] = useState('');
   const [currentFee, setCurrentFee] = useState<number | null>(null);
 
-  // Load withdrawal requests
+  // Bank Amount Modal State
+  const [showBankModal, setShowBankModal] = useState(false);
+  const [bankAmountInput, setBankAmountInput] = useState('');
+  const [currentBankAmount, setCurrentBankAmount] = useState<number>(0);
+
+  // Pending Withdrawals Total
+  const [pendingTotal, setPendingTotal] = useState<number>(0);
+
+  // Load withdrawal requests and pending total
   useEffect(() => {
     loadWithdrawals();
+    loadBankAmount();
+    loadPendingTotal();
   }, [dateFrom, dateTo]);
 
   // Fetch current fee when modal opens
@@ -80,6 +90,13 @@ export function WithdrawalRequestsPanel() {
       loadCurrentFee();
     }
   }, [showFeesModal]);
+
+  // Fetch bank amount when modal opens
+  useEffect(() => {
+    if (showBankModal) {
+      loadBankAmount();
+    }
+  }, [showBankModal]);
 
   const loadWithdrawals = async () => {
     setIsLoading(true);
@@ -148,12 +165,79 @@ export function WithdrawalRequestsPanel() {
     }
   };
 
+  const loadBankAmount = async () => {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/bank-amount`, {
+        headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+      });
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        setCurrentBankAmount(data.data.bank_amount || 0);
+        setBankAmountInput((data.data.bank_amount || 0).toString());
+      }
+    } catch (error) {
+      console.error('Failed to load bank amount:', error);
+    }
+  };
+
+  const loadPendingTotal = async () => {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/withdrawal/pending-total`, {
+        headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+      });
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        setPendingTotal(data.data.pending_total || 0);
+      }
+    } catch (error) {
+      console.error('Failed to load pending total:', error);
+    }
+  };
+
+  const handleSetBankAmount = async () => {
+    const amountValue = parseFloat(bankAmountInput);
+    if (isNaN(amountValue) || amountValue < 0) {
+      toast.error('Please enter a valid bank amount');
+      return;
+    }
+
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/bank-amount/set`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ amount: amountValue })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        toast.success(`Bank amount set to BHD ${amountValue.toFixed(3)}`);
+        setCurrentBankAmount(amountValue);
+      } else {
+        toast.error(data.message || 'Failed to set bank amount');
+      }
+    } catch (error) {
+      console.error('Failed to set bank amount:', error);
+      toast.error('Failed to set bank amount');
+    }
+  };
+
   const handleApprove = async (id: number) => {
     try {
       const result = await approveWithdrawalRequest(id.toString());
       if (result.status === 'success') {
         toast.success('Withdrawal request approved');
         loadWithdrawals();
+        loadBankAmount();
+        loadPendingTotal();
       } else {
         toast.error(result.message || 'Failed to approve withdrawal');
       }
@@ -168,6 +252,7 @@ export function WithdrawalRequestsPanel() {
       if (result.status === 'success') {
         toast.success('Withdrawal request rejected');
         loadWithdrawals();
+        loadPendingTotal();
       } else {
         toast.error(result.message || 'Failed to reject withdrawal');
       }
@@ -233,27 +318,44 @@ export function WithdrawalRequestsPanel() {
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-heading text-3xl mb-2">Withdrawal Requests</h1>
-          <p className="text-subheading">Review and manage merchant withdrawal requests</p>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-heading text-3xl mb-2">Withdrawal Requests</h1>
+            <p className="text-subheading">Review and manage merchant withdrawal requests</p>
+          </div>
+          <button
+            onClick={() => { loadWithdrawals(); loadBankAmount(); loadPendingTotal(); }}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-4 py-2.5 bg-card border border-border rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#223560] transition-all text-heading dark:text-[#C1EEFA] disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => setShowFeesModal(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-[#10B981]/10 border border-[#10B981]/30 rounded-xl hover:bg-[#10B981]/20 transition-all text-[#10B981]"
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#10B981]/10 border border-[#10B981]/30 rounded-xl hover:bg-[#10B981]/20 transition-all text-[#10B981] text-sm font-medium"
           >
-            <span className="font-bold text-sm">BHD</span>
+            <span className="font-bold text-xs">BHD</span>
             Withdrawal Fees
           </button>
           <button
-            onClick={loadWithdrawals}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-6 py-3 bg-card border border-border rounded-xl hover:bg-hover-bg-light dark:hover:bg-[#223560] transition-all text-heading dark:text-[#C1EEFA] disabled:opacity-50"
+            onClick={() => setShowBankModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#3B82F6]/10 border border-[#3B82F6]/30 rounded-xl hover:bg-[#3B82F6]/20 transition-all text-[#3B82F6] text-sm font-medium"
           >
-            <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
+            <Landmark className="w-4 h-4 shrink-0" />
+            Bank Amount
+            <span className="font-bold text-xs bg-[#3B82F6]/20 px-2 py-0.5 rounded-full whitespace-nowrap">BHD {currentBankAmount.toFixed(3)}</span>
           </button>
+          <div
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-xl text-[#F59E0B] text-sm font-medium"
+          >
+            <Clock className="w-4 h-4 shrink-0" />
+            <span className="whitespace-nowrap">Pending Withdrawals</span>
+            <span className="font-bold text-xs bg-[#F59E0B]/20 px-2 py-0.5 rounded-full whitespace-nowrap">BHD {pendingTotal.toFixed(3)}</span>
+          </div>
         </div>
       </div>
 
@@ -311,42 +413,42 @@ export function WithdrawalRequestsPanel() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-card rounded-xl border border-border p-1 shadow-sm">
+      <div className="flex flex-wrap gap-1 bg-card rounded-xl border border-border p-1 shadow-sm">
         <button
           onClick={() => setActiveTab('pending')}
-          className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'pending'
+          className={`flex-1 min-w-[120px] px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'pending'
               ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
               : 'text-subheading hover:bg-hover-bg-light dark:hover:bg-[#223560]'
             }`}
         >
-          Pending Requests
-          <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${activeTab === 'pending' ? 'bg-yellow-500/30' : 'bg-muted/20'
+          Pending
+          <span className={`ml-1.5 px-2 py-0.5 rounded-full text-xs ${activeTab === 'pending' ? 'bg-yellow-500/30' : 'bg-muted/20'
             }`}>
             {filteredWithdrawals.filter(w => (w.status || '').toLowerCase() === 'pending').length}
           </span>
         </button>
         <button
           onClick={() => setActiveTab('approved')}
-          className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'approved'
+          className={`flex-1 min-w-[120px] px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'approved'
               ? 'bg-green-500/20 text-green-400 border border-green-500/30'
               : 'text-subheading hover:bg-hover-bg-light dark:hover:bg-[#223560]'
             }`}
         >
-          Approved Requests
-          <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${activeTab === 'approved' ? 'bg-green-500/30' : 'bg-muted/20'
+          Approved
+          <span className={`ml-1.5 px-2 py-0.5 rounded-full text-xs ${activeTab === 'approved' ? 'bg-green-500/30' : 'bg-muted/20'
             }`}>
             {filteredWithdrawals.filter(w => (w.status || '').toLowerCase() === 'approved').length}
           </span>
         </button>
         <button
           onClick={() => setActiveTab('rejected')}
-          className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'rejected'
+          className={`flex-1 min-w-[120px] px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'rejected'
               ? 'bg-red-500/20 text-red-400 border border-red-500/30'
               : 'text-subheading hover:bg-hover-bg-light dark:hover:bg-[#223560]'
             }`}
         >
-          Rejected Requests
-          <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${activeTab === 'rejected' ? 'bg-red-500/30' : 'bg-muted/20'
+          Rejected
+          <span className={`ml-1.5 px-2 py-0.5 rounded-full text-xs ${activeTab === 'rejected' ? 'bg-red-500/30' : 'bg-muted/20'
             }`}>
             {filteredWithdrawals.filter(w => (w.status || '').toLowerCase() === 'rejected').length}
           </span>
@@ -476,6 +578,66 @@ export function WithdrawalRequestsPanel() {
                   No fee set yet. Enter a value and click "Set Fee" to apply globally.
                 </p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bank Amount Modal */}
+      {showBankModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" style={{ padding: '16px' }}>
+          <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-2xl" style={{ width: '100%', maxWidth: '480px' }}>
+            {/* Modal Header */}
+            <div className="border-b border-border flex items-center justify-between" style={{ padding: '16px', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div className="rounded-xl bg-[#3B82F6]/10 flex items-center justify-center p-2" style={{ width: 'auto', minWidth: '40px', height: '40px' }}>
+                  <Landmark className="w-5 h-5 text-[#3B82F6]" />
+                </div>
+                <div>
+                  <h2 className="text-heading font-semibold" style={{ fontSize: '18px' }}>Bank Amount</h2>
+                  <p className="text-muted-light" style={{ fontSize: '13px' }}>Set or update the bank balance</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBankModal(false)}
+                className="hover:bg-muted/20 rounded-lg transition-colors"
+                style={{ padding: '8px' }}
+              >
+                <X className="w-5 h-5 text-muted-light" />
+              </button>
+            </div>
+
+            {/* Bank Amount Setting Section */}
+            <div style={{ padding: '24px 16px' }}>
+              <label className="block text-heading" style={{ fontSize: '14px', marginBottom: '8px' }}>Bank Balance</label>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flex: '1 1 200px', minWidth: '150px' }}>
+                  <span className="text-[#3B82F6] font-bold" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px' }}>BHD</span>
+                  <input
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    value={bankAmountInput}
+                    onChange={(e) => setBankAmountInput(e.target.value)}
+                    placeholder="0.000"
+                    className="w-full bg-input-bg dark:bg-[#1A2C53] border border-input-border dark:border-[#2A3C63] rounded-xl text-heading dark:text-[#C1EEFA] focus:outline-none focus:border-[#3B82F6] transition-all"
+                    style={{ paddingLeft: '48px', paddingRight: '16px', paddingTop: '12px', paddingBottom: '12px' }}
+                  />
+                </div>
+                <button
+                  onClick={handleSetBankAmount}
+                  className="bg-[#3B82F6] text-white rounded-xl hover:bg-[#3B82F6]/90 transition-all font-medium"
+                  style={{ padding: '12px 24px', whiteSpace: 'nowrap' }}
+                >
+                  Save
+                </button>
+              </div>
+              <p className="text-muted-light" style={{ fontSize: '12px', marginTop: '12px' }}>
+                Current balance: <span className="text-[#3B82F6] font-semibold">BHD {currentBankAmount.toFixed(3)}</span>
+                {pendingTotal > 0 && (
+                  <span> — <span className="text-[#F59E0B] font-medium">BHD {pendingTotal.toFixed(3)}</span> pending withdrawals</span>
+                )}
+              </p>
             </div>
           </div>
         </div>

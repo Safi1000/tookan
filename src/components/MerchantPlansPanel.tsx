@@ -482,6 +482,7 @@ export function MerchantPlansPanel() {
         <button
           onClick={openNewPlanForm}
           className="flex items-center gap-2 px-6 py-3 bg-destructive dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all font-semibold"
+          style={{ backgroundColor: '#DE3544', color: 'white' }}
         >
           <Plus className="w-5 h-5" />
           New Plan
@@ -608,7 +609,7 @@ export function MerchantPlansPanel() {
               <textarea
                 value={planForm.description}
                 onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
-                placeholder="Enter a brief description of this plan..."
+
                 rows={3}
                 className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-sm text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all resize-none"
               />
@@ -628,6 +629,7 @@ export function MerchantPlansPanel() {
                 onClick={handleSavePlan}
                 disabled={!planForm.name}
                 className="px-6 py-3 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 disabled:hover:scale-100"
+                style={{ backgroundColor: '#DE3544', color: 'white' }}
               >
                 {editingPlan ? 'Save Changes' : 'Create Plan'}
               </button>
@@ -690,7 +692,7 @@ export function MerchantPlansPanel() {
             {/* Merchant Search - Vendor ID Input */}
             <div className="flex-1 space-y-3">
               <div className="relative">
-                <InputLabel className="text-heading dark:text-[#C1EEFA] mb-1.5" style={{ color: 'white' }}>Search by Merchant ID</InputLabel>
+                <InputLabel className="mb-1.5" sx={{ color: '#000', '.dark &': { color: '#fff' } }}>Search by Merchant ID</InputLabel>
                 <div className="relative">
                   <input
                     type="text"
@@ -747,19 +749,17 @@ export function MerchantPlansPanel() {
           {/* Plan Dropdown */}
           <div className="flex-1">
             <FormControl fullWidth variant="outlined" size="small" className="bg-input-bg dark:bg-[#223560] rounded-xl">
-              <InputLabel id="plan-select-label" className="text-heading dark:text-[#C1EEFA]" style={{ color: 'white' }}>Select Plan</InputLabel>
+              <InputLabel id="plan-select-label" sx={{ color: '#000', '.dark &': { color: '#fff' } }}>Select Plan</InputLabel>
               <Select
                 labelId="plan-select-label"
                 value={selectedPlanForLink}
                 label="Select Plan"
                 onChange={(e) => setSelectedPlanForLink(e.target.value)}
-                className="text-heading dark:text-[#C1EEFA]"
-                style={{ color: 'white' }}
-                inputProps={{
-                  className: "text-heading dark:text-[#C1EEFA]",
-                  style: { color: 'white' }
-                }}
                 sx={{
+                  color: '#000',
+                  '.dark &': { color: '#fff' },
+                  '.MuiSelect-select': { color: '#000' },
+                  '.dark & .MuiSelect-select': { color: '#fff' },
                   '.MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--primary)' },
@@ -795,6 +795,7 @@ export function MerchantPlansPanel() {
             onClick={handleQuickLink}
             disabled={!searchedCustomer || !selectedPlanForLink}
             className="flex items-center justify-center gap-2 px-6 py-2.5 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 disabled:hover:scale-100 h-[40px]"
+            style={{ backgroundColor: '#DE3544', color: 'white' }}
           >
             <Link className="w-4 h-4" />
             Link Plan
@@ -813,6 +814,7 @@ export function MerchantPlansPanel() {
                 ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53]'
                 : 'text-muted-light dark:text-[#99BFD1] hover:bg-muted/20'
                 }`}
+              style={activeTab === 'plans' ? { backgroundColor: '#DE3544', color: 'white' } : {}}
             >
               Plan Overview
             </button>
@@ -822,6 +824,7 @@ export function MerchantPlansPanel() {
                 ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53]'
                 : 'text-muted-light dark:text-[#99BFD1] hover:bg-muted/20'
                 }`}
+              style={activeTab === 'customers' ? { backgroundColor: '#DE3544', color: 'white' } : {}}
             >
               Assigned Merchants ({totalAssigned})
             </button>
@@ -1022,6 +1025,7 @@ export function MerchantPlansPanel() {
                   setSelectedPlanForAssign(null);
                 }}
                 className="px-6 py-3 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg transition-all text-sm font-semibold hover:scale-105"
+                style={{ backgroundColor: '#DE3544', color: 'white' }}
               >
                 Done
               </button>

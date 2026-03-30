@@ -24,7 +24,7 @@ import {
     type ApiToken,
     type CreateTokenResponse,
 } from "../services/apiTokenService"
-import apiDocUrl from "../assets/API Documentation.docx?url"
+import apiDocUrl from "../assets/API Documentation.pdf?url"
 
 export function SettingsPanel() {
     const [tokens, setTokens] = useState<ApiToken[]>([])
@@ -143,8 +143,8 @@ export function SettingsPanel() {
                 </div>
                 <a
                     href={apiDocUrl}
-                    download="API Documentation.docx"
-                    className="flex items-center gap-2 py-2.5 bg-[#C1EEFA]/10 border border-[#C1EEFA]/30 rounded-xl hover:bg-[#C1EEFA]/20 transition-all text-[#C1EEFA] text-sm font-medium"
+                    download="API Documentation.pdf"
+                    className="flex items-center gap-2 py-2.5 bg-[#1A2C53]/10 dark:bg-[#C1EEFA]/10 border border-[#1A2C53]/30 dark:border-[#C1EEFA]/30 rounded-xl hover:bg-[#1A2C53]/20 dark:hover:bg-[#C1EEFA]/20 transition-all text-[#1A2C53] dark:text-[#C1EEFA] text-sm font-medium"
                     style={{ paddingLeft: "30px", paddingRight: "30px" }}
                 >
                     <Download className="w-4 h-4" />
@@ -211,10 +211,12 @@ export function SettingsPanel() {
                             <button
                                 onClick={() => setShowCreateModal(true)}
                                 style={{
-                                    border: "2px solid white",
+                                    border: "2px solid #059669",
                                     borderRadius: "12px",
                                     paddingLeft: "10px",
-                                    paddingRight: "10px"
+                                    paddingRight: "10px",
+                                    backgroundColor: "#10B981",
+                                    color: "white"
                                 }}
                                 className="flex items-center justify-center gap-2 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold shadow-md flex-1 sm:flex-none"
                             >
@@ -242,6 +244,7 @@ export function SettingsPanel() {
                             <button
                                 onClick={() => setShowCreateModal(true)}
                                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] transition-all text-sm font-semibold"
+                                style={{ backgroundColor: '#10B981', color: 'white' }}
                             >
                                 <Plus className="w-4 h-4" />
                                 Create Your First Token
@@ -505,10 +508,12 @@ export function SettingsPanel() {
                                 onClick={handleCreateToken}
                                 disabled={isCreating || !formData.name.trim() || !formData.merchantId.trim()}
                                 style={{
-                                    border: "2px solid white",
+                                    border: "2px solid #059669",
                                     borderRadius: "12px",
                                     paddingLeft: "10px",
-                                    paddingRight: "10px"
+                                    paddingRight: "10px",
+                                    backgroundColor: "#10B981",
+                                    color: "white"
                                 }}
                                 className="flex items-center justify-center gap-2 py-2.5 bg-[#10B981] text-white rounded-xl hover:bg-[#059669] hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-md"
                             >
@@ -622,7 +627,7 @@ export function SettingsPanel() {
                                     setShowToken(false)
                                     setTokenCopied(false)
                                 }}
-                                style={{ border: "2px solid white" }}
+                                style={{ border: "2px solid #C92A38", backgroundColor: '#DE3544', color: 'white' }}
                                 className="px-6 py-2.5 bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] rounded-xl hover:shadow-lg active:scale-95 transition-all text-sm font-semibold shadow-md w-full sm:w-auto"
                             >
                                 Done
@@ -663,7 +668,7 @@ export function SettingsPanel() {
                                 <button
                                     onClick={() => handleRevokeToken(showRevokeConfirm)}
                                     disabled={isRevoking}
-                                    style={{ border: "2px solid white", borderRadius: "12px" }}
+                                    style={{ border: "2px solid #C92A38", borderRadius: "12px", backgroundColor: '#DE3544', color: 'white' }}
                                     className="flex items-center justify-center gap-2 px-5 py-2.5 bg-destructive text-white rounded-xl hover:bg-red-700 hover:shadow-lg active:scale-95 active:shadow-md transition-all text-sm font-semibold disabled:opacity-50 disabled:transform-none shadow-md w-full sm:w-auto"
                                 >
                                     {isRevoking ? (

@@ -201,16 +201,8 @@ async function fetchJobDetailsForJobIds(jobIds) {
     const data = await response.json();
     const detailsMap = {};
 
-    // DEBUG: Log the custom fields of the first job to verify label names
-    if (data && data.data && Array.isArray(data.data) && data.data.length > 0) {
-      const sampleJob = data.data[0];
-      console.log(`🔍 DEBUG: Sample JobID ${sampleJob.job_id} Custom Fields:`);
-      console.log(JSON.stringify(sampleJob.custom_field, null, 2));
-    }
-
     const extractCodFromCustomField = (job) => {
       // COD is in custom_field array with label "COD_Amount"
-      // (Not in job_additional_info as previously thought)
       const customFields = job.custom_field || [];
       if (!Array.isArray(customFields)) return null;
 
@@ -235,12 +227,19 @@ async function fetchJobDetailsForJobIds(jobIds) {
           };
         }
       });
+
+      // Warn if we got fewer results than requested
+      if (data.data.length < jobIds.length) {
+        console.log(`      ⚠️  get_job_details returned ${data.data.length}/${jobIds.length} jobs (some may be missing)`);
+      }
     } else if (data.status === 200 && data.data && data.data.job_id) {
       // Handle single result return case
       detailsMap[data.data.job_id] = {
         tags: data.data.tags || null,
         cod_amount: extractCodFromCustomField(data.data)
       };
+    } else {
+      console.log(`      ⚠️  get_job_details returned status ${data.status}: ${data.message || 'unknown'}`);
     }
 
     return detailsMap;
@@ -378,9 +377,15 @@ function transformTaskToRecord(task) {
     // Sync metadata
     source: 'api_sync',
     last_synced_at: new Date().toISOString(),
-    tags: task.tags || null,
     raw_data: task
   };
+
+  // Only set tags if the API actually returned a value
+  // get_all_tasks does NOT return tags — only get_job_details does
+  // This prevents overwriting tags synced by sync-tags-backfill.js
+  if (task.tags) {
+    record.tags = task.tags;
+  }
 
   // Only include timestamp fields if they have valid values
   // This prevents overwriting existing DB values with null
@@ -752,31 +757,56 @@ async function syncTaskTags(options = {}) {
     const batches = generateDateBatches(startDate, endDate);
     let totalUpdated = 0;
     let totalErrors = 0;
+    let totalSkipped = 0;
+    let totalTagsFound = 0;
 
     for (const batch of batches) {
       console.log(`\n📅 Processing tags for batch: ${batch.startDate} to ${batch.endDate}`);
       const tasks = await fetchAllTasksForDateRange(batch.startDate, batch.endDate);
 
-      if (tasks.length === 0) continue;
+      if (tasks.length === 0) {
+        console.log(`   ⚠️  No tasks returned from Tookan for this date range`);
+        continue;
+      }
 
-      console.log(`   📋 Found ${tasks.length} tasks, fetching tags in sub-batches...`);
+      console.log(`   📋 Found ${tasks.length} tasks, fetching tags via get_job_details...`);
 
-      // Enrich tasks with tags in sub-batches of 50 (get_job_details limit)
-      const SUB_BATCH_SIZE = 50;
+      // Fetch tags via get_job_details in sub-batches of 100 (Tookan limit)
+      // NOTE: get_all_tasks does NOT return tags — only get_job_details does
+      const SUB_BATCH_SIZE = 100;
       for (let i = 0; i < tasks.length; i += SUB_BATCH_SIZE) {
         const subBatchTasks = tasks.slice(i, i + SUB_BATCH_SIZE);
         const jobIds = subBatchTasks.map(t => parseInt(t.job_id));
 
-        console.log(`      🔗 Fetching tags for ${jobIds.length} tasks...`);
-        const tagsMap = await fetchTagsForJobIds(jobIds);
+        console.log(`      🔗 Fetching tags for ${jobIds.length} tasks (batch ${Math.floor(i / SUB_BATCH_SIZE) + 1})...`);
+        const detailsMap = await fetchJobDetailsForJobIds(jobIds);
 
-        // Use UPDATE instead of UPSERT to only modify tags column
-        // This prevents overwriting other columns like completed_datetime
         let subBatchUpdated = 0;
         let subBatchErrors = 0;
+        let subBatchTagsFound = 0;
+
         for (const task of subBatchTasks) {
           const jobId = parseInt(task.job_id);
-          const tags = tagsMap[jobId] || null;
+          if (!jobId) continue;
+
+          // Fix: use String key since Object keys from detailsMap are coerced to strings
+          const details = detailsMap[String(jobId)] || detailsMap[jobId];
+
+          // CRITICAL: Only update if get_job_details actually returned this job.
+          // If not returned (rate limit, API hiccup), skip — do NOT overwrite existing tags with null.
+          if (!details) {
+            totalSkipped++;
+            continue;
+          }
+
+          const tags = details.tags || null;
+
+          if (tags) subBatchTagsFound++;
+
+          // Log first task's tags for debugging
+          if (subBatchUpdated === 0 && subBatchErrors === 0 && i === 0) {
+            console.log(`      🔍 Sample: JobID ${jobId}, tags = ${JSON.stringify(tags)}`);
+          }
 
           const { error } = await supabase
             .from('tasks')
@@ -784,7 +814,6 @@ async function syncTaskTags(options = {}) {
             .eq('job_id', jobId);
 
           if (error) {
-            // If record doesn't exist, that's expected - just skip
             if (!error.message.includes('No rows')) {
               subBatchErrors++;
             }
@@ -795,19 +824,19 @@ async function syncTaskTags(options = {}) {
 
         totalUpdated += subBatchUpdated;
         totalErrors += subBatchErrors;
+        totalTagsFound += subBatchTagsFound;
 
-        if (subBatchErrors > 0) {
-          console.error(`   ⚠️ Sub-batch: ${subBatchUpdated} updated, ${subBatchErrors} errors`);
-        }
+        console.log(`      ✅ Sub-batch: ${subBatchUpdated} updated, ${subBatchTagsFound} with tags, ${subBatchErrors} errors`);
 
         // Small delay to avoid hitting Tookan rate limits on get_job_details
         await sleep(200);
       }
 
-      console.log(`   ✅ Current total updated: ${totalUpdated}`);
+      console.log(`   ✅ Batch done — total updated: ${totalUpdated}, tags found: ${totalTagsFound}`);
     }
 
-    return { success: true, stats: { totalUpdated, totalErrors } };
+    console.log(`\n📊 SUMMARY: ${totalUpdated} updated, ${totalTagsFound} with tags, ${totalSkipped} skipped (not in DB), ${totalErrors} errors`);
+    return { success: true, stats: { totalUpdated, totalErrors, totalSkipped, totalTagsFound } };
   } catch (error) {
     console.error('❌ Tag sync failed:', error);
     return { success: false, message: error.message };

@@ -14,7 +14,7 @@ const taskModel = require('./db/models/tasks');
 const userModel = require('./db/models/users');
 const webhookEventsModel = require('./db/models/webhookEvents');
 const { supabase, supabaseAnon, isConfigured } = require('./db/supabase');
-const { authenticate, optionalAuth, requirePermission, requireRole, requireSuperadmin, checkUserStatus, isSuperadmin, SUPERADMIN_EMAIL } = require('./middleware/auth');
+const { authenticate, optionalAuth, requirePermission, requirePermissionAny, requireRole, requireSuperadmin, checkUserStatus, isSuperadmin, SUPERADMIN_EMAIL } = require('./middleware/auth');
 const auditLogger = require('./middleware/auditLogger');
 // Order sync service for 6-month caching
 const orderSyncService = require('./services/orderSyncService');
@@ -762,6 +762,88 @@ app.post('/api/withdrawal-fees/set', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Set fee error:', error);
     res.status(500).json({ status: 'error', message: 'Failed to set fee' });
+  }
+});
+
+// ========== BANK AMOUNT ENDPOINTS ==========
+
+// Get current bank amount
+app.get('/api/bank-amount', authenticate, async (req, res) => {
+  try {
+    let bankAmount = 0;
+    if (isConfigured()) {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'bank_amount')
+        .single();
+
+      if (data && !error) {
+        bankAmount = parseFloat(data.value) || 0;
+      }
+    }
+    res.json({
+      status: 'success',
+      data: { bank_amount: bankAmount }
+    });
+  } catch (error) {
+    console.error('Get bank amount error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to get bank amount' });
+  }
+});
+
+// Set bank amount
+app.post('/api/bank-amount/set', authenticate, async (req, res) => {
+  try {
+    const { amount } = req.body;
+
+    if (typeof amount !== 'number' || amount < 0) {
+      return res.status(400).json({ status: 'error', message: 'Invalid bank amount' });
+    }
+
+    if (isConfigured()) {
+      const { error } = await supabase
+        .from('settings')
+        .upsert({ key: 'bank_amount', value: amount.toString(), updated_at: new Date().toISOString() }, { onConflict: 'key' });
+
+      if (error) {
+        console.error('Set bank amount error:', error);
+        return res.status(500).json({ status: 'error', message: 'Failed to save bank amount' });
+      }
+    }
+
+    res.json({
+      status: 'success',
+      message: 'Bank amount updated',
+      data: { bank_amount: amount }
+    });
+  } catch (error) {
+    console.error('Set bank amount error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to set bank amount' });
+  }
+});
+
+// Get pending withdrawals total
+app.get('/api/withdrawal/pending-total', authenticate, async (req, res) => {
+  try {
+    let pendingTotal = 0;
+    if (isConfigured()) {
+      const { data, error } = await supabase
+        .from('withdrawals')
+        .select('final_amount')
+        .eq('status', 'pending');
+
+      if (data && !error) {
+        pendingTotal = data.reduce((sum, w) => sum + (parseFloat(w.final_amount) || 0), 0);
+      }
+    }
+    res.json({
+      status: 'success',
+      data: { pending_total: pendingTotal }
+    });
+  } catch (error) {
+    console.error('Get pending total error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to get pending total' });
   }
 });
 
@@ -7169,13 +7251,16 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
       console.error('Error fetching drivers for summary:', err);
     }
 
-    // Get customer count from database instead of API
-    let dbCustomerCount = 0;
+    // Get merchant count from merchants table (same source as analytics/dashboard)
+    let dbMerchantCount = 0;
     if (isConfigured()) {
       try {
-        dbCustomerCount = await customerModel.getCustomerCount();
+        const { count } = await supabase
+          .from('merchants')
+          .select('*', { count: 'exact', head: true });
+        dbMerchantCount = count || 0;
       } catch (err) {
-        console.error('Error fetching customer count for summary:', err);
+        console.error('Error fetching merchant count for summary:', err);
       }
     }
 
@@ -7292,12 +7377,12 @@ app.get('/api/reports/summary', authenticate, async (req, res) => {
     let totals = {
       orders: rpcTotals?.total_orders || orders.length,
       drivers: drivers.length,
-      customers: dbCustomerCount,
-      merchants: dbCustomerCount,
+      customers: dbMerchantCount,
+      merchants: dbMerchantCount,
       deliveries: rpcTotals?.completed_deliveries || orders.filter(o => [2].includes(parseInt(o.status))).length
     };
 
-    console.log(`ðŸš€ [BACKEND] Reports Summary: dbCustomerCount=${dbCustomerCount}, totals.merchants=${totals.merchants}`);
+    console.log(`ðŸš€ [BACKEND] Reports Summary: dbMerchantCount=${dbMerchantCount}, totals.merchants=${totals.merchants}`);
     console.log('ðŸ“Š Reports Summary Totals:', JSON.stringify(totals, null, 2));
     console.log('ðŸ“Š Supabase RPC stats: orders=%d, deliveries=%d', totals.orders, totals.deliveries);
 
@@ -7546,34 +7631,56 @@ app.put('/api/withdrawal/request/:id/approve', authenticate, requirePermission('
     const vendorId = request.vendor_id;
     const finalAmount = parseFloat(request.final_amount || request.requested_amount || request.amount || 0);
 
+    let walletDebitSuccess = false;
     if (vendorId && finalAmount > 0) {
-      const walletPayload = {
-        api_key: apiKey,
-        vendor_id: vendorId,
-        amount: -Math.abs(finalAmount), // Negative for debit
-        description: `Withdrawal approved (ID: ${requestId})`
-      };
+      try {
+        const walletPayload = {
+          api_key: apiKey,
+          vendor_id: vendorId,
+          amount: -Math.abs(finalAmount), // Negative for debit
+          description: `Withdrawal approved (ID: ${requestId})`
+        };
 
-      const walletResponse = await fetch('https://api.tookanapp.com/v2/addCustomerPaymentViaDashboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(walletPayload)
-      });
-
-      const walletData = await walletResponse.json();
-      if (walletData.status !== 200) {
-        return res.status(500).json({
-          status: 'error',
-          message: walletData.message || 'Failed to debit merchant wallet',
-          data: {}
+        const walletResponse = await fetch('https://api.tookanapp.com/v2/addCustomerPaymentViaDashboard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(walletPayload)
         });
-      }
 
-      console.log('✅ Merchant wallet debited:', vendorId, 'Amount:', finalAmount);
+        const walletData = await walletResponse.json();
+        if (walletData.status === 200) {
+          walletDebitSuccess = true;
+          console.log('✅ Merchant wallet debited:', vendorId, 'Amount:', finalAmount);
+        } else {
+          console.warn('⚠️ Wallet debit failed (non-blocking):', walletData.message || 'Unknown error');
+        }
+      } catch (walletError) {
+        console.warn('⚠️ Wallet debit error (non-blocking):', walletError.message);
+      }
     }
 
     // Update request status in database
     const approvedRequest = await withdrawalRequestsModel.approveRequest(requestId);
+
+    // Subtract the final_amount from bank amount
+    try {
+      const { data: settingsData } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'bank_amount')
+        .single();
+
+      if (settingsData) {
+        const currentBankAmount = parseFloat(settingsData.value) || 0;
+        const newBankAmount = Math.max(0, currentBankAmount - finalAmount);
+        await supabase
+          .from('settings')
+          .upsert({ key: 'bank_amount', value: newBankAmount.toString(), updated_at: new Date().toISOString() }, { onConflict: 'key' });
+        console.log('✅ Bank amount updated:', currentBankAmount, '->', newBankAmount);
+      }
+    } catch (bankError) {
+      console.error('⚠️ Failed to update bank amount (non-fatal):', bankError.message);
+    }
 
     console.log('✅ Withdrawal request approved:', requestId);
 
@@ -9222,13 +9329,13 @@ app.post('/api/tookan/delete-task', authenticate, requirePermission('panel_order
 // ============================================
 
 // POST /api/settlement-logs — Create settlement log entry
-app.post('/api/settlement-logs', async (req, res) => {
+app.post('/api/settlement-logs', authenticate, requirePermission('panel_financial'), async (req, res) => {
   try {
     if (!isConfigured()) {
       return res.status(500).json({ status: 'error', message: 'Database not configured' });
     }
 
-    const { settled_by_email, settled_by_name, driver_name, fleet_id, amount, settlement_type, settlement_date_from, settlement_date_to, task_count, merchant_name, vendor_id } = req.body;
+    const { settled_by_email, settled_by_name, driver_name, fleet_id, amount, settlement_type, settlement_date_from, settlement_date_to, task_count, merchant_name, vendor_id, notes } = req.body;
 
     if (!settled_by_email || amount === undefined) {
       return res.status(400).json({ status: 'error', message: 'Missing required fields' });
@@ -9248,6 +9355,7 @@ app.post('/api/settlement-logs', async (req, res) => {
 
     if (merchant_name) insertData.merchant_name = merchant_name;
     if (vendor_id) insertData.vendor_id = Number(vendor_id);
+    if (notes) insertData.notes = notes;
 
     const { data, error } = await supabase
       .from('settlement_logs')
@@ -9269,14 +9377,14 @@ app.post('/api/settlement-logs', async (req, res) => {
 });
 
 // GET /api/settlement-logs — Fetch settlement logs with filters
-app.get('/api/settlement-logs', async (req, res) => {
+app.get('/api/settlement-logs', authenticate, requirePermissionAny(['panel_financial', 'panel_financial_readonly']), async (req, res) => {
   try {
     if (!isConfigured()) {
       return res.status(500).json({ status: 'error', message: 'Database not configured' });
     }
 
-    const { date_from, date_to, driver, merchant, limit: queryLimit, offset: queryOffset } = req.query;
-    const pageLimit = Math.min(Number(queryLimit) || 50, 200);
+    const { date_from, date_to, driver, merchant, type, limit: queryLimit, offset: queryOffset } = req.query;
+    const pageLimit = Math.min(Number(queryLimit) || 100, 200);
     const pageOffset = Number(queryOffset) || 0;
 
     let query = supabase
@@ -9289,6 +9397,20 @@ app.get('/api/settlement-logs', async (req, res) => {
     if (date_to) query = query.lte('created_at', `${date_to}T23:59:59`);
     if (driver) query = query.ilike('driver_name', `%${driver}%`);
     if (merchant) query = query.ilike('merchant_name', `%${merchant}%`);
+    // Type filter: supports exact match or category-based filtering
+    if (type) {
+      if (type === 'reconciliation') {
+        query = query.in('settlement_type', ['calendar', 'view_tasks']);
+      } else if (type === 'merchant_settlement') {
+        query = query.in('settlement_type', ['merchant_calendar', 'merchant_view_tasks']);
+      } else if (type === 'driver_wallet') {
+        query = query.in('settlement_type', ['driver_wallet_credit', 'driver_wallet_debit']);
+      } else if (type === 'merchant_wallet') {
+        query = query.in('settlement_type', ['merchant_wallet_credit', 'merchant_wallet_debit']);
+      } else {
+        query = query.eq('settlement_type', type);
+      }
+    }
 
     const { data, error, count } = await query;
 
@@ -9309,7 +9431,7 @@ app.get('/api/settlement-logs', async (req, res) => {
 // ============================================
 
 // GET /api/driver-notes?fleet_id=123&date_from=2025-01-01&date_to=2025-01-31
-app.get('/api/driver-notes', authenticate, async (req, res) => {
+app.get('/api/driver-notes', authenticate, requirePermissionAny(['panel_financial', 'panel_financial_readonly']), async (req, res) => {
   try {
     const { fleet_id, date_from, date_to } = req.query;
     if (!fleet_id) {
@@ -9340,7 +9462,7 @@ app.get('/api/driver-notes', authenticate, async (req, res) => {
 });
 
 // POST /api/driver-notes — upsert a note for a specific driver + date
-app.post('/api/driver-notes', authenticate, async (req, res) => {
+app.post('/api/driver-notes', authenticate, requirePermissionAny(['panel_financial', 'panel_financial_readonly']), async (req, res) => {
   try {
     const { fleet_id, note_date, note_text } = req.body;
     if (!fleet_id || !note_date) {

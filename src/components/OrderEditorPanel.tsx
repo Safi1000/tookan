@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Search, RefreshCw, RotateCcw, CornerDownLeft, Save, X, Plus, Trash2, AlertTriangle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '../lib/supabase';
 import {
   fetchCachedOrders,
   reorderOrder,
@@ -157,6 +158,30 @@ export function OrderEditorPanel() {
         }
       }
 
+      let finalCustomerName = first.customerName || '';
+      let finalCustomerPhone = first.customerPhone || '';
+
+      const orderIdToLookup = first.orderId || first.order_id;
+
+      // Override with actual Merchant info if available
+      if (orderIdToLookup) {
+        try {
+          const { data: merchantData, error: merchantError } = await supabase
+            .from('merchants')
+            .select('customer_username, customer_phone')
+            .eq('merchant_id', orderIdToLookup)
+            .single();
+            
+          if (!merchantError && merchantData) {
+            finalCustomerName = merchantData.customer_username || finalCustomerName;
+            finalCustomerPhone = merchantData.customer_phone || finalCustomerPhone;
+            console.log('Merchant info found for order_id:', orderIdToLookup, merchantData);
+          }
+        } catch (mErr) {
+          console.error('Merchant lookup failed:', mErr);
+        }
+      }
+
       setOrder({
         jobId: first.jobId,
         codAmount: first.codAmount || 0,
@@ -165,8 +190,8 @@ export function OrderEditorPanel() {
         assignedDriver: first.assignedDriver ?? null,
         notes: first.notes || '',
         date: first.date || null,
-        customerName: first.customerName || '',
-        customerPhone: first.customerPhone || '',
+        customerName: finalCustomerName,
+        customerPhone: finalCustomerPhone,
         customerEmail: first.customerEmail || '',
         pickupAddress: pickupAddr,
         deliveryAddress: deliveryAddr,
@@ -477,7 +502,7 @@ export function OrderEditorPanel() {
                 />
               </div>
               <div>
-                <p className="text-subheading text-xs uppercase mb-1">Customer Name</p>
+                <p className="text-subheading text-xs uppercase mb-1">Merchant Name</p>
                 <input
                   value={order.customerName || 'N/A'}
                   disabled
@@ -485,7 +510,7 @@ export function OrderEditorPanel() {
                 />
               </div>
               <div>
-                <p className="text-subheading text-xs uppercase mb-1">Customer Phone</p>
+                <p className="text-subheading text-xs uppercase mb-1">Merchant Phone</p>
                 <input
                   value={order.customerPhone || 'N/A'}
                   disabled
@@ -764,7 +789,8 @@ export function OrderEditorPanel() {
               <button
                 onClick={handleDeleteCallback}
                 disabled={isDeleting}
-                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
+                style={{ color: '#ffffff', backgroundColor: '#dc2626' }}
+                className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-lg hover:bg-red-700 transition flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
               >
                 {isDeleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 Confirm Delete

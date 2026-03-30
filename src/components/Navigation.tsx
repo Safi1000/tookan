@@ -45,7 +45,7 @@ function isSuperadmin(user?: UserData | null) {
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'reports', label: 'Reports Panel', icon: FileText, requiredPermission: 'panel_reports' },
-  { id: 'financial', label: 'Balance Panel', icon: Wallet, requiredPermission: 'panel_financial' },
+  { id: 'financial', label: 'Balance Panel', icon: Wallet, requiredPermission: ['panel_financial', 'panel_financial_readonly'] },
   { id: 'order-editor', label: 'Order Editor Panel', icon: Edit3, requiredPermission: 'panel_order_editor' },
   { id: 'withdrawals', label: 'Withdrawal Requests', icon: CreditCard, requiredPermission: 'panel_withdrawals' },
   { id: 'merchant-plans', label: 'Merchant Plans', icon: Package, requiredPermission: 'panel_merchant_plans' },
@@ -86,7 +86,11 @@ export function Navigation({ activeMenu, setActiveMenu, onLogout, user }: Naviga
     if ((item as any).requiredPermission) {
       const perms = user?.permissions;
       if (!perms) return false;
-      return perms[(item as any).requiredPermission] === true;
+      const required = (item as any).requiredPermission;
+      if (Array.isArray(required)) {
+        return required.some((p: string) => perms[p] === true);
+      }
+      return perms[required] === true;
     }
 
     return true;
