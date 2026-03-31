@@ -4701,6 +4701,7 @@ function getApp() {
           type: 'customer',
           customerId: w.vendor_id || w.fleet_id || '',
           customerName: '',
+          merchantName: '',
           phone: '',
           iban: w.iban || '',
           withdrawalAmount: parseFloat(w.requested_amount || 0),
@@ -4715,6 +4716,31 @@ function getApp() {
           tax_applied: parseFloat(w.tax_applied || 0),
           final_amount: parseFloat(w.final_amount || 0),
         }));
+
+        // Resolve merchant names by querying the merchants table using merchant_id
+        const vendorIds = [...new Set(mapped.map(w => w.vendor_id).filter(Boolean))];
+        if (vendorIds.length > 0) {
+          try {
+            const { data: merchants } = await supabase
+              .from('merchants')
+              .select('merchant_id, customer_username')
+              .in('merchant_id', vendorIds);
+
+            if (merchants && merchants.length > 0) {
+              const merchantMap = {};
+              for (const m of merchants) {
+                merchantMap[String(m.merchant_id)] = m.customer_username || '';
+              }
+              for (const w of mapped) {
+                if (w.vendor_id && merchantMap[String(w.vendor_id)]) {
+                  w.merchantName = merchantMap[String(w.vendor_id)];
+                }
+              }
+            }
+          } catch (merchantErr) {
+            console.error('Failed to resolve merchant names for withdrawals:', merchantErr.message);
+          }
+        }
 
         res.json({
           status: 'success',

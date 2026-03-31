@@ -7553,6 +7553,7 @@ app.get('/api/withdrawal/requests', authenticate, requirePermission('panel_withd
           type: w.request_type || 'customer',
           customerId: w.vendor_id || w.merchant_id || w.fleet_id,
           customerName: w.merchant_id ? `Merchant ${w.merchant_id}` : w.driver_id ? `Driver ${w.driver_id}` : '',
+          merchantName: '',
           phone: '',
           iban: w.iban || '',
           withdrawalAmount: parseFloat(w.amount || w.requested_amount || 0),
@@ -7570,6 +7571,43 @@ app.get('/api/withdrawal/requests', authenticate, requirePermission('panel_withd
           tax_applied: parseFloat(w.tax_applied || 0),
           final_amount: parseFloat(w.final_amount || 0),
         }));
+
+        // Resolve merchant names by querying the merchants table using merchant_id
+        const vendorIds = [...new Set(requests.map(w => w.vendor_id).filter(Boolean))];
+        if (vendorIds.length > 0) {
+          try {
+            const { data: merchants } = await supabase
+              .from('merchants')
+              .select('merchant_id, customer_username')
+              .in('merchant_id', vendorIds);
+
+            if (merchants && merchants.length > 0) {
+              const merchantMap = {};
+              for (const m of merchants) {
+                merchantMap[String(m.merchant_id)] = m.customer_username || '';
+              }
+              for (const w of requests) {
+                if (w.vendor_id && merchantMap[String(w.vendor_id)]) {
+                  w.merchantName = merchantMap[String(w.vendor_id)];
+                }
+              }
+            }
+          } catch (merchantErr) {
+            console.error('Failed to resolve merchant names for withdrawals:', merchantErr.message);
+          }
+        }
+
+        // Compute total pending withdrawal amount per merchant
+        const pendingByVendor = {};
+        for (const w of requests) {
+          if (w.vendor_id && (w.status || '').toLowerCase() === 'pending') {
+            const vid = String(w.vendor_id);
+            pendingByVendor[vid] = (pendingByVendor[vid] || 0) + (w.final_amount || w.requested_amount || 0);
+          }
+        }
+        for (const w of requests) {
+          w.totalPendingAmount = w.vendor_id ? (pendingByVendor[String(w.vendor_id)] || 0) : 0;
+        }
       } catch (error) {
         console.warn('Database fetch failed:', error.message);
       }

@@ -262,6 +262,8 @@ export interface WithdrawalRequest {
   type: 'customer';
   customerId?: string;
   customerName?: string;
+  merchantName?: string;
+  totalPendingAmount?: number;
   phone: string;
   iban: string;
   withdrawalAmount: number;

@@ -462,11 +462,13 @@ export function WithdrawalRequestsPanel() {
             <thead className="table-header-bg dark:bg-[#1A2C53] border-b border-border dark:border-[#2A3C63]">
               <tr>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Merchant ID</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Merchant Name</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Merchant Email</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Withdraw Amount</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Tax</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Final Amount</th>
                 <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">IBAN</th>
+                <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Total Pending</th>
                 {activeTab === 'pending' && (
                   <th className="text-left px-6 py-4 table-header-text dark:text-heading text-sm font-medium">Actions</th>
                 )}
@@ -478,7 +480,7 @@ export function WithdrawalRequestsPanel() {
                 if (tabRows.length === 0) {
                   return (
                     <tr>
-                      <td colSpan={activeTab === 'pending' ? 7 : 6} className="px-6 py-12 text-center text-muted-light dark:text-[#99BFD1]">
+                      <td colSpan={activeTab === 'pending' ? 9 : 8} className="px-6 py-12 text-center text-muted-light dark:text-[#99BFD1]">
                         No {activeTab} withdrawal requests found
                       </td>
                     </tr>
@@ -487,11 +489,13 @@ export function WithdrawalRequestsPanel() {
                 return tabRows.map((withdrawal, index) => (
                   <tr key={withdrawal.id} className={`border-b border-border dark:border-[#2A3C63] hover:bg-hover-bg-light dark:hover:bg-[#1A2C53]/50 transition-colors ${index % 2 === 0 ? 'table-zebra dark:bg-[#223560]/20' : ''}`}>
                     <td className="px-6 py-4 text-heading">{withdrawal.vendor_id || withdrawal.customerId || '—'}</td>
+                    <td className="px-6 py-4 text-heading">{withdrawal.merchantName || '—'}</td>
                     <td className="px-6 py-4 text-subheading">{withdrawal.email || '—'}</td>
                     <td className="px-6 py-4 text-heading font-semibold">BHD {(withdrawal.requested_amount || withdrawal.withdrawalAmount || 0).toFixed(2)}</td>
                     <td className="px-6 py-4 text-subheading">BHD {(withdrawal.tax_applied || 0).toFixed(2)}</td>
                     <td className="px-6 py-4 text-green-500 font-semibold">BHD {(withdrawal.final_amount || 0).toFixed(2)}</td>
                     <td className="px-6 py-4 text-subheading font-mono text-sm">{withdrawal.iban || '—'}</td>
+                    <td className="px-6 py-4 text-[#F59E0B] font-semibold">BHD {(withdrawal.totalPendingAmount || 0).toFixed(2)}</td>
                     {activeTab === 'pending' && (
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
