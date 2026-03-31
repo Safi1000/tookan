@@ -341,6 +341,7 @@ export function WithdrawalRequestsPanel() {
             <span className="font-bold text-xs">BHD</span>
             Withdrawal Fees
           </button>
+          {/* Bank Amount button - commented out for now
           <button
             onClick={() => setShowBankModal(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#3B82F6]/10 border border-[#3B82F6]/30 rounded-xl hover:bg-[#3B82F6]/20 transition-all text-[#3B82F6] text-sm font-medium"
@@ -349,6 +350,8 @@ export function WithdrawalRequestsPanel() {
             Bank Amount
             <span className="font-bold text-xs bg-[#3B82F6]/20 px-2 py-0.5 rounded-full whitespace-nowrap">BHD {currentBankAmount.toFixed(3)}</span>
           </button>
+          */}
+          {/* Pending Withdrawals indicator - commented out for now
           <div
             className="flex items-center gap-2 px-4 py-2.5 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-xl text-[#F59E0B] text-sm font-medium"
           >
@@ -356,6 +359,7 @@ export function WithdrawalRequestsPanel() {
             <span className="whitespace-nowrap">Pending Withdrawals</span>
             <span className="font-bold text-xs bg-[#F59E0B]/20 px-2 py-0.5 rounded-full whitespace-nowrap">BHD {pendingTotal.toFixed(3)}</span>
           </div>
+          */}
         </div>
       </div>
 
