@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, X, Search, Calendar, CheckCircle, XCircle, RefreshCw, DollarSign, Landmark, Clock } from 'lucide-react';
+import { Check, X, Search, Calendar, CheckCircle, XCircle, RefreshCw, DollarSign, Landmark, Clock, Loader2 } from 'lucide-react';
 import { DatePicker } from './ui/date-picker';
 import { toast } from 'sonner';
 import { fetchWithdrawalRequests, approveWithdrawalRequest, rejectWithdrawalRequest, type WithdrawalRequest } from '../services/tookanApi';
@@ -63,6 +63,7 @@ export function WithdrawalRequestsPanel() {
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
+  const [processingId, setProcessingId] = useState<number | null>(null);
 
   // Withdrawal Fees Modal State
   const [showFeesModal, setShowFeesModal] = useState(false);
@@ -231,6 +232,8 @@ export function WithdrawalRequestsPanel() {
   };
 
   const handleApprove = async (id: number) => {
+    if (processingId !== null) return;
+    setProcessingId(id);
     try {
       const result = await approveWithdrawalRequest(id.toString());
       if (result.status === 'success') {
@@ -243,10 +246,14 @@ export function WithdrawalRequestsPanel() {
       }
     } catch (error) {
       toast.error('Failed to approve withdrawal request');
+    } finally {
+      setProcessingId(null);
     }
   };
 
   const handleReject = async (id: number) => {
+    if (processingId !== null) return;
+    setProcessingId(id);
     try {
       const result = await rejectWithdrawalRequest(id.toString());
       if (result.status === 'success') {
@@ -258,6 +265,8 @@ export function WithdrawalRequestsPanel() {
       }
     } catch (error) {
       toast.error('Failed to reject withdrawal request');
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -505,17 +514,35 @@ export function WithdrawalRequestsPanel() {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleApprove(withdrawal.id)}
-                            className="p-1.5 bg-green-500/10 border border-green-500/30 rounded-lg hover:bg-green-500/20 transition-all group"
+                            disabled={processingId !== null}
+                            className={`p-1.5 border rounded-lg transition-all group ${
+                              processingId !== null
+                                ? 'bg-green-500/5 border-green-500/15 opacity-50 cursor-not-allowed'
+                                : 'bg-green-500/10 border-green-500/30 hover:bg-green-500/20'
+                            }`}
                             title="Approve"
                           >
-                            <Check className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
+                            {processingId === withdrawal.id ? (
+                              <Loader2 className="w-4 h-4 text-green-400 animate-spin" />
+                            ) : (
+                              <Check className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
+                            )}
                           </button>
                           <button
                             onClick={() => handleReject(withdrawal.id)}
-                            className="p-1.5 bg-[#DE3544]/10 border border-[#DE3544]/30 rounded-lg hover:bg-[#DE3544]/20 transition-all group"
+                            disabled={processingId !== null}
+                            className={`p-1.5 border rounded-lg transition-all group ${
+                              processingId !== null
+                                ? 'bg-[#DE3544]/5 border-[#DE3544]/15 opacity-50 cursor-not-allowed'
+                                : 'bg-[#DE3544]/10 border-[#DE3544]/30 hover:bg-[#DE3544]/20'
+                            }`}
                             title="Reject"
                           >
-                            <X className="w-4 h-4 text-[#DE3544] group-hover:scale-110 transition-transform" />
+                            {processingId === withdrawal.id ? (
+                              <Loader2 className="w-4 h-4 text-[#DE3544] animate-spin" />
+                            ) : (
+                              <X className="w-4 h-4 text-[#DE3544] group-hover:scale-110 transition-transform" />
+                            )}
                           </button>
                         </div>
                       </td>

@@ -230,6 +230,7 @@ export function FinancialPanel() {
   const [taskModalDate, setTaskModalDate] = useState<string | null>(null);
   const [tasksList, setTasksList] = useState<TaskPaymentEntry[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [isSavingSettlement, setIsSavingSettlement] = useState(false);
 
   // Settlement Logs state
   interface SettlementLog {
@@ -1093,7 +1094,8 @@ export function FinancialPanel() {
 
   // Save calendar card payment - cumulative: updates all tasks from dateFrom through selected date
   const saveCalendarCardPayment = async (date: string, paymentAmount: number, status: 'PENDING' | 'COMPLETED') => {
-    if (!selectedDriver || !supabase) return;
+    if (!selectedDriver || !supabase || isSavingSettlement) return;
+    setIsSavingSettlement(true);
 
     const driver = drivers.find(d => d.id === selectedDriver);
     if (!driver) return;
@@ -1274,11 +1276,14 @@ export function FinancialPanel() {
     } catch (err) {
       console.error('Error saving calendar card payment:', err);
       toast.error('Failed to save payment');
+    } finally {
+      setIsSavingSettlement(false);
     }
   };
   // Save task payments — cumulative: updates daily states for all affected days
   const saveTaskPayments = async () => {
-    if (!selectedDriver || !taskModalDate) return;
+    if (!selectedDriver || !taskModalDate || isSavingSettlement) return;
+    setIsSavingSettlement(true);
 
     const driver = drivers.find(d => d.id === selectedDriver);
     if (!driver) return;
@@ -1430,6 +1435,8 @@ export function FinancialPanel() {
     } catch (err) {
       console.error('Error saving task payments:', err);
       toast.error('Failed to save some task payments');
+    } finally {
+      setIsSavingSettlement(false);
     }
 
     setTaskModalOpen(false);
@@ -2164,6 +2171,7 @@ export function FinancialPanel() {
                               <button
                                 onClick={async () => {
                                   if (isEditing) {
+                                    if (isSavingSettlement) return;
                                     // Save logic - capture both payment and status
                                     const paidInput = document.getElementById(`paid-${item.date}`) as HTMLInputElement;
                                     const statusSelect = document.getElementById(`status-${item.date}`) as HTMLSelectElement;
@@ -2178,14 +2186,21 @@ export function FinancialPanel() {
                                     setEditingDate(item.date);
                                   }
                                 }}
+                                disabled={isEditing && isSavingSettlement}
                                 className={`w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs transition-all font-medium ${isEditing
-                                  ? 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] hover:shadow-md dark:hover:shadow-[0_0_12px_rgba(193,238,250,0.4)]'
+                                  ? isSavingSettlement
+                                    ? 'bg-[#DE3544]/50 text-white/70 cursor-not-allowed'
+                                    : 'bg-primary dark:bg-[#C1EEFA] text-white dark:text-[#1A2C53] hover:shadow-md dark:hover:shadow-[0_0_12px_rgba(193,238,250,0.4)]'
                                   : 'bg-primary/10 dark:bg-[#C1EEFA]/10 text-primary dark:text-[#C1EEFA] border border-primary/30 dark:border-[#C1EEFA]/30 hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20'
                                   }`}
-                                style={isEditing ? { backgroundColor: '#DE3544', color: 'white' } : {}}
+                                style={isEditing ? (isSavingSettlement ? { backgroundColor: '#DE3544', color: 'white', opacity: 0.5 } : { backgroundColor: '#DE3544', color: 'white' }) : {}}
                               >
-                                <Save className="w-3 h-3" />
-                                {isEditing ? 'Confirm' : 'Edit'}
+                                {isEditing && isSavingSettlement ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Save className="w-3 h-3" />
+                                )}
+                                {isEditing ? (isSavingSettlement ? 'Saving...' : 'Confirm') : 'Edit'}
                               </button>
                               )}
 
@@ -3562,21 +3577,27 @@ export function FinancialPanel() {
                     {!isReadOnly && (
                     <button
                       onClick={saveTaskPayments}
+                      disabled={isSavingSettlement}
                       style={{
                         padding: '0.625rem 1.5rem',
-                        backgroundColor: '#1A2C53',
+                        backgroundColor: isSavingSettlement ? '#1A2C53' : '#1A2C53',
                         color: 'white',
                         borderRadius: '0.5rem',
-                        cursor: 'pointer',
+                        cursor: isSavingSettlement ? 'not-allowed' : 'pointer',
                         fontWeight: 500,
                         display: 'flex',
                         alignItems: 'center',
                         gap: '0.5rem',
-                        transition: 'box-shadow 0.2s'
-                      }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'} className="button border border-transparent dark:border-white"
+                        transition: 'box-shadow 0.2s',
+                        opacity: isSavingSettlement ? 0.5 : 1
+                      }} onMouseEnter={(e) => { if (!isSavingSettlement) e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)'; }} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'} className="button border border-transparent dark:border-white"
                     >
-                      <Save style={{ width: '1rem', height: '1rem' }} />
-                      Confirm
+                      {isSavingSettlement ? (
+                        <Loader2 style={{ width: '1rem', height: '1rem', animation: 'spin 1s linear infinite' }} />
+                      ) : (
+                        <Save style={{ width: '1rem', height: '1rem' }} />
+                      )}
+                      {isSavingSettlement ? 'Saving...' : 'Confirm'}
                     </button>
                     )}
                   </div>
