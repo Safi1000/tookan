@@ -563,19 +563,16 @@ export function MerchantPlansPanel() {
             {planForm.feeType === 'fixed' && (
               <div>
                 <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2.5 font-semibold">
-                  Fee Amount
+                  Fee Amount <span className="text-muted-light dark:text-[#99BFD1] font-normal">(BHD)</span>
                 </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-heading dark:text-[#C1EEFA] font-medium">BHD</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={planForm.feeAmount}
-                    onChange={(e) => setPlanForm({ ...planForm, feeAmount: parseFloat(e.target.value) || 0 })}
-                    placeholder="0.00"
-                    className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-xl pl-16 pr-4 py-3 text-base text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all"
-                  />
-                </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={planForm.feeAmount}
+                  onChange={(e) => setPlanForm({ ...planForm, feeAmount: parseFloat(e.target.value) || 0 })}
+                  placeholder="0.00"
+                  className="w-full bg-input-bg dark:bg-[#223560] border border-input-border dark:border-[#2A3C63] rounded-xl px-4 py-3 text-base text-heading dark:text-[#C1EEFA] placeholder-input-placeholder dark:placeholder-[#5B7894] focus:outline-none focus:border-primary dark:focus:border-[#C1EEFA] focus:shadow-[0_0_12px_rgba(222,53,68,0.3)] dark:focus:shadow-[0_0_12px_rgba(193,238,250,0.3)] transition-all"
+                />
               </div>
             )}
 

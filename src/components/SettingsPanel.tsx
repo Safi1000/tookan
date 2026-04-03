@@ -582,7 +582,7 @@ export function SettingsPanel() {
                             <div>
                                 <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">Your API Token</label>
                                 <div className="relative">
-                                    <div className="bg-[#1A2C53] dark:bg-[#0F1D36] rounded-xl p-4 font-mono text-sm break-all border border-[#2A3C63]">
+                                    <div className="bg-[#1A2C53] dark:bg-[#0F1D36] rounded-xl p-4 font-mono text-sm break-all border border-[#2A3C63]" style={{ backgroundColor: '#f1f5f9', borderColor: '#cbd5e1' }}>
                                         <span className="text-[#10B981]">
                                             {showToken ? newlyCreatedToken.token : newlyCreatedToken.token.substring(0, 12) + "•".repeat(40)}
                                         </span>
