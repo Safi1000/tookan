@@ -393,6 +393,29 @@ export function ReportsPanel() {
         const ordersData = filteredOrders.map((order: any) => {
           const merchantId = order.order_id || '';
           const merchantInfo = merchantId ? merchantInfoMap[String(merchantId)] : null;
+
+          // Compute order fees using same logic as table display
+          let computedOrderFees = 0;
+          const tags = order.tags || '';
+          const vendorIdStr = String(order.vendor_id || '');
+          const customerPlan = vendorIdStr ? customerPlanMap[vendorIdStr] : null;
+
+          if (customerPlan) {
+            computedOrderFees = customerPlan.planAmount;
+          } else if (tags) {
+            const tagsLower = tags.toLowerCase();
+            if (tagsLower.includes('same day delivery')) {
+              computedOrderFees = sameDayFee;
+            } else if (tagsLower.includes('express delivery')) {
+              computedOrderFees = expressFee;
+            }
+          }
+
+          // Skip pickup tasks (same as table rendering)
+          const pickupAddr = (order.pickup_address || order.pickupAddress || '').trim().toLowerCase();
+          const deliveryAddr = (order.delivery_address || order.deliveryAddress || '').trim().toLowerCase();
+          if (pickupAddr === deliveryAddr) return null;
+
           return {
             'Order ID': order.jobId || order.job_id || '',
             'Merchant ID': merchantId,
@@ -405,12 +428,12 @@ export function ReportsPanel() {
             'Pickup Address': order.pickup_address || order.pickupAddress || '',
             'Delivery Address': order.delivery_address || order.deliveryAddress || '',
             'COD': typeof (order.cod_amount || order.codAmount) === 'number' ? (order.cod_amount || order.codAmount).toFixed(2) : '0.00',
-            'Order Fees': typeof (order.order_fees || order.orderFees) === 'number' ? (order.order_fees || order.orderFees).toFixed(2) : '0.00',
+            'Order Fees': computedOrderFees > 0 ? computedOrderFees.toFixed(2) : '0.00',
             'Tookan Fees': tookanFeeRate.toFixed(2),
             'Status': mapStatus(order.status),
-            'Tags': order.tags || ''
+            'Tags': customerPlan ? customerPlan.planName : (tags || '')
           };
-        });
+        }).filter(Boolean);
         const ordersSheet = XLSX.utils.json_to_sheet(ordersData);
         XLSX.utils.book_append_sheet(workbook, ordersSheet, 'Order List');
       }
@@ -462,7 +485,7 @@ export function ReportsPanel() {
       console.error('Export error:', error);
       toast.error('Failed to export data');
     }
-  }, [driverPerformanceData, customerPerformanceData, filteredOrders, mapStatus, tookanFeeRate, merchantInfoMap]);
+  }, [driverPerformanceData, customerPerformanceData, filteredOrders, mapStatus, tookanFeeRate, merchantInfoMap, customerPlanMap, sameDayFee, expressFee]);
 
   // Mock validation states for auto-suggest
   const getValidationColor = (value: string) => {
