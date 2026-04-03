@@ -582,7 +582,7 @@ export function SettingsPanel() {
                             <div>
                                 <label className="block text-heading dark:text-[#C1EEFA] text-sm mb-2 font-medium">Your API Token</label>
                                 <div className="relative">
-                                    <div className="rounded-xl p-4 font-mono text-sm break-all border dark:!bg-[#0F1D36] dark:!border-[#2A3C63]" style={{ backgroundColor: '#f1f5f9', borderColor: '#cbd5e1' }}>
+                                    <div className="bg-slate-100 dark:bg-[#0F1D36] rounded-xl p-4 font-mono text-sm break-all border border-slate-300 dark:border-[#2A3C63]">
                                         <span className="text-[#10B981]">
                                             {showToken ? newlyCreatedToken.token : newlyCreatedToken.token.substring(0, 12) + "•".repeat(40)}
                                         </span>
@@ -590,22 +590,21 @@ export function SettingsPanel() {
                                     <div className="absolute top-3 right-3 flex" style={{ gap: '10px' }}>
                                         <button
                                             onClick={() => setShowToken(!showToken)}
-                                            className="p-2.5 rounded-lg transition-colors dark:!bg-[#2A3C63] dark:hover:!bg-[#3A4C73]" style={{ backgroundColor: '#e2e8f0' }}
+                                            className="p-2.5 rounded-lg transition-colors bg-slate-200 hover:bg-slate-300 dark:bg-[#2A3C63] dark:hover:bg-[#3A4C73]"
                                             title={showToken ? "Hide token" : "Show token"}
                                         >
                                             {showToken ? (
-                                                <EyeOff className="w-5 h-5 text-[#99BFD1]" />
+                                                <EyeOff className="w-5 h-5 text-slate-500 dark:text-[#99BFD1]" />
                                             ) : (
-                                                <Eye className="w-5 h-5 text-[#99BFD1]" />
+                                                <Eye className="w-5 h-5 text-slate-500 dark:text-[#99BFD1]" />
                                             )}
                                         </button>
                                         <button
                                             onClick={() => copyToClipboard(newlyCreatedToken.token)}
                                             className={`p-2.5 rounded-lg transition-colors ${tokenCopied
                                                 ? "bg-[#10B981]/20 text-[#10B981]"
-                                                : "dark:!bg-[#2A3C63] dark:!text-[#99BFD1] dark:hover:!bg-[#3A4C73]"
+                                                : "bg-slate-200 text-slate-500 hover:bg-slate-300 dark:bg-[#2A3C63] dark:text-[#99BFD1] dark:hover:bg-[#3A4C73]"
                                                 }`}
-                                            style={!tokenCopied ? { backgroundColor: '#e2e8f0', color: '#64748b' } : undefined}
                                             title="Copy to clipboard"
                                         >
                                             {tokenCopied ? <CheckCircle className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
