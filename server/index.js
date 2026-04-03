@@ -9842,7 +9842,7 @@ app.post('/api/tookan/update-task-status', authenticate, requirePermission('pane
       const { data: relatedTasks } = await supabase
         .from('tasks')
         .select('job_id')
-        .eq('raw_data->>pickup_delivery_relationship', relationshipId);
+        .eq('raw_data->>pickup_delivery_relationship', String(relationshipId));
 
       if (relatedTasks) {
         connectedJobIds = relatedTasks.map(t => t.job_id);

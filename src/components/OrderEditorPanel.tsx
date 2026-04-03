@@ -71,7 +71,6 @@ export function OrderEditorPanel() {
 
   // Status update state
   const [editStatus, setEditStatus] = useState<string>('');
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [showStatusConfirm, setShowStatusConfirm] = useState(false);
 
   // Load agents from Tookan API (live data)
@@ -215,8 +214,22 @@ export function OrderEditorPanel() {
 
   const handleSave = async () => {
     if (!order) return;
+
+    // If status changed to a destructive value, show confirmation first
+    const statusChanged = editStatus && parseInt(editStatus) !== order.status;
+    if (statusChanged && (editStatus === '3' || editStatus === '9')) {
+      setShowStatusConfirm(true);
+      return;
+    }
+
+    await performSave();
+  };
+
+  const performSave = async () => {
+    if (!order) return;
     setIsSaving(true);
     try {
+      // 1. Save order fields (COD, fees, notes)
       const payload = {
         codAmount: parseFloat(editCod) || 0,
         orderFees: parseFloat(editFees) || 0,
@@ -231,10 +244,36 @@ export function OrderEditorPanel() {
           orderFees: payload.orderFees,
           notes: payload.notes
         }) : prev);
-        toast.success('Changes saved');
       } else {
-        toast.error(result.message || 'Failed to save');
+        toast.error(result.message || 'Failed to save order fields');
+        return;
       }
+
+      // 2. Update status if changed
+      const statusChanged = editStatus && parseInt(editStatus) !== order.status;
+      if (statusChanged) {
+        const newStatus = parseInt(editStatus);
+        const statusResult = await updateTaskStatus(order.jobId, newStatus);
+        if (statusResult.status === 'success') {
+          const statusLabels: Record<number, string> = { 2: 'Successful', 3: 'Failed', 6: 'Unassigned', 9: 'Deleted' };
+          if (newStatus === 9) {
+            toast.success(`Saved & status updated to ${statusLabels[newStatus]}`);
+            setShowStatusConfirm(false);
+            setOrder(null);
+            setSearch('');
+            return;
+          } else {
+            setOrder(prev => prev ? ({ ...prev, status: newStatus }) : prev);
+          }
+          toast.success(`All changes saved (status → ${statusLabels[newStatus]})`);
+        } else {
+          toast.error(statusResult.message || 'Order saved but status update failed');
+        }
+      } else {
+        toast.success('Changes saved');
+      }
+
+      setShowStatusConfirm(false);
     } catch (err) {
       console.error('Save error', err);
       toast.error('Failed to save');
@@ -340,34 +379,7 @@ export function OrderEditorPanel() {
     }
   };
 
-  // Status update handler
-  const handleStatusUpdate = async () => {
-    if (!order || !editStatus) return;
-    const newStatus = parseInt(editStatus);
-    setIsUpdatingStatus(true);
-    try {
-      const result = await updateTaskStatus(order.jobId, newStatus);
-      if (result.status === 'success') {
-        const statusLabels: Record<number, string> = { 2: 'Successful', 3: 'Failed', 6: 'Unassigned', 9: 'Deleted' };
-        toast.success(`Status updated to ${statusLabels[newStatus]}`);
-        setShowStatusConfirm(false);
-        if (newStatus === 9) {
-          // Clear order if deleted
-          setOrder(null);
-          setSearch('');
-        } else {
-          setOrder(prev => prev ? ({ ...prev, status: newStatus }) : prev);
-        }
-      } else {
-        toast.error(result.message || 'Failed to update status');
-      }
-    } catch (err) {
-      console.error('Status update error', err);
-      toast.error('Failed to update status');
-    } finally {
-      setIsUpdatingStatus(false);
-    }
-  };
+  // Status update is now handled inside performSave()
 
   // Delete Order state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -586,16 +598,7 @@ export function OrderEditorPanel() {
                   {order.connectedTaskId && <span className="text-orange-500 dark:text-orange-400 ml-2">• Connected task {order.connectedTaskId} will also be updated</span>}
                 </p>
               </div>
-              <div className="flex items-end">
-                <button
-                  onClick={() => setShowStatusConfirm(true)}
-                  disabled={!editStatus || parseInt(editStatus) === order.status}
-                  className="px-5 py-2.5 bg-amber-500 text-white rounded-lg flex items-center gap-2 hover:bg-amber-600 hover:shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Update Status
-                </button>
-              </div>
+
             </div>
           </div>
 
@@ -699,22 +702,22 @@ export function OrderEditorPanel() {
             <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
               <button
                 onClick={() => setShowStatusConfirm(false)}
-                disabled={isUpdatingStatus}
+                disabled={isSaving}
                 className="w-full sm:w-auto px-4 py-2.5 text-sm font-medium text-heading bg-muted dark:bg-[#2A3C63] rounded-lg hover:bg-muted/80 transition order-1 sm:order-none"
               >
                 Cancel
               </button>
               <button
-                onClick={handleStatusUpdate}
-                disabled={isUpdatingStatus}
+                onClick={performSave}
+                disabled={isSaving}
                 className={`w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-white rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm ${editStatus === '9' ? 'bg-red-600 hover:bg-red-700'
                     : editStatus === '3' ? 'bg-orange-500 hover:bg-orange-600'
                       : editStatus === '6' ? 'bg-blue-600 hover:bg-blue-700'
                       : 'bg-green-600 hover:bg-green-700'
                   }`}
               >
-                {isUpdatingStatus ? <RefreshCw className="w-4 h-4 animate-spin" /> : editStatus === '9' ? <Trash2 className="w-4 h-4" /> : editStatus === '3' ? <AlertTriangle className="w-4 h-4" /> : editStatus === '6' ? <RefreshCw className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
-                {isUpdatingStatus ? 'Updating...' : 'Confirm'}
+                {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : editStatus === '9' ? <Trash2 className="w-4 h-4" /> : editStatus === '3' ? <AlertTriangle className="w-4 h-4" /> : editStatus === '6' ? <RefreshCw className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                {isSaving ? 'Saving...' : 'Confirm & Save'}
               </button>
             </div>
           </div>
