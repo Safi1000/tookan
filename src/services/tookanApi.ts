@@ -1934,6 +1934,8 @@ export async function fetchRelatedDeliveryAddress(jobId: string | number): Promi
   deliveryAddress?: string;
   deliveryJobId?: number;
   deliveryCustomerName?: string;
+  pickupName?: string;
+  deliveryName?: string;
 }> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/tookan/job/${jobId}/related-address`, {
@@ -1950,6 +1952,8 @@ export async function fetchRelatedDeliveryAddress(jobId: string | number): Promi
         deliveryAddress: data.data.deliveryAddress,
         deliveryJobId: data.data.deliveryJobId,
         deliveryCustomerName: data.data.deliveryCustomerName,
+        pickupName: data.data.pickupName || '',
+        deliveryName: data.data.deliveryName || '',
       };
     }
 

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Search, RefreshCw, RotateCcw, CornerDownLeft, Save, X, Plus, Trash2, AlertTriangle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '../lib/supabase';
 import {
   fetchCachedOrders,
   reorderOrder,
@@ -26,6 +25,8 @@ type OrderDetails = {
   customerEmail?: string;
   pickupAddress?: string;
   deliveryAddress?: string;
+  pickupName?: string; // Pickup contact name from delivery task
+  deliveryName?: string; // Delivery contact name from delivery task
   status?: number | null; // 0=Assigned, 1=Started, 2=Successful, 3=Failed, etc.
   connectedTaskId?: string | number | null; // Connected pickup/delivery task ID
   isPickupTask?: boolean; // True if original task is a pickup task (original pickup == delivery)
@@ -137,6 +138,12 @@ export function OrderEditorPanel() {
       // Determine task type BEFORE modifying addresses (original addresses comparison)
       const isPickupTask = pickupAddr.trim().toLowerCase() === deliveryAddr.trim().toLowerCase();
 
+      // Get pickup_name and delivery_name from the delivery task
+      // If current task IS the delivery task, use its own pickup_name/delivery_name
+      // If current task is a pickup task, fetch from the related delivery task
+      let finalPickupName = first.pickupName || '';
+      let finalDeliveryName = first.deliveryName || '';
+
       // If we have a jobId, fetch the related task to know its ID for status updates
       if (first.jobId) {
         console.log('Task detected, fetching connected task details...');
@@ -154,32 +161,18 @@ export function OrderEditorPanel() {
             console.log('Pickup task: setting actual customer delivery address:', relatedResult.deliveryAddress);
             deliveryAddr = relatedResult.deliveryAddress;
           }
-        }
-      }
 
-      let finalCustomerName = first.customerName || '';
-      let finalCustomerPhone = first.customerPhone || '';
-
-      const orderIdToLookup = first.orderId || first.order_id;
-
-      // Override with actual Merchant info if available
-      if (orderIdToLookup) {
-        try {
-          const { data: merchantData, error: merchantError } = await supabase
-            .from('merchants')
-            .select('customer_username, customer_phone')
-            .eq('merchant_id', orderIdToLookup)
-            .single();
-            
-          if (!merchantError && merchantData) {
-            finalCustomerName = merchantData.customer_username || finalCustomerName;
-            finalCustomerPhone = merchantData.customer_phone || finalCustomerPhone;
-            console.log('Merchant info found for order_id:', orderIdToLookup, merchantData);
+          // If this is a pickup task, get pickup_name/delivery_name from the delivery task
+          if (isPickupTask && (relatedResult.pickupName || relatedResult.deliveryName)) {
+            finalPickupName = relatedResult.pickupName || finalPickupName;
+            finalDeliveryName = relatedResult.deliveryName || finalDeliveryName;
+            console.log('Using pickup_name/delivery_name from delivery task:', { finalPickupName, finalDeliveryName });
           }
-        } catch (mErr) {
-          console.error('Merchant lookup failed:', mErr);
         }
       }
+
+      const finalCustomerName = first.customerName || '';
+      const finalCustomerPhone = first.customerPhone || '';
 
       setOrder({
         jobId: first.jobId,
@@ -194,6 +187,8 @@ export function OrderEditorPanel() {
         customerEmail: first.customerEmail || '',
         pickupAddress: pickupAddr,
         deliveryAddress: deliveryAddr,
+        pickupName: finalPickupName,
+        deliveryName: finalDeliveryName,
         status: typeof first.status === 'number' ? first.status : (typeof first.status === 'string' ? parseInt(first.status, 10) : null),
         connectedTaskId: connectedTaskId,
         isPickupTask: isPickupTask
@@ -314,7 +309,9 @@ export function OrderEditorPanel() {
         codAmount: parseFloat(reorderCod) || 0,
         orderFees: parseFloat(reorderFees) || 0,
         notes: effectiveNotes,
-        assignedDriver: reorderDriver || null
+        assignedDriver: reorderDriver || null,
+        pickupName: order.pickupName,
+        deliveryName: order.deliveryName
       });
       if (result.status === 'success') {
         toast.success('Re-order created successfully!');
@@ -361,7 +358,9 @@ export function OrderEditorPanel() {
         deliveryAddress: order.deliveryAddress,
         notes: effectiveNotes,
         orderFees: order.orderFees,
-        assignedDriver: assignedDriverValue
+        assignedDriver: assignedDriverValue,
+        pickupName: order.pickupName,
+        deliveryName: order.deliveryName
       });
       if (result.status === 'success') {
         toast.success('Return order created successfully!');

@@ -2977,7 +2977,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('panel_ord
     console.log('\n=== REORDER REQUEST (2 TASKS) ===');
     console.log('Request body:', JSON.stringify(req.body, null, 2));
 
-    const { orderId, originalOrderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, codAmount, orderFees, assignedDriver, notes } = req.body;
+    const { orderId, originalOrderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, codAmount, orderFees, assignedDriver, notes, pickupName, deliveryName } = req.body;
     const orderIdToUse = orderId || originalOrderId;
     const apiKey = getApiKey();
 
@@ -3072,10 +3072,27 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('panel_ord
     }
 
     // Task times
-    const now = new Date();
-    const pickupTime = new Date(now.getTime() + 1 * 60 * 60 * 1000); // +1 hour for pickup
-    const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours for delivery
-    const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
+    const BAHRAIN_OFFSET = 3 * 60 * 60 * 1000; // UTC+3
+    let pickupTime = new Date(now.getTime() + 30 * 60 * 1000); // +30 min for pickup
+    let deliveryTime = new Date(pickupTime.getTime() + 2 * 60 * 60 * 1000); // +2 hours from pickup
+
+    // Ensure both pickup and delivery fall on the same Bahrain date
+    const pickupBahrain = new Date(pickupTime.getTime() + BAHRAIN_OFFSET);
+    const deliveryBahrain = new Date(deliveryTime.getTime() + BAHRAIN_OFFSET);
+    if (pickupBahrain.toISOString().slice(0, 10) !== deliveryBahrain.toISOString().slice(0, 10)) {
+      // Delivery crosses midnight in Bahrain - push pickup to next day 00:00 Bahrain time
+      const nextDay = new Date(pickupBahrain);
+      nextDay.setUTCHours(0, 0, 0, 0);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+      pickupTime = new Date(nextDay.getTime() - BAHRAIN_OFFSET); // Convert back to UTC
+      deliveryTime = new Date(pickupTime.getTime() + 2 * 60 * 60 * 1000);
+      console.log('Adjusted times to next day to keep same Bahrain date');
+    }
+    const formatDateTime = (d) => {
+      // Format in Bahrain time (UTC+3) since timezone param is -180
+      const bahrainDate = new Date(d.getTime() + 3 * 60 * 60 * 1000);
+      return bahrainDate.toISOString().slice(0, 19).replace('T', ' ');
+    };
     const timezone = '-180';
 
     // Get tags for tasks
@@ -3091,10 +3108,14 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('panel_ord
     // ========== SINGLE API CALL: Combined Pickup + Delivery ==========
     // Using Tookan's create_task API with has_pickup=1 and has_delivery=1
     // This creates both tasks atomically in a single request
+    // Use pickupName/deliveryName from request if provided, fallback to customerName
+    const effectivePickupName = pickupName || orderData.customerName;
+    const effectiveDeliveryName = deliveryName || orderData.customerName;
+
     const combinedPayload = {
       api_key: apiKey,
       // Pickup fields (from merchant/warehouse)
-      job_pickup_name: orderData.customerName,
+      job_pickup_name: effectivePickupName,
       job_pickup_phone: orderData.customerPhone,
       job_pickup_email: orderData.customerEmail,
       job_pickup_address: orderData.pickupAddress,
@@ -3107,7 +3128,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('panel_ord
         }
       ],
       // Delivery fields (to customer)
-      customer_username: orderData.customerName,
+      customer_username: effectiveDeliveryName,
       customer_phone: orderData.customerPhone,
       customer_email: orderData.customerEmail,
       customer_address: orderData.deliveryAddress,
@@ -3299,7 +3320,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
     console.log('Request body:', JSON.stringify(req.body, null, 2));
 
     const apiKey = getApiKey();
-    const { orderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, notes } = req.body;
+    const { orderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, notes, pickupName, deliveryName } = req.body;
 
     if (!orderId) {
       return res.status(400).json({
@@ -3438,10 +3459,27 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
     console.log(`  Return DELIVERY: To merchant location: ${originalPickupAddr}`);
 
     // Task time
-    const now = new Date();
-    const pickupTime = new Date(now.getTime() + 1 * 60 * 60 * 1000); // +1 hour for pickup
-    const deliveryTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // +3 hours for delivery
-    const formatDateTime = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
+    const BAHRAIN_OFFSET = 3 * 60 * 60 * 1000; // UTC+3
+    let pickupTime = new Date(now.getTime() + 30 * 60 * 1000); // +30 min for pickup
+    let deliveryTime = new Date(pickupTime.getTime() + 2 * 60 * 60 * 1000); // +2 hours from pickup
+
+    // Ensure both pickup and delivery fall on the same Bahrain date
+    const pickupBahrain = new Date(pickupTime.getTime() + BAHRAIN_OFFSET);
+    const deliveryBahrain = new Date(deliveryTime.getTime() + BAHRAIN_OFFSET);
+    if (pickupBahrain.toISOString().slice(0, 10) !== deliveryBahrain.toISOString().slice(0, 10)) {
+      // Delivery crosses midnight in Bahrain - push pickup to next day 00:00 Bahrain time
+      const nextDay = new Date(pickupBahrain);
+      nextDay.setUTCHours(0, 0, 0, 0);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+      pickupTime = new Date(nextDay.getTime() - BAHRAIN_OFFSET); // Convert back to UTC
+      deliveryTime = new Date(pickupTime.getTime() + 2 * 60 * 60 * 1000);
+      console.log('Adjusted times to next day to keep same Bahrain date');
+    }
+    const formatDateTime = (d) => {
+      // Format in Bahrain time (UTC+3) since timezone param is -180
+      const bahrainDate = new Date(d.getTime() + 3 * 60 * 60 * 1000);
+      return bahrainDate.toISOString().slice(0, 19).replace('T', ' ');
+    };
 
     // Timezone for Bahrain (UTC+3) = -180 minutes
     const timezone = '-180';
@@ -3458,16 +3496,20 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
     // ========== SINGLE API CALL: Combined Pickup + Delivery ==========
     // Using Tookan's create_task API with has_pickup=1 and has_delivery=1
     // For return order: pickup from customer, deliver to merchant
+    // For return order: keep pickup_name and delivery_name the SAME as the original (no reversal)
+    const effectivePickupName = pickupName || orderData.customerName || 'Customer';
+    const effectiveDeliveryName = deliveryName || orderData.customerName || 'Customer';
+
     const combinedPayload = {
       api_key: apiKey,
       // Pickup fields (from customer location - original delivery address)
-      job_pickup_name: orderData.customerName || 'Customer',
+      job_pickup_name: effectivePickupName,
       job_pickup_phone: orderData.customerPhone || '',
       job_pickup_email: orderData.customerEmail || '',
       job_pickup_address: returnPickupAddr,
       job_pickup_datetime: formatDateTime(pickupTime),
       // Delivery fields (to merchant location - original pickup address)
-      customer_username: orderData.customerName || 'Customer',
+      customer_username: effectiveDeliveryName,
       customer_phone: orderData.customerPhone || '',
       customer_email: orderData.customerEmail || '',
       customer_address: returnDeliveryAddr,
@@ -5502,6 +5544,10 @@ app.get('/api/tookan/orders/cached', authenticate, async (req, res) => {
         customer_phone: task.customer_phone || '',
         customerPhone: task.customer_phone || '',
         customerEmail: task.customer_email || '',
+        pickup_name: task.pickup_name || '',
+        pickupName: task.pickup_name || '',
+        delivery_name: task.delivery_name || '',
+        deliveryName: task.delivery_name || '',
         pickup_address: task.pickup_address || '',
         pickupAddress: task.pickup_address || '',
         delivery_address: task.delivery_address || '',
@@ -5894,13 +5940,41 @@ app.get('/api/tookan/job/:jobId/related-address', authenticate, async (req, res)
 
     if (oppositeTask) {
       console.log(`Found connected task (Type: ${oppositeTask.job_type === 0 ? 'Pickup' : 'Delivery'}):`, oppositeTask.job_id, 'Address:', oppositeTask.job_address);
+
+      // Fetch pickup_name and delivery_name from the DELIVERY task in DB
+      // The delivery task is job_type === 1 (or the opposite task if current is pickup)
+      let pickupName = '';
+      let deliveryName = '';
+      const deliveryTask = relatedTasks.find(t => t.job_type === 1) || oppositeTask;
+      const deliveryJobId = deliveryTask.job_id;
+
+      if (isConfigured() && deliveryJobId) {
+        try {
+          const { data: dbTask, error: dbErr } = await supabase
+            .from('tasks')
+            .select('pickup_name, delivery_name')
+            .eq('job_id', deliveryJobId)
+            .single();
+
+          if (!dbErr && dbTask) {
+            pickupName = dbTask.pickup_name || '';
+            deliveryName = dbTask.delivery_name || '';
+            console.log('Found pickup_name/delivery_name from delivery task DB:', { pickupName, deliveryName });
+          }
+        } catch (dbLookupErr) {
+          console.warn('Failed to fetch pickup_name/delivery_name from DB:', dbLookupErr.message);
+        }
+      }
+
       return res.json({
         status: 'success',
         data: {
           hasRelatedTask: true,
           deliveryAddress: oppositeTask.job_address || '', // Might be pickup address if opposite is pickup
           deliveryJobId: oppositeTask.job_id,
-          deliveryCustomerName: oppositeTask.customer_username || oppositeTask.customer_name || ''
+          deliveryCustomerName: oppositeTask.customer_username || oppositeTask.customer_name || '',
+          pickupName: pickupName,
+          deliveryName: deliveryName
         }
       });
     }
