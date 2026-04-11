@@ -330,10 +330,8 @@ export function FinancialPanel() {
   }, []);
 
   // Fetch wallet balances for all drivers when driver-wallets tab becomes active
-  const driverBalancesLoaded = useRef(false);
   useEffect(() => {
-    if (activeTab !== 'driver-wallets' || drivers.length === 0 || driverBalancesLoaded.current) return;
-    driverBalancesLoaded.current = true;
+    if (activeTab !== 'driver-wallets' || drivers.length === 0) return;
 
     const loadBalances = async () => {
       setIsLoadingDriverBalances(true);
@@ -368,10 +366,8 @@ export function FinancialPanel() {
   }, [activeTab, drivers.length]);
 
   // Fetch wallet balances for all merchants when merchant-wallets tab becomes active
-  const merchantBalancesLoaded = useRef(false);
   useEffect(() => {
-    if (activeTab !== 'merchant-wallets' || merchants.length === 0 || merchantBalancesLoaded.current) return;
-    merchantBalancesLoaded.current = true;
+    if (activeTab !== 'merchant-wallets' || merchants.length === 0) return;
 
     const loadMerchantBalances = async () => {
       setIsLoadingMerchantBalances(true);
@@ -2763,7 +2759,7 @@ export function FinancialPanel() {
               </div>
 
               {/* Driver Wallet Table */}
-              {(!driverBalancesLoaded.current || isLoadingDriverBalances) ? (
+              {isLoadingDriverBalances ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-3" />
                   <p className="text-heading dark:text-[#C1EEFA] font-medium">Loading Driver Wallets</p>
@@ -2886,7 +2882,7 @@ export function FinancialPanel() {
               </div>
 
               {/* Merchant Wallet Table */}
-              {(!merchantBalancesLoaded.current || isLoadingMerchantBalances) ? (
+              {isLoadingMerchantBalances ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <Loader2 className="w-8 h-8 animate-spin text-[#C1EEFA] mb-3" />
                   <p className="text-heading dark:text-[#C1EEFA] font-medium">Loading Merchant Wallets</p>
