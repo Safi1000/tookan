@@ -3073,6 +3073,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('panel_ord
 
     // Task times
     const BAHRAIN_OFFSET = 3 * 60 * 60 * 1000; // UTC+3
+    const now = new Date();
     let pickupTime = new Date(now.getTime() + 30 * 60 * 1000); // +30 min for pickup
     let deliveryTime = new Date(pickupTime.getTime() + 2 * 60 * 60 * 1000); // +2 hours from pickup
 
@@ -3460,6 +3461,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
 
     // Task time
     const BAHRAIN_OFFSET = 3 * 60 * 60 * 1000; // UTC+3
+    const now = new Date();
     let pickupTime = new Date(now.getTime() + 30 * 60 * 1000); // +30 min for pickup
     let deliveryTime = new Date(pickupTime.getTime() + 2 * 60 * 60 * 1000); // +2 hours from pickup
 
