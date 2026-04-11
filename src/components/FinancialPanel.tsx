@@ -1264,6 +1264,96 @@ export function FinancialPanel() {
           taskCount: tasks.length,
           notes: dailyNotes[date] || undefined
         });
+      } else {
+        // REVERSAL: When switching to PENDING, reverse previously settled amounts
+        const totalPreviouslyPaid = tasks.reduce((sum: number, t: any) => {
+          return sum + (parseFloat(t.paid) || 0);
+        }, 0);
+
+        if (totalPreviouslyPaid > 0) {
+          // Credit driver wallet (reverse the earlier debit)
+          try {
+            const walletResult = await createFleetWalletTransaction(
+              fleetId,
+              totalPreviouslyPaid,
+              `COD Reversal ${dateFrom || date} to ${date}`,
+              'credit'
+            );
+            if (walletResult.status === 'success') {
+              console.log('[WALLET TX] Fleet wallet reversal (credit):', totalPreviouslyPaid);
+            } else {
+              console.warn('[WALLET TX] Fleet wallet reversal failed:', walletResult.message);
+              toast.error(`Wallet reversal failed: ${walletResult.message}`);
+            }
+          } catch (walletErr) {
+            console.error('[WALLET TX] Reversal error:', walletErr);
+            toast.error('Failed to reverse wallet transaction');
+          }
+
+          // Debit vendor/merchant wallets (reverse the earlier credit)
+          const vendorTotals: Record<number, number> = {};
+          tasks.forEach((t: any) => {
+            const vendorId = t.order_id ? Number(t.order_id) : null;
+            if (vendorId) {
+              const alreadyPaid = parseFloat(t.paid) || 0;
+              if (alreadyPaid > 0) {
+                vendorTotals[vendorId] = (vendorTotals[vendorId] || 0) + alreadyPaid;
+              }
+            }
+          });
+
+          for (const [vendorId, vendorAmount] of Object.entries(vendorTotals)) {
+            try {
+              const vendorResult = await addCustomerWalletPayment(
+                Number(vendorId),
+                vendorAmount,
+                `COD Reversal ${dateFrom || date} to ${date}`,
+                'debit'
+              );
+              if (vendorResult.status === 'success') {
+                console.log(`[VENDOR WALLET TX] Vendor ${vendorId} debited (reversal): ${vendorAmount}`);
+              } else {
+                console.warn(`[VENDOR WALLET TX] Vendor ${vendorId} reversal failed:`, vendorResult.message);
+              }
+            } catch (vendorErr) {
+              console.error(`[VENDOR WALLET TX] Reversal error for vendor ${vendorId}:`, vendorErr);
+            }
+          }
+
+          // Log merchant reversal settlements
+          if (Object.keys(vendorTotals).length > 0) {
+            for (const [vendorId, vendorAmount] of Object.entries(vendorTotals)) {
+              logSettlement({
+                driverName: '',
+                fleetId: 0,
+                amount: vendorAmount,
+                settlementType: 'merchant_calendar',
+                dateFrom: dateFrom || date,
+                dateTo: date,
+                taskCount: tasks.filter((t: any) => {
+                  const vid = t.order_id ? Number(t.order_id) : null;
+                  return vid === Number(vendorId);
+                }).length,
+                merchantName: `Merchant ID ${vendorId} (Reversal)`,
+                vendorId: Number(vendorId),
+                notes: `Reversal: ${dailyNotes[date] || ''}`
+              });
+            }
+          }
+
+          // Log driver reversal settlement
+          const driverForRevLog = drivers.find(d => d.id === selectedDriver);
+          logSettlement({
+            driverName: driverForRevLog?.name || `Fleet ${fleetId}`,
+            fleetId,
+            amount: totalPreviouslyPaid,
+            settlementType: 'calendar',
+            dateFrom: dateFrom || date,
+            dateTo: date,
+            taskCount: tasks.length,
+            notes: `Reversal: ${dailyNotes[date] || ''}`
+          });
+        }
       }
 
       toast.success(shouldPayAll
@@ -1407,6 +1497,92 @@ export function FinancialPanel() {
               });
             }
           }
+        }
+
+        // REVERSAL: Handle decrease in paid amounts (balance_paid < db_paid)
+        const unSettledAmount = changedTasks
+          .filter(t => t.balance_paid < t.db_paid)
+          .reduce((sum, t) => sum + (t.db_paid - t.balance_paid), 0);
+
+        if (unSettledAmount > 0) {
+          const fleetId = Number(driver.fleet_id || driver.id);
+          // Credit driver wallet (reverse the earlier debit)
+          try {
+            const walletResult = await createFleetWalletTransaction(
+              fleetId,
+              unSettledAmount,
+              `COD Reversal via View Tasks ${taskModalDate}`,
+              'credit'
+            );
+            if (walletResult.status === 'success') {
+              console.log('[WALLET TX] Fleet wallet reversal (credit):', unSettledAmount);
+            } else {
+              console.warn('[WALLET TX] Fleet wallet reversal failed:', walletResult.message);
+              toast.error(`Wallet reversal failed: ${walletResult.message}`);
+            }
+          } catch (walletErr) {
+            console.error('[WALLET TX] Reversal error:', walletErr);
+            toast.error('Failed to reverse wallet transaction');
+          }
+
+          // Debit vendor/merchant wallets (reverse the earlier credit)
+          const vendorReversals: Record<number, number> = {};
+          changedTasks
+            .filter(t => t.balance_paid < t.db_paid && t.vendor_id)
+            .forEach(t => {
+              const netReverse = t.db_paid - t.balance_paid;
+              vendorReversals[t.vendor_id!] = (vendorReversals[t.vendor_id!] || 0) + netReverse;
+            });
+
+          for (const [vendorId, vendorAmount] of Object.entries(vendorReversals)) {
+            try {
+              const vendorResult = await addCustomerWalletPayment(
+                Number(vendorId),
+                vendorAmount,
+                `COD Reversal via View Tasks ${taskModalDate}`,
+                'debit'
+              );
+              if (vendorResult.status === 'success') {
+                console.log(`[VENDOR WALLET TX] Vendor ${vendorId} debited (reversal): ${vendorAmount}`);
+              } else {
+                console.warn(`[VENDOR WALLET TX] Vendor ${vendorId} reversal failed:`, vendorResult.message);
+              }
+            } catch (vendorErr) {
+              console.error(`[VENDOR WALLET TX] Reversal error for vendor ${vendorId}:`, vendorErr);
+            }
+          }
+
+          // Log merchant reversal settlements
+          if (Object.keys(vendorReversals).length > 0) {
+            for (const [vendorId, vendorAmount] of Object.entries(vendorReversals)) {
+              logSettlement({
+                driverName: '',
+                fleetId: 0,
+                amount: vendorAmount,
+                settlementType: 'merchant_view_tasks',
+                dateFrom: dateFrom || taskModalDate || undefined,
+                dateTo: taskModalDate || undefined,
+                taskCount: changedTasks.filter(t => t.vendor_id === Number(vendorId) && t.balance_paid < t.db_paid).length,
+                merchantName: `Merchant ID ${vendorId} (Reversal)`,
+                vendorId: Number(vendorId),
+                notes: `Reversal: ${dailyNotes[taskModalDate || ''] || ''}`
+              });
+            }
+          }
+
+          // Log driver reversal settlement
+          const driverForRevLog = drivers.find(d => d.id === selectedDriver);
+          const revLogFleetId = Number(driver.fleet_id || driver.id);
+          logSettlement({
+            driverName: driverForRevLog?.name || `Fleet ${revLogFleetId}`,
+            fleetId: revLogFleetId,
+            amount: unSettledAmount,
+            settlementType: 'view_tasks',
+            dateFrom: dateFrom || taskModalDate || undefined,
+            dateTo: taskModalDate || undefined,
+            taskCount: changedTasks.filter(t => t.balance_paid < t.db_paid).length,
+            notes: `Reversal: ${dailyNotes[taskModalDate || ''] || ''}`
+          });
         }
 
         toast.success(`${changedTasks.length} task(s) saved successfully`);
