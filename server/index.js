@@ -2977,7 +2977,7 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('panel_ord
     console.log('\n=== REORDER REQUEST (2 TASKS) ===');
     console.log('Request body:', JSON.stringify(req.body, null, 2));
 
-    const { orderId, originalOrderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, codAmount, orderFees, assignedDriver, notes, pickupName, deliveryName } = req.body;
+    const { orderId, originalOrderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, codAmount, orderFees, assignedDriver, notes, pickupName, deliveryName, timezoneOffset } = req.body;
     const orderIdToUse = orderId || originalOrderId;
     const apiKey = getApiKey();
 
@@ -3071,30 +3071,31 @@ app.post('/api/tookan/order/reorder', authenticate, requirePermission('panel_ord
       });
     }
 
-    // Task times
-    const BAHRAIN_OFFSET = 3 * 60 * 60 * 1000; // UTC+3
+    // Task times - use client device timezone for accurate local time display
+    const clientTzOffset = timezoneOffset !== undefined ? parseInt(timezoneOffset) : -180; // default to Bahrain (UTC+3)
+    const CLIENT_OFFSET_MS = (-clientTzOffset) * 60 * 1000; // Convert offset to ms for adding to UTC
     const now = new Date();
     let pickupTime = new Date(now.getTime() + 30 * 60 * 1000); // +30 min for pickup
     let deliveryTime = new Date(pickupTime.getTime() + 2 * 60 * 60 * 1000); // +2 hours from pickup
 
-    // Ensure both pickup and delivery fall on the same Bahrain date
-    const pickupBahrain = new Date(pickupTime.getTime() + BAHRAIN_OFFSET);
-    const deliveryBahrain = new Date(deliveryTime.getTime() + BAHRAIN_OFFSET);
-    if (pickupBahrain.toISOString().slice(0, 10) !== deliveryBahrain.toISOString().slice(0, 10)) {
-      // Delivery crosses midnight in Bahrain - push pickup to next day 00:00 Bahrain time
-      const nextDay = new Date(pickupBahrain);
+    // Ensure both pickup and delivery fall on the same local date
+    const pickupLocal = new Date(pickupTime.getTime() + CLIENT_OFFSET_MS);
+    const deliveryLocal = new Date(deliveryTime.getTime() + CLIENT_OFFSET_MS);
+    if (pickupLocal.toISOString().slice(0, 10) !== deliveryLocal.toISOString().slice(0, 10)) {
+      // Delivery crosses midnight in client's local time - push pickup to next day 00:00 local time
+      const nextDay = new Date(pickupLocal);
       nextDay.setUTCHours(0, 0, 0, 0);
       nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-      pickupTime = new Date(nextDay.getTime() - BAHRAIN_OFFSET); // Convert back to UTC
+      pickupTime = new Date(nextDay.getTime() - CLIENT_OFFSET_MS); // Convert back to UTC
       deliveryTime = new Date(pickupTime.getTime() + 2 * 60 * 60 * 1000);
-      console.log('Adjusted times to next day to keep same Bahrain date');
+      console.log('Adjusted times to next day to keep same local date');
     }
     const formatDateTime = (d) => {
-      // Format in Bahrain time (UTC+3) since timezone param is -180
-      const bahrainDate = new Date(d.getTime() + 3 * 60 * 60 * 1000);
-      return bahrainDate.toISOString().slice(0, 19).replace('T', ' ');
+      // Format in client's local timezone to match their device clock
+      const localDate = new Date(d.getTime() + CLIENT_OFFSET_MS);
+      return localDate.toISOString().slice(0, 19).replace('T', ' ');
     };
-    const timezone = '-180';
+    const timezone = String(clientTzOffset);
 
     // Get tags for tasks
     const taskDataForTags = {
@@ -3321,7 +3322,7 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
     console.log('Request body:', JSON.stringify(req.body, null, 2));
 
     const apiKey = getApiKey();
-    const { orderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, notes, pickupName, deliveryName } = req.body;
+    const { orderId, customerName, customerPhone, customerEmail, pickupAddress, deliveryAddress, notes, pickupName, deliveryName, timezoneOffset } = req.body;
 
     if (!orderId) {
       return res.status(400).json({
@@ -3459,32 +3460,33 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
     console.log(`  Return PICKUP: From customer location: ${originalDeliveryAddr}`);
     console.log(`  Return DELIVERY: To merchant location: ${originalPickupAddr}`);
 
-    // Task time
-    const BAHRAIN_OFFSET = 3 * 60 * 60 * 1000; // UTC+3
+    // Task times - use client device timezone for accurate local time display
+    const clientTzOffset = timezoneOffset !== undefined ? parseInt(timezoneOffset) : -180; // default to Bahrain (UTC+3)
+    const CLIENT_OFFSET_MS = (-clientTzOffset) * 60 * 1000; // Convert offset to ms for adding to UTC
     const now = new Date();
     let pickupTime = new Date(now.getTime() + 30 * 60 * 1000); // +30 min for pickup
     let deliveryTime = new Date(pickupTime.getTime() + 2 * 60 * 60 * 1000); // +2 hours from pickup
 
-    // Ensure both pickup and delivery fall on the same Bahrain date
-    const pickupBahrain = new Date(pickupTime.getTime() + BAHRAIN_OFFSET);
-    const deliveryBahrain = new Date(deliveryTime.getTime() + BAHRAIN_OFFSET);
-    if (pickupBahrain.toISOString().slice(0, 10) !== deliveryBahrain.toISOString().slice(0, 10)) {
-      // Delivery crosses midnight in Bahrain - push pickup to next day 00:00 Bahrain time
-      const nextDay = new Date(pickupBahrain);
+    // Ensure both pickup and delivery fall on the same local date
+    const pickupLocal = new Date(pickupTime.getTime() + CLIENT_OFFSET_MS);
+    const deliveryLocal = new Date(deliveryTime.getTime() + CLIENT_OFFSET_MS);
+    if (pickupLocal.toISOString().slice(0, 10) !== deliveryLocal.toISOString().slice(0, 10)) {
+      // Delivery crosses midnight in client's local time - push pickup to next day 00:00 local time
+      const nextDay = new Date(pickupLocal);
       nextDay.setUTCHours(0, 0, 0, 0);
       nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-      pickupTime = new Date(nextDay.getTime() - BAHRAIN_OFFSET); // Convert back to UTC
+      pickupTime = new Date(nextDay.getTime() - CLIENT_OFFSET_MS); // Convert back to UTC
       deliveryTime = new Date(pickupTime.getTime() + 2 * 60 * 60 * 1000);
-      console.log('Adjusted times to next day to keep same Bahrain date');
+      console.log('Adjusted times to next day to keep same local date');
     }
     const formatDateTime = (d) => {
-      // Format in Bahrain time (UTC+3) since timezone param is -180
-      const bahrainDate = new Date(d.getTime() + 3 * 60 * 60 * 1000);
-      return bahrainDate.toISOString().slice(0, 19).replace('T', ' ');
+      // Format in client's local timezone to match their device clock
+      const localDate = new Date(d.getTime() + CLIENT_OFFSET_MS);
+      return localDate.toISOString().slice(0, 19).replace('T', ' ');
     };
 
-    // Timezone for Bahrain (UTC+3) = -180 minutes
-    const timezone = '-180';
+    // Timezone for Tookan API = client's timezone offset
+    const timezone = String(clientTzOffset);
 
     // For return: 
     // - PICKUP from customer location (original delivery address)

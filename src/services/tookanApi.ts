@@ -921,7 +921,7 @@ export async function reorderOrder(
     const response = await fetch(`${API_BASE_URL}/api/tookan/order/reorder`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ orderId, ...data }),
+      body: JSON.stringify({ orderId, ...data, timezoneOffset: new Date().getTimezoneOffset() }),
     });
 
     const result = await response.json();
@@ -946,7 +946,7 @@ export async function returnOrder(
     const response = await fetch(`${API_BASE_URL}/api/tookan/order/return`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ orderId, ...data }),
+      body: JSON.stringify({ orderId, ...data, timezoneOffset: new Date().getTimezoneOffset() }),
     });
 
     const result = await response.json();
