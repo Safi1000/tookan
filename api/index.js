@@ -1255,6 +1255,55 @@ function getApp() {
       }
     });
 
+    // GET withdrawals by vendor_id (external API with Bearer token auth)
+    // Returns all withdrawal records for a specific vendor with their statuses
+    app.get('/api/get_vendor_withdrawals/:vendor_id', validatePartnerApiKey, async (req, res) => {
+      try {
+        if (!isSupabaseConfigured || !supabase) {
+          return res.status(500).json({ status: 'error', message: 'Database not configured' });
+        }
+
+        const { vendor_id } = req.params;
+
+        if (!vendor_id) {
+          return res.status(400).json({ status: 'error', message: 'vendor_id is required' });
+        }
+
+        const { data: withdrawals, error } = await supabase
+          .from('withdrawals')
+          .select('id, vendor_id, fleet_id, email, requested_amount, tax_applied, final_amount, iban, status, created_at')
+          .eq('vendor_id', parseInt(vendor_id))
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Get vendor withdrawals error:', error);
+          return res.status(500).json({ status: 'error', message: error.message });
+        }
+
+        const result = (withdrawals || []).map(w => ({
+          id: w.id,
+          vendor_id: w.vendor_id,
+          email: w.email || '',
+          requested_amount: parseFloat(w.requested_amount || 0),
+          tax_applied: parseFloat(w.tax_applied || 0),
+          final_amount: parseFloat(w.final_amount || 0),
+          iban: w.iban || '',
+          status: w.status || 'pending',
+          created_at: w.created_at
+        }));
+
+        res.json({
+          status: 'success',
+          count: result.length,
+          data: result
+        });
+
+      } catch (error) {
+        console.error('Get vendor withdrawals error:', error);
+        res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
+      }
+    });
+
     // ========== WITHDRAWAL FEES ENDPOINTS ==========
     let globalWithdrawalFee = null;
 
