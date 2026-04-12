@@ -4242,6 +4242,11 @@ function getApp() {
           }
         }
 
+        // Extract pickup_name/delivery_name from the DELIVERY task of the pair
+        const dbPickupName = originalDelivery.pickup_name || '';
+        const dbDeliveryName = originalDelivery.delivery_name || '';
+        console.log('DB pickup_name/delivery_name from delivery task:', { dbPickupName, dbDeliveryName });
+
         // Use original notes if new notes not provided
         const originalNotes = original.notes || rawData.customer_comments || rawData.job_description || '';
         // User requested empty notes by default unless entered
@@ -4293,8 +4298,9 @@ function getApp() {
         // Using Tookan's create_task API with has_pickup=1 and has_delivery=1
         // This creates both tasks atomically in a single request
         // Use pickupName/deliveryName from request if provided, fallback to customerName
-        const effectivePickupName = pickupName || orderData.customerName;
-        const effectiveDeliveryName = deliveryName || orderData.customerName;
+        // Use pickupName/deliveryName from request, fallback to delivery task's DB values, then customerName
+        const effectivePickupName = pickupName || dbPickupName || orderData.customerName;
+        const effectiveDeliveryName = deliveryName || dbDeliveryName || orderData.customerName;
 
         const combinedPayload = {
           api_key: apiKey,
@@ -4378,6 +4384,8 @@ function getApp() {
                 customer_name: customerName || originalPickup.customer_name || (originalPickup.raw_data && (originalPickup.raw_data.customer_username || originalPickup.raw_data.job_pickup_name)) || 'Customer',
                 customer_phone: customerPhone || originalPickup.customer_phone || (originalPickup.raw_data && (originalPickup.raw_data.customer_phone || originalPickup.raw_data.job_pickup_phone)) || '+97300000000',
                 customer_email: customerEmail || originalPickup.customer_email || (originalPickup.raw_data && (originalPickup.raw_data.customer_email || originalPickup.raw_data.job_pickup_email)) || '',
+                pickup_name: effectivePickupName,
+                delivery_name: effectiveDeliveryName,
                 pickup_address: orderData.pickupAddress,
                 delivery_address: orderData.pickupAddress, // Same as pickup for pickup tasks
                 cod_amount: orderData.codAmount,
@@ -4410,6 +4418,8 @@ function getApp() {
                 customer_name: customerName || originalDelivery.customer_name || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_username || originalDelivery.raw_data.job_pickup_name)) || 'Customer',
                 customer_phone: customerPhone || originalDelivery.customer_phone || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_phone || originalDelivery.raw_data.job_pickup_phone)) || '+97300000000',
                 customer_email: customerEmail || originalDelivery.customer_email || (originalDelivery.raw_data && (originalDelivery.raw_data.customer_email || originalDelivery.raw_data.job_pickup_email)) || '',
+                pickup_name: effectivePickupName,
+                delivery_name: effectiveDeliveryName,
                 pickup_address: orderData.pickupAddress,
                 delivery_address: orderData.deliveryAddress,
                 cod_amount: orderData.codAmount,
@@ -4655,11 +4665,16 @@ function getApp() {
         // ========== SINGLE API CALL: Combined Pickup + Delivery ==========
         // Using Tookan's create_task API with has_pickup=1 and has_delivery=1
         // For return order: pickup from customer, deliver to merchant
+        // Extract pickup_name/delivery_name from the DELIVERY task of the pair
+        const dbReturnPickupName = (originalDelivery && originalDelivery.pickup_name) || '';
+        const dbReturnDeliveryName = (originalDelivery && originalDelivery.delivery_name) || '';
+        console.log('DB pickup_name/delivery_name from delivery task (for return):', { dbReturnPickupName, dbReturnDeliveryName });
+
         // For return order: REVERSE pickup_name and delivery_name (direction is reversed)
         // Original deliveryName becomes the new pickupName (we're picking up FROM the customer)
         // Original pickupName becomes the new deliveryName (we're delivering TO the merchant)
-        const effectivePickupName = deliveryName || orderData.customerName || 'Customer';
-        const effectiveDeliveryName = pickupName || orderData.customerName || 'Customer';
+        const effectivePickupName = deliveryName || dbReturnDeliveryName || orderData.customerName || 'Customer';
+        const effectiveDeliveryName = pickupName || dbReturnPickupName || orderData.customerName || 'Customer';
 
         const combinedPayload = {
           api_key: apiKey,
