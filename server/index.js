@@ -3343,25 +3343,70 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
     };
 
     // Always attempt to fetch original coordinates from DB first to prevent geocoding hallucinations
+    // Also fetch the connected task (via pickup_delivery_relationship) for more reliable coordinates
     let originalCoordinatesFound = false;
+    let originalPickup = null;
+    let originalDelivery = null;
 
     if (isConfigured()) {
       try {
-        const { data: dbTasks, error: dbError } = await supabase
+        const { data: dbTask, error: dbError } = await supabase
           .from('tasks')
-          .select('job_latitude, job_longitude, job_pickup_latitude, job_pickup_longitude, raw_data')
+          .select('*')
           .eq('job_id', orderId)
           .single();
 
-        if (!dbError && dbTasks) {
-          orderData.job_pickup_latitude = dbTasks.job_pickup_latitude || (dbTasks.raw_data && dbTasks.raw_data.job_pickup_latitude) || null;
-          orderData.job_pickup_longitude = dbTasks.job_pickup_longitude || (dbTasks.raw_data && dbTasks.raw_data.job_pickup_longitude) || null;
-          orderData.job_latitude = dbTasks.job_latitude || (dbTasks.raw_data && (dbTasks.raw_data.job_latitude || dbTasks.raw_data.latitude)) || null;
-          orderData.job_longitude = dbTasks.job_longitude || (dbTasks.raw_data && (dbTasks.raw_data.job_longitude || dbTasks.raw_data.longitude)) || null;
+        if (!dbError && dbTask) {
+          const rawData = dbTask.raw_data || {};
+          originalPickup = dbTask;
+          originalDelivery = dbTask;
+
+          // Try to find connected task via pickup_delivery_relationship
+          const relationshipId = rawData.pickup_delivery_relationship;
+          if (relationshipId) {
+            try {
+              const { data: relatedTasks, error: relatedError } = await supabase
+                .from('tasks')
+                .select('*')
+                .eq('raw_data->>pickup_delivery_relationship', relationshipId);
+
+              if (!relatedError && relatedTasks && relatedTasks.length > 0) {
+                const foundPickup = relatedTasks.find(t => {
+                  const rd = t.raw_data || {};
+                  return rd.job_type === 0 || (rd.has_pickup === 1 && rd.has_delivery === 0);
+                });
+                const foundDelivery = relatedTasks.find(t => {
+                  const rd = t.raw_data || {};
+                  return rd.job_type === 1 || (rd.has_pickup === 0 && rd.has_delivery === 1);
+                });
+
+                if (foundPickup) originalPickup = foundPickup;
+                if (foundDelivery) originalDelivery = foundDelivery;
+
+                console.log('Found related tasks for return order from DB:', {
+                  pickupId: foundPickup?.job_id,
+                  deliveryId: foundDelivery?.job_id
+                });
+              }
+            } catch (relErr) {
+              console.error('⚠️ Failed to fetch related tasks from DB:', relErr.message);
+            }
+          }
+
+          // Extract coordinates: use pickup task for pickup coords, delivery task for delivery coords
+          const pickupRaw = originalPickup.raw_data || {};
+          const deliveryRaw = originalDelivery.raw_data || {};
+
+          orderData.job_pickup_latitude = originalPickup.job_pickup_latitude || pickupRaw.job_pickup_latitude || null;
+          orderData.job_pickup_longitude = originalPickup.job_pickup_longitude || pickupRaw.job_pickup_longitude || null;
+          orderData.job_latitude = originalDelivery.job_latitude || deliveryRaw.job_latitude || deliveryRaw.latitude || null;
+          orderData.job_longitude = originalDelivery.job_longitude || deliveryRaw.job_longitude || deliveryRaw.longitude || null;
 
           if (orderData.job_latitude && orderData.job_longitude) {
             originalCoordinatesFound = true;
             console.log('✅ Found original coordinates in DB for return order');
+            console.log('  Pickup coords (merchant):', orderData.job_pickup_latitude, orderData.job_pickup_longitude);
+            console.log('  Delivery coords (customer):', orderData.job_latitude, orderData.job_longitude);
           }
         }
       } catch (err) {
@@ -3500,9 +3545,11 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
     // ========== SINGLE API CALL: Combined Pickup + Delivery ==========
     // Using Tookan's create_task API with has_pickup=1 and has_delivery=1
     // For return order: pickup from customer, deliver to merchant
-    // For return order: keep pickup_name and delivery_name the SAME as the original (no reversal)
-    const effectivePickupName = pickupName || orderData.customerName || 'Customer';
-    const effectiveDeliveryName = deliveryName || orderData.customerName || 'Customer';
+    // For return order: REVERSE pickup_name and delivery_name (direction is reversed)
+    // Original deliveryName becomes the new pickupName (we're picking up FROM the customer)
+    // Original pickupName becomes the new deliveryName (we're delivering TO the merchant)
+    const effectivePickupName = deliveryName || orderData.customerName || 'Customer';
+    const effectiveDeliveryName = pickupName || orderData.customerName || 'Customer';
 
     const combinedPayload = {
       api_key: apiKey,
@@ -3599,6 +3646,8 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
             customer_name: orderData.customerName || 'Customer',
             customer_phone: orderData.customerPhone || '',
             customer_email: orderData.customerEmail || null,
+            pickup_name: effectivePickupName,
+            delivery_name: effectiveDeliveryName,
             pickup_address: returnPickupAddr,
             delivery_address: returnPickupAddr, // SAME as pickup - Tookan pickup task format
             cod_amount: 0,
@@ -3627,6 +3676,8 @@ app.post('/api/tookan/order/return', authenticate, requirePermission('panel_orde
             customer_name: orderData.customerName || 'Customer',
             customer_phone: orderData.customerPhone || '',
             customer_email: orderData.customerEmail || null,
+            pickup_name: effectivePickupName,
+            delivery_name: effectiveDeliveryName,
             pickup_address: returnPickupAddr,
             delivery_address: returnDeliveryAddr,
             cod_amount: 0,
