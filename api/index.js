@@ -1269,10 +1269,14 @@ function getApp() {
           return res.status(400).json({ status: 'error', message: 'vendor_id is required' });
         }
 
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
         const { data: withdrawals, error } = await supabase
           .from('withdrawals')
           .select('id, vendor_id, fleet_id, email, requested_amount, tax_applied, final_amount, iban, status, created_at')
           .eq('vendor_id', parseInt(vendor_id))
+          .gte('created_at', oneMonthAgo.toISOString())
           .order('created_at', { ascending: false });
 
         if (error) {
