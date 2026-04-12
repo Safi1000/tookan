@@ -23,6 +23,8 @@ type OrderDetails = {
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
+  merchantName?: string; // Merchant name from merchants table (via order_id -> merchant_id)
+  merchantPhone?: string; // Merchant phone from merchants table
   pickupAddress?: string;
   deliveryAddress?: string;
   pickupName?: string; // Pickup contact name from delivery task
@@ -174,6 +176,35 @@ export function OrderEditorPanel() {
       const finalCustomerName = first.customerName || '';
       const finalCustomerPhone = first.customerPhone || '';
 
+      // Look up merchant from merchants table using order_id -> merchant_id
+      let merchantName = '';
+      let merchantPhone = '';
+      const taskOrderId = first.order_id || '';
+      if (taskOrderId) {
+        try {
+          const merchantsResp = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/merchants/list`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`
+            }
+          });
+          const merchantsData = await merchantsResp.json();
+          if (merchantsData.status === 'success' && merchantsData.data?.merchants) {
+            const match = merchantsData.data.merchants.find(
+              (m: any) => String(m.merchant_id) === String(taskOrderId)
+            );
+            if (match) {
+              merchantName = match.customer_username || '';
+              merchantPhone = match.customer_phone || '';
+              console.log('Resolved merchant from merchants table:', { merchantName, merchantPhone, merchant_id: taskOrderId });
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to resolve merchant name:', err);
+        }
+      }
+
       setOrder({
         jobId: first.jobId,
         codAmount: first.codAmount || 0,
@@ -185,6 +216,8 @@ export function OrderEditorPanel() {
         customerName: finalCustomerName,
         customerPhone: finalCustomerPhone,
         customerEmail: first.customerEmail || '',
+        merchantName: merchantName || finalCustomerName,
+        merchantPhone: merchantPhone || finalCustomerPhone,
         pickupAddress: pickupAddr,
         deliveryAddress: deliveryAddr,
         pickupName: finalPickupName,
@@ -515,7 +548,7 @@ export function OrderEditorPanel() {
               <div>
                 <p className="text-subheading text-xs uppercase mb-1">Merchant Name</p>
                 <input
-                  value={order.customerName || 'N/A'}
+                  value={order.merchantName || 'N/A'}
                   disabled
                   className={lockedInputClass}
                 />
@@ -523,7 +556,7 @@ export function OrderEditorPanel() {
               <div>
                 <p className="text-subheading text-xs uppercase mb-1">Merchant Phone</p>
                 <input
-                  value={order.customerPhone || 'N/A'}
+                  value={order.merchantPhone || 'N/A'}
                   disabled
                   className={lockedInputClass}
                 />
