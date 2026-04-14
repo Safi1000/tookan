@@ -623,7 +623,7 @@ export function OrderEditorPanel() {
                   <option value="6">⏳ Unassigned</option>
                   <option value="9">🗑️ Deleted</option>
                 </select>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-l text-muted-foreground mt-1">
                   Current: <span className="font-semibold">
                     {order.status === 0 ? 'Assigned' : order.status === 1 ? 'Started' : order.status === 2 ? 'Successful' : order.status === 3 ? 'Failed' : order.status === 9 || order.status === 10 ? 'Deleted' : `Unknown (${order.status})`}
                   </span>
@@ -692,13 +692,13 @@ export function OrderEditorPanel() {
           <div className="bg-card dark:bg-[#1A2C53] rounded-2xl border border-border dark:border-[#2A3C63] w-[90vw] max-w-[380px] mx-auto shadow-2xl p-5 sm:p-6 space-y-4 sm:space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
               <div className={`p-3 rounded-full shrink-0 ${editStatus === '9' ? 'bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400'
-                  : editStatus === '3' ? 'bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400'
-                    : 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                : editStatus === '3' ? 'bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400'
+                  : 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
                 }`}>
                 {editStatus === '9' ? <Trash2 className="w-5 h-5 sm:w-6 sm:h-6" />
                   : editStatus === '3' ? <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6" />
                     : editStatus === '6' ? <RefreshCw className="w-5 h-5 sm:w-6 sm:h-6" />
-                    : <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6" />}
+                      : <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6" />}
               </div>
               <h2 className="text-lg font-bold text-heading">
                 {editStatus === '2' ? 'Mark as Successful?' : editStatus === '3' ? 'Mark as Failed?' : editStatus === '6' ? 'Mark as Unassigned?' : 'Delete Task?'}
@@ -743,8 +743,8 @@ export function OrderEditorPanel() {
                 onClick={performSave}
                 disabled={isSaving}
                 className={`w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-white rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm ${editStatus === '9' ? 'bg-red-600 hover:bg-red-700'
-                    : editStatus === '3' ? 'bg-orange-500 hover:bg-orange-600'
-                      : editStatus === '6' ? 'bg-blue-600 hover:bg-blue-700'
+                  : editStatus === '3' ? 'bg-orange-500 hover:bg-orange-600'
+                    : editStatus === '6' ? 'bg-blue-600 hover:bg-blue-700'
                       : 'bg-green-600 hover:bg-green-700'
                   }`}
               >
