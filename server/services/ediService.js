@@ -65,6 +65,27 @@ async function createOrder(orderData, merchantId) {
         meta_data: metaData,
     };
 
+    // Optional tags (comma-separated string for agent auto-assignment filtering)
+    if (orderData.tags) {
+        payload.tags = orderData.tags;
+    }
+
+    // Optional coordinates (pickup)
+    if (orderData.pickup_latitude) {
+        payload.job_pickup_latitude = String(orderData.pickup_latitude);
+    }
+    if (orderData.pickup_longitude) {
+        payload.job_pickup_longitude = String(orderData.pickup_longitude);
+    }
+
+    // Optional coordinates (delivery)
+    if (orderData.delivery_latitude) {
+        payload.latitude = String(orderData.delivery_latitude);
+    }
+    if (orderData.delivery_longitude) {
+        payload.longitude = String(orderData.delivery_longitude);
+    }
+
     // Log payload for debugging
     console.log('Sending payload to Tookan:', JSON.stringify(payload, null, 2));
 

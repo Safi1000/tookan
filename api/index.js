@@ -7808,6 +7808,27 @@ function getApp() {
           meta_data: metaData,
         };
 
+        // Optional tags (comma-separated string for agent auto-assignment filtering)
+        if (orderData.tags) {
+          payload.tags = orderData.tags;
+        }
+
+        // Optional coordinates (pickup)
+        if (orderData.pickup_latitude) {
+          payload.job_pickup_latitude = String(orderData.pickup_latitude);
+        }
+        if (orderData.pickup_longitude) {
+          payload.job_pickup_longitude = String(orderData.pickup_longitude);
+        }
+
+        // Optional coordinates (delivery)
+        if (orderData.delivery_latitude) {
+          payload.latitude = String(orderData.delivery_latitude);
+        }
+        if (orderData.delivery_longitude) {
+          payload.longitude = String(orderData.delivery_longitude);
+        }
+
         console.log('EDI Create Task payload:', JSON.stringify(payload, null, 2));
 
         const response = await fetch('https://api.tookanapp.com/v2/create_task', {
