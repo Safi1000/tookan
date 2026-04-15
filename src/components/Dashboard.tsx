@@ -404,12 +404,12 @@ export function Dashboard() {
               onClick={() => exportOrders('daily')}
               className="w-full flex items-center gap-4 px-6 py-4 bg-destructive/10 dark:bg-destructive/10 hover:bg-destructive/20 dark:hover:bg-destructive/20 border border-destructive/30 dark:border-destructive/30 rounded-xl transition-all group shadow-sm hover:shadow-md"
             >
-              <div className="w-12 h-12 rounded-xl bg-destructive dark:bg-destructive flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
-                <Download className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 rounded-xl bg-destructive dark:bg-destructive flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm" style={{ backgroundColor: '#DE3544' }}>
+                <Download className="w-6 h-6 text-white" style={{ color: 'white' }} />
               </div>
               <div className="flex-1 text-left">
-                <p className="text-heading dark:text-[#C1EEFA] font-semibold">Export Daily Report</p>
-                <p className="text-subheading dark:text-[#99BFD1] text-muted-light text-sm">Download today&apos;s summary (CSV)</p>
+                <p className="text-heading dark:text-[#C1EEFA] font-semibold" style={{ color: 'var(--heading-color)' }}>Export Daily Report</p>
+                <p className="text-subheading dark:text-[#99BFD1] text-muted-light text-sm" style={{ color: 'var(--muted-text, #64748B)' }}>Download today&apos;s summary (CSV)</p>
               </div>
             </button>
 
@@ -417,12 +417,12 @@ export function Dashboard() {
               onClick={() => exportOrders('monthly')}
               className="w-full flex items-center gap-4 px-6 py-4 bg-primary/10 dark:bg-[#C1EEFA]/10 hover:bg-primary/20 dark:hover:bg-[#C1EEFA]/20 border border-primary/30 dark:border-[#C1EEFA]/30 rounded-xl transition-all group shadow-sm hover:shadow-md"
             >
-              <div className="w-12 h-12 rounded-xl bg-primary dark:bg-[#C1EEFA] flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
-                <Download className="w-6 h-6 text-white dark:text-[#1A2C53]" />
+              <div className="w-12 h-12 rounded-xl bg-primary dark:bg-[#C1EEFA] flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm" style={{ backgroundColor: '#1A2C53' }}>
+                <Download className="w-6 h-6 text-white dark:text-[#1A2C53]" style={{ color: 'white' }} />
               </div>
               <div className="flex-1 text-left">
-                <p className="text-heading dark:text-[#C1EEFA] font-semibold">Export Monthly Report</p>
-                <p className="text-subheading dark:text-[#99BFD1] text-muted-light text-sm">Download this month&apos;s data (CSV)</p>
+                <p className="text-heading dark:text-[#C1EEFA] font-semibold" style={{ color: 'var(--heading-color)' }}>Export Monthly Report</p>
+                <p className="text-subheading dark:text-[#99BFD1] text-muted-light text-sm" style={{ color: 'var(--muted-text, #64748B)' }}>Download this month&apos;s data (CSV)</p>
               </div>
             </button>
 
